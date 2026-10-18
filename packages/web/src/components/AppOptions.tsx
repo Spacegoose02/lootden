@@ -53,7 +53,7 @@ export function AppOptions() {
   if (!bridge.appSettings || !bridge.quit) {
     return <p className="muted small">Update the LootDen app to choose tray, start-up and update options here.</p>;
   }
-  const set = (patch: Partial<Pick<AppSettings, "closeToTray" | "autoUpdate" | "openAtLogin" | "handheld">>) =>
+  const set = (patch: Partial<Pick<AppSettings, "closeToTray" | "autoUpdate" | "openAtLogin" | "handheld" | "fullscreen">>) =>
     bridge.appSettings!(patch).then(setOpts, (e) => setError(bridgeError(e)));
   const run = (fn: () => Promise<unknown>) => fn().catch((e) => setError(bridgeError(e)));
   return (
@@ -70,7 +70,18 @@ export function AppOptions() {
           {opts.loginItemSupported && (
             <label className="check">
               <input type="checkbox" checked={opts.openAtLogin} onChange={(e) => void set({ openAtLogin: e.target.checked })} />
-              Start LootDen with the computer (in the tray)
+              Start LootDen with the computer ({opts.handheldActive || opts.fullscreen ? "full screen" : "in the tray"})
+            </label>
+          )}
+          {opts.loginItemSupported && opts.openAtLogin && opts.loginItemEnabled === false && (
+            <p className="error small">
+              Windows is set not to start LootDen. Turn it back on in Settings &gt; Apps &gt; Startup, or untick and tick the box above.
+            </p>
+          )}
+          {opts.fullscreen !== undefined && (
+            <label className="check">
+              <input type="checkbox" checked={opts.fullscreen} onChange={(e) => void set({ fullscreen: e.target.checked })} />
+              Always open full screen (F11 switches)
             </label>
           )}
           <label className="check">
