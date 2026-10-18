@@ -57,6 +57,8 @@ let quitting = false;
 const playing = new Set<string>();
 /** Started at login: stay in the tray until opened. */
 const startHidden = process.argv.includes("--hidden");
+/** The "LootDen (full screen)" shortcut, jump list task or a launcher like Steam asked for full screen. */
+const launchFullscreen = process.argv.includes("--fullscreen");
 
 // Keep settings from before the rename: the app's data folder used to be "Game Manager".
 const legacyUserData = path.join(app.getPath("appData"), "Game Manager");
@@ -257,10 +259,49 @@ function createTray(): void {
   refreshTray();
 }
 
-function applyLoginItem(s: DesktopSettings): void {
-  if (process.platform !== "win32" && process.platform !== "darwin") return;
-  // A handheld opens LootDen in front at login, like a console's home screen; elsewhere it starts in the tray.
-  app.setLoginItemSettings({ openAtLogin: s.openAtLogin, args: handheldActive(s) ? [] : ["--hidden"] });
+/**
+ * The file Windows should start. The portable build runs from a copy it unpacks into the
+ * temp folder, which is gone after a restart, so its login item names the portable .exe itself.
+ */
+const appExe = () => process.env.PORTABLE_EXECUTABLE_FILE || process.execPath;
+/** The Run key value. Fixed, so the uninstaller can remove it and older entries can be found. */
+const LOGIN_ITEM_NAME = "LootDen";
+/** A handheld, or full screen chosen, opens LootDen in front at login, like a console's home screen; elsewhere it starts in the tray. */
+const loginArgs = (s: DesktopSettings) => (handheldActive(s) || s.fullscreen ? ["--fullscreen"] : ["--hidden"]);
+
+/** `enabled` only when the user changed it here; otherwise keep a choice made in Windows Settings or Task Manager. */
+function applyLoginItem(s: DesktopSettings, enabled?: boolean): void {
+  if (process.platform === "darwin") return app.setLoginItemSettings({ openAtLogin: s.openAtLogin, args: loginArgs(s) });
+  if (process.platform !== "win32") return;
+  const items = app.getLoginItemSettings().launchItems ?? [];
+  // Entries from older versions: named after the app id, or pointing at a portable copy's temp folder.
+  for (const item of items) {
+    if (item.scope === "user" && item.name !== LOGIN_ITEM_NAME && /\\lootden\.exe$/i.test(item.path))
+      app.setLoginItemSettings({ openAtLogin: false, name: item.name, path: item.path, args: item.args });
+  }
+  const current = items.find((i) => i.name === LOGIN_ITEM_NAME);
+  app.setLoginItemSettings({
+    openAtLogin: s.openAtLogin,
+    name: LOGIN_ITEM_NAME,
+    path: appExe(),
+    args: loginArgs(s),
+    enabled: enabled ?? current?.enabled ?? true,
+  });
+}
+
+/** Whether Windows will really start LootDen: false when it was turned off in Settings > Apps > Startup. */
+function loginItemEnabled(): boolean {
+  if (process.platform !== "win32") return true;
+  const item = (app.getLoginItemSettings().launchItems ?? []).find((i) => i.name === LOGIN_ITEM_NAME);
+  return item?.enabled ?? true;
+}
+
+/** Right-click LootDen on the taskbar or in Start: "Open full screen". */
+function setJumpList(): void {
+  if (process.platform !== "win32") return;
+  app.setUserTasks([
+    { program: appExe(), arguments: "--fullscreen", iconPath: appExe(), iconIndex: 0, title: "Open full screen", description: "Open LootDen full screen, for a handheld or TV" },
+  ]);
 }
 
 // ---- Handheld mode ------------------------------------------------------------------
@@ -880,14 +921,17 @@ function registerIpc(): void {
     await shell.openPath((await findInstalled(gameId)).dir);
   });
 
-  ipcMain.handle("gm:appSettings", (e, patch?: Partial<Pick<DesktopSettings, "closeToTray" | "autoUpdate" | "openAtLogin" | "handheld">>) => {
+  ipcMain.handle("gm:appSettings", (e, patch?: Partial<Pick<DesktopSettings, "closeToTray" | "autoUpdate" | "openAtLogin" | "handheld" | "fullscreen">>) => {
     fromServer(e);
     if (patch) {
       const clean: Partial<DesktopSettings> = {};
-      for (const k of ["closeToTray", "autoUpdate", "openAtLogin"] as const) if (typeof patch[k] === "boolean") clean[k] = patch[k];
+      for (const k of ["closeToTray", "autoUpdate", "openAtLogin", "fullscreen"] as const) if (typeof patch[k] === "boolean") clean[k] = patch[k];
       if (patch.handheld && ["auto", "on", "off"].includes(patch.handheld)) clean.handheld = patch.handheld;
       const s = settings.update(clean);
-      if ("openAtLogin" in clean || clean.handheld) applyLoginItem(s);
+      // Ticking the box here also turns the entry back on if it was switched off in Windows.
+      if ("openAtLogin" in clean) applyLoginItem(s, s.openAtLogin);
+      else if (clean.handheld || "fullscreen" in clean) applyLoginItem(s);
+      if ("fullscreen" in clean && win && win.isFullScreen() !== (s.fullscreen || handheldActive(s))) win.setFullScreen(s.fullscreen || handheldActive(s));
       if (clean.handheld) {
         // Turning it off leaves full screen too, unless full screen was chosen on its own.
         if (!handheldActive(s) && win?.isFullScreen() && !s.fullscreen) win.setFullScreen(false);
@@ -900,6 +944,8 @@ function registerIpc(): void {
       closeToTray: s.closeToTray,
       autoUpdate: s.autoUpdate,
       openAtLogin: s.openAtLogin,
+      loginItemEnabled: loginItemEnabled(),
+      fullscreen: s.fullscreen,
       handheld: s.handheld,
       handheldActive: handheldActive(s),
       looksHandheld: looksHandheld(),
@@ -941,7 +987,7 @@ function registerIpc(): void {
     fromServer(e);
     const full = !win?.isFullScreen();
     win?.setFullScreen(full);
-    settings.update({ fullscreen: full });
+    applyLoginItem(settings.update({ fullscreen: full }));
     return full;
   });
 }
@@ -1010,8 +1056,8 @@ async function createWindow(): Promise<void> {
     minWidth: 800,
     minHeight: 560,
     backgroundColor: "#0d0820",
-    fullscreen: s.fullscreen || handheldActive(s),
-    show: !(startHidden && tray && !handheldActive(s)),
+    fullscreen: s.fullscreen || handheldActive(s) || launchFullscreen,
+    show: launchFullscreen || !(startHidden && tray && !handheldActive(s)),
     autoHideMenuBar: true,
     title: "LootDen",
     ...(customFrame ? { titleBarStyle: "hidden" as const, titleBarOverlay: { color: "#0d0820", symbolColor: "#f3eeff", height: TITLEBAR_HEIGHT } } : {}),
@@ -1075,6 +1121,7 @@ app.on("second-instance", (_e, argv) => {
     win?.show();
     void openDeepLink(link);
   } else showWindow();
+  if (argv.includes("--fullscreen") && win && !win.isFullScreen()) win.setFullScreen(true);
 });
 app.on("before-quit", () => (quitting = true));
 app.on("open-url", (e, url) => {
@@ -1094,6 +1141,7 @@ void app.whenReady().then(async () => {
   registerIpc();
   createTray();
   applyLoginItem(settings.get());
+  setJumpList();
   await createWindow();
   // The copy replaced by the last update.
   const self = process.env.PORTABLE_EXECUTABLE_FILE ?? process.env.APPIMAGE;

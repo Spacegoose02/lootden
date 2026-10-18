@@ -67,7 +67,8 @@
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "perMachine": false,
-      "artifactName": "LootDen-Setup-${version}.${ext}"
+      "artifactName": "LootDen-Setup-${version}.${ext}",
+      "include": "build/installer.nsh"
     },
     "linux": {
       "target": [
