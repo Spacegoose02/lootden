@@ -18,7 +18,7 @@
   </head>
   <body>
     <form id="f">
-      <img src="../build/icon.png" width="96" height="96" alt="" onerror="this.remove()" />
+      <img src="../build/mascot.png" width="160" height="160" alt="" onerror="this.onerror = () => this.remove(); this.src = '../build/icon.png'" />
       <h1 style="margin: 0">LootDen</h1>
       <p class="muted">Enter the address of your LootDen server, for example <b>http://tower:8080</b>.</p>
       <input id="url" placeholder="http://tower:8080" autofocus required />
