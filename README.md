@@ -1,4 +1,4 @@
-<p align="center"><img src="packages/web/public/logo.svg" width="96" alt=""></p>
+<p align="center"><img src="brand/logo.png" width="112" alt=""></p>
 
 # LootDen
 
@@ -18,7 +18,10 @@ installs games from it on any PC in the house.
   server.
 - Installers and disc images: Inno Setup installers (most GOG games) are installed on the
   server while a download is imported. Others run once on a PC, then an admin can upload the
-  installed folder so everyone else gets a ready-to-play download.
+  installed folder so everyone else gets a ready-to-play download. The upload goes in 16 MB
+  parts, so a reverse proxy or Cloudflare tunnel in front of the server doesn't stop it.
+- Admins can delete a game from its page. The files move to `.deleted` in the games folder
+  (or are removed for good), and moving them back restores the game with its settings.
 - Time to beat from HowLongToBeat, with IGDB's times as the fallback.
 - Updates and DLC are kept on their own page and applied over an installed game with a
   backup, so they can be undone.
@@ -145,7 +148,9 @@ on Linux). The `.deb` doesn't update itself; the other builds do.
 
 On a handheld (ROG Ally, Steam Deck, Legion Go) the app switches to **Handheld mode**: full
 screen, larger text and buttons, and it opens in front when started with the computer. Change
-it under Profile, This computer. A controller moves a selection box around the app; on the
+it under Profile, This computer. A controller moves a selection box around the app: A selects, B goes back, Y jumps between
+the filters and the games, and on a menu such as Genre or Sort, A starts changing it with the
+d-pad and A or B finishes; on the
 ROG Ally set Armoury Crate's Control Mode to Gamepad, as Auto treats LootDen as a desktop app
 and turns the controller into a mouse.
 
