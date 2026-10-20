@@ -492,6 +492,22 @@ main {
   font-size: clamp(1.8rem, 4vw, 3rem);
   margin: 0.1em 0 0.2em;
 }
+.hero-slides {
+  display: grid;
+}
+.hero-slides > .hero-content {
+  grid-area: 1 / 1;
+  visibility: hidden;
+  opacity: 0;
+  transition:
+    opacity 0.4s ease,
+    visibility 0s 0.4s;
+}
+.hero-slides > .hero-content.active {
+  visibility: visible;
+  opacity: 1;
+  transition: opacity 0.4s ease;
+}
 .hero-content .muted {
   color: rgba(255, 255, 255, 0.8);
 }

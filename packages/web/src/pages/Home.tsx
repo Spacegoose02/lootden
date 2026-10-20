@@ -84,20 +84,29 @@ export function Home() {
       {hero && (
         <section className="hero">
           <div className={`hero-bg${hero.backgroundUrl ? " wide" : ""}`} style={hero.backgroundUrl || hero.coverUrl ? { backgroundImage: `url(${hero.backgroundUrl ?? hero.coverUrl})` } : undefined} />
-          <div className="hero-content">
-            <Link to={`/games/${hero.id}`} tabIndex={-1}>
-              <Cover key={hero.id} game={hero} size="hero" />
-            </Link>
-            <div>
-              <p className="eyebrow">Featured</p>
-              <h1>{hero.title}</h1>
-              <p className="muted">{[hero.releaseYear, hero.genres.slice(0, 3).join(", ")].filter(Boolean).join(" · ")}</p>
-              <Badges game={hero} />
-              {hero.blurb && <p className="hero-blurb">{hero.blurb.length >= 280 ? `${hero.blurb.replace(/\s+\S*$/, "")}…` : hero.blurb}</p>}
-              <Link to={`/games/${hero.id}`} className="button primary">
-                View game
-              </Link>
-            </div>
+          {/* Every featured game is laid out in the same spot and only the current one shows, so the
+              banner is always as tall as the tallest one and the page doesn't jump when it changes. */}
+          <div className="hero-slides">
+            {data.featured.map((g) => {
+              const on = g.id === hero.id;
+              return (
+                <div key={g.id} className={`hero-content${on ? " active" : ""}`} aria-hidden={!on} inert={!on}>
+                  <Link to={`/games/${g.id}`} tabIndex={-1}>
+                    <Cover game={g} size="hero" />
+                  </Link>
+                  <div>
+                    <p className="eyebrow">Featured</p>
+                    <h1>{g.title}</h1>
+                    <p className="muted">{[g.releaseYear, g.genres.slice(0, 3).join(", ")].filter(Boolean).join(" · ")}</p>
+                    <Badges game={g} />
+                    {g.blurb && <p className="hero-blurb">{g.blurb.length >= 280 ? `${g.blurb.replace(/\s+\S*$/, "")}…` : g.blurb}</p>}
+                    <Link to={`/games/${g.id}`} className="button primary">
+                      View game
+                    </Link>
+                  </div>
+                </div>
+              );
+            })}
           </div>
           <div className="hero-dots">
             {data.featured.map((g, i) => (
