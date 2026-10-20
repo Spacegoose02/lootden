@@ -50,8 +50,42 @@ export function setNavMode(mode: "pad" | "pointer"): void {
   if (mode === "pad" && !ringFrame) ringFrame = requestAnimationFrame(trackRing);
 }
 
-export function moveFocus(dir: Dir): void {
+/**
+ * Areas focus moves between as a whole: the filter bar, the games, the menu. Coming back to one
+ * picks the item you left it from, so up from the games to the filters and down again lands on
+ * the same game instead of whichever one sits nearest the filter.
+ */
+const ZONES = '[data-nav-zone], .filters, .collection, nav, header';
+const lastInZone = new WeakMap<Element, HTMLElement>();
+const zoneOf = (el: Element) => el.closest(ZONES);
+
+/** A select being changed with the d-pad (A starts and ends it); otherwise the d-pad moves past it. */
+let editing: HTMLSelectElement | null = null;
+function setEditing(el: HTMLSelectElement | null): void {
+  editing = el;
+  ring?.classList.toggle("editing", !!el);
+}
+
+const ahead = (dir: Dir, from: DOMRect, r: DOMRect) => {
+  const dx = r.left + r.width / 2 - (from.left + from.width / 2);
+  const dy = r.top + r.height / 2 - (from.top + from.height / 2);
+  return dir === "right" ? dx > 4 : dir === "left" ? dx < -4 : dir === "down" ? dy > 4 : dy < -4;
+};
+
+/** Distance along the move from edge to edge, plus a heavy price for leaving the row or column. */
+function score(dir: Dir, from: DOMRect, r: DOMRect): number {
+  const across = dir === "left" || dir === "right";
+  const main = Math.max(0, dir === "right" ? r.left - from.right : dir === "left" ? from.left - r.right : dir === "down" ? r.top - from.bottom : from.top - r.bottom);
+  const gap = across ? Math.max(0, r.top - from.bottom, from.top - r.bottom) : Math.max(0, r.left - from.right, from.left - r.right);
+  const centre = across ? Math.abs(r.top + r.height / 2 - (from.top + from.height / 2)) : Math.abs(r.left + r.width / 2 - (from.left + from.width / 2));
+  return main + gap * 4 + centre * 0.3;
+}
+
+const onScreen = (r: DOMRect) => r.bottom > 0 && r.top < window.innerHeight && r.right > 0 && r.left < window.innerWidth;
+
+export function moveFocus(dir: Dir, repeating = false): void {
   setNavMode("pad");
+  setEditing(null);
   const items = [...document.querySelectorAll<HTMLElement>(FOCUSABLE)].filter(visible);
   const current = document.activeElement as HTMLElement | null;
   if (!current || current === document.body || !items.includes(current)) {
@@ -59,38 +93,80 @@ export function moveFocus(dir: Dir): void {
     return;
   }
   const from = current.getBoundingClientRect();
-  const cx = from.left + from.width / 2;
-  const cy = from.top + from.height / 2;
+  const here = zoneOf(current);
   let best: HTMLElement | null = null;
   let bestScore = Infinity;
+  const rects = new Map<HTMLElement, DOMRect>();
   for (const el of items) {
     if (el === current) continue;
     const r = el.getBoundingClientRect();
-    const x = r.left + r.width / 2;
-    const y = r.top + r.height / 2;
-    const dx = x - cx;
-    const dy = y - cy;
-    const ahead = dir === "right" ? dx > 4 : dir === "left" ? dx < -4 : dir === "down" ? dy > 4 : dy < -4;
-    if (!ahead) continue;
-    const main = dir === "left" || dir === "right" ? Math.abs(dx) : Math.abs(dy);
-    const cross = dir === "left" || dir === "right" ? Math.abs(dy) : Math.abs(dx);
-    const score = main + cross * 2.5;
-    if (score < bestScore) {
-      bestScore = score;
+    if (!ahead(dir, from, r)) continue;
+    // Left and right stay in the row: off the end of the filters isn't a jump up to Sign out.
+    if ((dir === "left" || dir === "right") && (r.bottom <= from.top || r.top >= from.bottom) && zoneOf(el) !== here) continue;
+    rects.set(el, r);
+    const sc = score(dir, from, r);
+    if (sc < bestScore) {
+      bestScore = sc;
       best = el;
     }
   }
+  const zone = best && zoneOf(best);
+  if (best && zone && zone !== here) {
+    // Into another area: where you were in it last, else (for the games) the first one on screen.
+    const remembered = lastInZone.get(zone);
+    const first = zone.matches(".collection, [data-nav-zone]") ? items.find((el) => zoneOf(el) === zone && rects.has(el) && onScreen(rects.get(el)!)) : undefined;
+    best = remembered && remembered.isConnected && rects.has(remembered) && onScreen(rects.get(remembered)!) ? remembered : (first ?? best);
+  }
   if (best) {
-    best.focus();
-    best.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "smooth" });
+    if (here) lastInZone.set(here, current);
+    best.focus({ preventScroll: true });
+    // Smooth scrolling lags behind a held d-pad, so a held direction jumps.
+    best.scrollIntoView({ block: "nearest", inline: "nearest", behavior: repeating ? "auto" : "smooth" });
   }
 }
 
-/** Left/right edit text and up/down change a select, so those keys stay with the control. Up/down leave a text box. */
-const keepsKey = (el: Element | null, dir: Dir) =>
-  el instanceof HTMLSelectElement ||
-  el instanceof HTMLTextAreaElement ||
-  (el instanceof HTMLInputElement && !["checkbox", "radio", "button", "submit"].includes(el.type) && (dir === "left" || dir === "right"));
+/** Y: between the filters (or the top of the page) and the games, wherever focus is. */
+export function switchZone(): void {
+  setNavMode("pad");
+  setEditing(null);
+  const current = document.activeElement as HTMLElement | null;
+  const zones = [...document.querySelectorAll("main .filters, main .collection, main [data-nav-zone]")];
+  if (zones.length < 2) return;
+  const here = current ? zones.findIndex((z) => z.contains(current)) : -1;
+  if (here >= 0 && current) lastInZone.set(zones[here]!, current);
+  const next = zones[(here + 1) % zones.length]!;
+  const target = lastInZone.get(next);
+  const el = target?.isConnected && visible(target) ? target : [...next.querySelectorAll<HTMLElement>(FOCUSABLE)].find(visible);
+  el?.focus({ preventScroll: true });
+  el?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+}
+
+/** A or Enter on a select: change it with the d-pad until A, B or Enter again. */
+export function toggleEditing(el: HTMLSelectElement): void {
+  setEditing(editing === el ? null : el);
+}
+
+/** One option up or down in the select being changed, telling React about it. */
+function stepSelect(el: HTMLSelectElement, by: number): void {
+  const options = [...el.options];
+  let i = el.selectedIndex;
+  do i += by;
+  while (i >= 0 && i < options.length && options[i]!.disabled);
+  if (i < 0 || i >= options.length) return;
+  el.selectedIndex = i;
+  el.dispatchEvent(new Event("change", { bubbles: true }));
+}
+
+/** Text boxes keep left and right for the cursor until it reaches the end of the text. Selects keep them only while being changed. */
+const keepsKey = (el: Element | null, dir: Dir) => {
+  if (el instanceof HTMLSelectElement) return el === editing;
+  if (el instanceof HTMLTextAreaElement) return true;
+  if (!(el instanceof HTMLInputElement) || ["checkbox", "radio", "button", "submit", "range"].includes(el.type) || (dir !== "left" && dir !== "right")) return false;
+  const start = el.selectionStart;
+  const end = el.selectionEnd;
+  if (start === null || end === null) return true; // number and similar inputs don't say
+  return dir === "left" ? start > 0 || end > 0 : start < el.value.length || end < el.value.length;
+};
 
 const isTextField = (el: Element | null) => el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement || el instanceof HTMLSelectElement;
 
@@ -133,6 +209,13 @@ export function installSpatialNavigation(onBack: () => void): () => void {
   };
   const keys: Record<string, Dir> = { ArrowUp: "up", ArrowDown: "down", ArrowLeft: "left", ArrowRight: "right" };
   const onKey = (e: KeyboardEvent) => {
+    const el = document.activeElement;
+    // Enter starts and ends changing a select with the arrows; Esc ends it too.
+    if (el instanceof HTMLSelectElement && (e.key === "Enter" || (e.key === "Escape" && el === editing))) {
+      e.preventDefault();
+      toggleEditing(el);
+      return;
+    }
     // Esc goes back a page, like B. The ROG Ally sends Esc for B when Armoury Crate has LootDen in Desktop mode.
     if (e.key === "Escape" && !e.defaultPrevented && !openPopup() && !isTextField(document.activeElement) && !(document.activeElement instanceof HTMLIFrameElement)) {
       back();
@@ -142,9 +225,13 @@ export function installSpatialNavigation(onBack: () => void): () => void {
     if (!dir || keepsKey(document.activeElement, dir) || e.altKey || e.ctrlKey || e.metaKey) return;
     if (document.activeElement instanceof HTMLIFrameElement) return;
     e.preventDefault();
-    moveFocus(dir);
+    moveFocus(dir, e.repeat);
   };
   window.addEventListener("keydown", onKey);
+  const onFocusOut = (e: FocusEvent) => {
+    if (e.target === editing) setEditing(null);
+  };
+  window.addEventListener("focusout", onFocusOut, true);
   // Only a real mouse move hides the box; Chromium also fires mousemove when the page scrolls under a still cursor.
   const onPointer = (e: PointerEvent | MouseEvent) => {
     if (e.type === "mousemove" && Math.abs((e as MouseEvent).movementX) + Math.abs((e as MouseEvent).movementY) < 3) return;
@@ -153,26 +240,27 @@ export function installSpatialNavigation(onBack: () => void): () => void {
   window.addEventListener("pointerdown", onPointer, true);
   window.addEventListener("mousemove", onPointer, true);
 
-  // Gamepad polling: d-pad / left stick move, A (0) clicks, B (1) goes back, the right
-  // stick scrolls, and the shoulder buttons page up and down.
+  // Gamepad polling: d-pad / left stick move, A (0) clicks, B (1) goes back, Y (3) jumps between
+  // the filters and the games, the right stick scrolls, and the shoulder buttons page up and down.
   let frame = 0;
   const held = new Map<string, number>();
-  const repeat = (id: string, pressed: boolean, action: () => void) => {
+  const repeat = (id: string, pressed: boolean, action: (repeating: boolean) => void) => {
     const now = performance.now();
     const since = held.get(id);
     if (!pressed) return void held.delete(id);
     if (since === undefined) {
-      held.set(id, now + 250);
-      action();
+      held.set(id, now + 300);
+      action(false);
     } else if (now > since) {
-      held.set(id, now + 90);
-      action();
+      held.set(id, now + 110);
+      action(true);
     }
   };
   const activate = () => {
     const el = document.activeElement as HTMLElement | null;
     if (!el || el === document.body) return moveFocus("down");
     if (el instanceof HTMLInputElement && (el.type === "checkbox" || el.type === "radio")) return el.click();
+    if (el instanceof HTMLSelectElement) return toggleEditing(el);
     // Text boxes take focus for typing (the on-screen keyboard on handhelds); everything else is clicked.
     if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement || el instanceof HTMLSelectElement) return el.focus();
     el.click();
@@ -197,17 +285,21 @@ export function installSpatialNavigation(onBack: () => void): () => void {
         const hat = padHat(pad);
         const any = pad.buttons.some((x) => x.pressed) || Math.abs(ax) > 0.6 || Math.abs(ay) > 0.6;
         if (any) setNavMode("pad");
-        repeat(`${pad.index}up`, b(12) || hat === "up" || ay < -0.6, () => moveFocus("up"));
-        repeat(`${pad.index}down`, b(13) || hat === "down" || ay > 0.6, () => moveFocus("down"));
-        repeat(`${pad.index}left`, b(14) || hat === "left" || ax < -0.6, () => moveFocus("left"));
-        repeat(`${pad.index}right`, b(15) || hat === "right" || ax > 0.6, () => moveFocus("right"));
+        // While a select is being changed the d-pad picks its options instead of moving.
+        const move = (dir: Dir, by: number) => (repeating: boolean) => (editing && document.activeElement === editing ? stepSelect(editing, by) : moveFocus(dir, repeating));
+        repeat(`${pad.index}up`, b(12) || hat === "up" || ay < -0.6, move("up", -1));
+        repeat(`${pad.index}down`, b(13) || hat === "down" || ay > 0.6, move("down", 1));
+        repeat(`${pad.index}left`, b(14) || hat === "left" || ax < -0.6, move("left", -1));
+        repeat(`${pad.index}right`, b(15) || hat === "right" || ax > 0.6, move("right", 1));
         repeat(`${pad.index}a`, b(0), activate);
         repeat(`${pad.index}b`, b(1), () => {
-          // B first leaves a text box, then closes a menu or video, then goes back a page.
+          // B first stops changing a select or leaves a text box, then closes a menu or video, then goes back a page.
           const el = document.activeElement;
-          if (isTextField(el)) (el as HTMLElement).blur();
+          if (editing && el === editing) setEditing(null);
+          else if (isTextField(el) && !(el instanceof HTMLSelectElement)) (el as HTMLElement).blur();
           else back();
         });
+        repeat(`${pad.index}y`, b(3), switchZone);
         repeat(`${pad.index}lb`, b(4), () => scrollBy(-window.innerHeight * 0.8));
         repeat(`${pad.index}rb`, b(5), () => scrollBy(window.innerHeight * 0.8));
         if (pad.mapping === "standard" && Math.abs(ry) > 0.25) scrollBy(ry * 18);
@@ -225,6 +317,7 @@ export function installSpatialNavigation(onBack: () => void): () => void {
 
   return () => {
     window.removeEventListener("keydown", onKey);
+    window.removeEventListener("focusout", onFocusOut, true);
     window.removeEventListener("gamepadconnected", start);
     window.removeEventListener("focus", start);
     window.removeEventListener("pointerdown", onPointer, true);

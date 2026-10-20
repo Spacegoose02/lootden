@@ -179,6 +179,11 @@ code {
 .pad-ring.on {
   opacity: 1;
 }
+/* Changing a select with the d-pad: up and down pick its options until A or B. */
+.pad-ring.editing {
+  border-style: dashed;
+  border-color: var(--accent);
+}
 /* The pointer just gets in the way on a TV or handheld until the mouse moves again. */
 :root[data-nav="pad"],
 :root[data-nav="pad"] * {
@@ -945,6 +950,15 @@ textarea {
 .saves .save-path code,
 .saves p code {
   word-break: break-all;
+}
+.admin-tools .delete-game {
+  margin-top: 1.25rem;
+  padding-top: 1rem;
+  border-top: 1px solid color-mix(in srgb, var(--danger, #e5484d) 30%, transparent);
+}
+.admin-tools .delete-game h3 {
+  margin: 0 0 0.5rem;
+  font-size: 1rem;
 }
 button.danger {
   color: var(--danger, #e5484d);

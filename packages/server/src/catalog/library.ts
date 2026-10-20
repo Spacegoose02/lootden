@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { mkdir, rename, statfs } from "node:fs/promises";
+import { mkdir, rename, rm, statfs } from "node:fs/promises";
 import path from "node:path";
 import { compareVersion, contentHint, FULL_GAME_SIZE_RATIO, PC_PLATFORM, setupKindOf, type KindReason, PLATFORMS, type ControllerSupport, type GameDetail, type GameMetadata, type GameSummary, type LibraryStats, type PackageKind } from "@lootden/shared";
 import { json, now, type Db } from "../db/database.js";
@@ -429,6 +429,25 @@ export class Library {
     const game = this.get(newId);
     if (!game) throw new Error(`${newSource} didn't show up in the library after the upload`);
     return game;
+  }
+
+  /**
+   * Admin: takes a game out of the library. Its files move to .deleted/ in the games folder,
+   * or are removed for good with `permanent`. Its settings, artwork and saves stay in the
+   * database, so moving the files back brings the game back as it was.
+   */
+  async deleteGame(id: string, permanent = false): Promise<void> {
+    const game = this.scanned.get(id);
+    if (!game) throw new Error("Unknown game");
+    const full = path.resolve(this.gamesDir, game.source);
+    if (!full.startsWith(path.resolve(this.gamesDir) + path.sep)) throw new Error("Unknown game");
+    if (permanent) await rm(full, { recursive: true, force: true });
+    else {
+      const deleted = path.join(this.gamesDir, ".deleted");
+      await mkdir(deleted, { recursive: true });
+      await rename(full, path.join(deleted, `${Date.now()}-${game.source.replaceAll("/", " - ")}`));
+    }
+    await this.rescan();
   }
 
   setSavePath(id: string, savePath: string | null): void {

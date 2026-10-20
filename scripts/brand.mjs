@@ -9,6 +9,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const brand = path.join(root, "brand");
 const targets = [
   ["icon.png", "packages/desktop/build/icon.png"],
+  ["mascot.png", "packages/desktop/build/mascot.png"],
   ["playnite-icon.png", "playnite/LootDenLibrary/icon.png"],
 ];
 

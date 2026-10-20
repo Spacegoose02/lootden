@@ -35,6 +35,7 @@
       "dist/**",
       "setup/**",
       "build/icon.png",
+      "build/mascot.png",
       "package.json"
     ],
     "extraResources": [

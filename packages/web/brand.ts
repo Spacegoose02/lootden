@@ -29,6 +29,7 @@ export function brandFiles() {
     wordmark: find(["wordmark.svg", "wordmark.png", "wordmark.webp"]),
     favicon: find(["favicon.svg", "favicon.png", "favicon.ico"]) ?? logo,
     touch: find(["apple-touch-icon.png", "icon.png"]),
+    mascot: find(["mascot.png", "mascot.webp", "mascot.svg"]),
   };
   // Served at /brand/<kind><ext>.
   const urls = Object.fromEntries(Object.entries(files).map(([k, f]) => [k, f ? `/brand/${k}${path.extname(f)}` : null])) as Record<keyof typeof files, string | null>;
@@ -40,7 +41,7 @@ export function brandPlugin(): Plugin {
   return {
     name: "lootden-brand",
     // The built-in raccoon is drawn inline so it takes the theme's colours; your own logo stays as it is.
-    config: () => ({ define: { __BRAND__: JSON.stringify({ logo: urls.logo, wordmark: urls.wordmark, raccoon: isBuiltIn(files.logo), raccoonFavicon: isBuiltIn(files.favicon) }) } }),
+    config: () => ({ define: { __BRAND__: JSON.stringify({ logo: urls.logo, wordmark: urls.wordmark, mascot: urls.mascot, raccoon: isBuiltIn(files.logo), raccoonFavicon: isBuiltIn(files.favicon) }) } }),
     transformIndexHtml: () =>
       [
         urls.favicon && { tag: "link", attrs: { rel: "icon", type: TYPES[path.extname(urls.favicon)], href: urls.favicon }, injectTo: "head" as const },

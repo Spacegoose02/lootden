@@ -39,7 +39,7 @@ export function Login() {
   return (
     <div className="login">
       <form className="panel login-panel" onSubmit={submit}>
-        <BrandLogo size={88} />
+        {__BRAND__.mascot ? <img className="login-mascot" src={__BRAND__.mascot} alt="" width={160} height={160} /> : <BrandLogo size={88} />}
         <h1>{setup ? "Create the admin account" : "LootDen"}</h1>
         {setup && <p className="muted">This is the first start. The account you create here manages the library and other profiles.</p>}
         {error && <p className="error">{error}</p>}

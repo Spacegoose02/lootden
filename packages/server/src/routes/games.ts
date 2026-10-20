@@ -1,5 +1,6 @@
 import { createReadStream, createWriteStream } from "node:fs";
-import { rename, rm, stat } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import { readdir, rename, rm, stat, truncate } from "node:fs/promises";
 import path from "node:path";
 import type { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
@@ -29,6 +30,25 @@ export function parseRange(header: string | undefined, size: number): { start: n
   }
   if (start >= size || start > end) return "invalid";
   return { start, end };
+}
+
+/** File system errors in words an admin can act on (the container usually runs as 99:100 on Unraid). */
+export function writeProblem(err: NodeJS.ErrnoException): string {
+  if (err.code === "EROFS") return "The games folder is mounted read-only. Remove :ro (or set it to Read/Write in the Unraid template) so uploads can be saved.";
+  if (err.code === "EACCES" || err.code === "EPERM") return `The server isn't allowed to write in the games folder (${err.message}). Give the container's user write access to it.`;
+  if (err.code === "ENOSPC") return "The games folder is out of space.";
+  return err.message;
+}
+
+/** Parts from uploads that were never finished, after a day. */
+async function removeStaleParts(gamesDir: string): Promise<void> {
+  const cutoff = Date.now() - 24 * 3600_000;
+  for (const name of await readdir(gamesDir).catch(() => [] as string[])) {
+    if (!/^\.lootden-upload-.+\.part$/.test(name)) continue;
+    const file = path.join(gamesDir, name);
+    const s = await stat(file).catch(() => null);
+    if (s && s.mtimeMs < cutoff) await rm(file, { force: true }).catch(() => {});
+  }
 }
 
 type ListQuery = {
@@ -173,26 +193,90 @@ export function gameRoutes(app: FastifyInstance, ctx: AppContext) {
   /**
    * Admin: replace a disc-image or installer game with the zipped, installed game
    * (application/octet-stream). The original moves to .replaced/ in the games folder.
+   * The desktop app sends it in parts (below), so a reverse proxy's upload limit or a dropped
+   * connection doesn't fail a many-GB upload; this one-shot form is kept for older apps.
    */
   app.put<{ Params: { id: string }; Querystring: { version?: string } }>("/api/games/:id/prepared", async (req) => {
     requireAdmin(req);
     const game = visibleGame(req, req.params.id);
     if (!req.body || typeof (req.body as Readable).pipe !== "function") throw new HttpProblem(400, "Send the zip as application/octet-stream");
-    const version = req.query.version?.trim().replace(/^v/i, "");
-    const name = `${safeFolderName(version ? `${game.title} v${version}` : game.title)}.zip`;
-    const target = path.join(ctx.config.gamesDir, name);
-    if (await stat(target).catch(() => null)) throw new HttpProblem(409, `${name} is already in the games folder`);
-    const temp = path.join(ctx.config.gamesDir, `.${name}.uploading`);
+    const temp = path.join(ctx.config.gamesDir, `.lootden-upload-${randomUUID()}.part`);
     try {
       await pipeline(req.body as Readable, createWriteStream(temp));
-      if ((await stat(temp)).size === 0) throw new Error("The upload was empty");
-      await rename(temp, target);
     } catch (err) {
       await rm(temp, { force: true });
       throw new HttpProblem(400, (err as Error).message);
     }
-    return ctx.library.replaceGame(game.id, name);
+    return finishPrepared(game.id, game.title, temp, req.query.version);
   });
+
+  const partFile = (upload: string) => {
+    if (!/^[A-Za-z0-9_-]{8,64}$/.test(upload)) throw new HttpProblem(400, "Bad upload id");
+    return path.join(ctx.config.gamesDir, `.lootden-upload-${upload}.part`);
+  };
+
+  /** How much of an upload in parts has arrived, so the app can carry on after a dropped connection. */
+  app.get<{ Params: { id: string; upload: string } }>("/api/games/:id/prepared/parts/:upload", async (req) => {
+    requireAdmin(req);
+    visibleGame(req, req.params.id);
+    return { size: (await stat(partFile(req.params.upload)).catch(() => null))?.size ?? 0 };
+  });
+
+  /** One part of the zip, appended at ?offset= (0 starts the upload over). */
+  app.put<{ Params: { id: string; upload: string }; Querystring: { offset?: string } }>("/api/games/:id/prepared/parts/:upload", async (req) => {
+    requireAdmin(req);
+    visibleGame(req, req.params.id);
+    if (!req.body || typeof (req.body as Readable).pipe !== "function") throw new HttpProblem(400, "Send the part as application/octet-stream");
+    const file = partFile(req.params.upload);
+    const offset = Number(req.query.offset ?? 0);
+    if (offset === 0) await removeStaleParts(ctx.config.gamesDir);
+    const size = (await stat(file).catch(() => null))?.size ?? 0;
+    if (offset !== 0 && offset !== size) {
+      (req.body as Readable).resume();
+      throw new HttpProblem(409, `The server has ${size} bytes of this upload, not ${offset}`);
+    }
+    try {
+      await pipeline(req.body as Readable, createWriteStream(file, { flags: offset === 0 ? "w" : "a" }));
+    } catch (err) {
+      // Drop the half-written part so a retry at the same offset lines up again.
+      await truncate(file, offset).catch(() => {});
+      throw new HttpProblem(400, writeProblem(err as NodeJS.ErrnoException));
+    }
+    return { size: (await stat(file)).size };
+  });
+
+  app.post<{ Params: { id: string; upload: string }; Querystring: { version?: string } }>("/api/games/:id/prepared/parts/:upload/finish", async (req) => {
+    requireAdmin(req);
+    const game = visibleGame(req, req.params.id);
+    const file = partFile(req.params.upload);
+    if (!(await stat(file).catch(() => null))) throw new HttpProblem(404, "Nothing was uploaded for this game");
+    return finishPrepared(game.id, game.title, file, req.query.version);
+  });
+
+  /** Puts an uploaded zip in the games folder and swaps it in for the disc or installer copy. */
+  async function finishPrepared(gameId: string, title: string, temp: string, rawVersion?: string) {
+    try {
+      if ((await stat(temp)).size === 0) throw new HttpProblem(400, "The upload was empty");
+      const version = rawVersion?.trim().replace(/^v/i, "");
+      const base = safeFolderName(version ? `${title} v${version}` : title);
+      // A name that's taken (say, by a zip a failed earlier try left behind) gets a number.
+      let name = `${base}.zip`;
+      for (let n = 2; await stat(path.join(ctx.config.gamesDir, name)).catch(() => null); n++) name = `${base} (${n}).zip`;
+      const target = path.join(ctx.config.gamesDir, name);
+      await rename(temp, target);
+      try {
+        return await ctx.library.replaceGame(gameId, name);
+      } catch (err) {
+        // Don't leave the zip behind as a second copy of the game.
+        await rm(target, { force: true });
+        throw new HttpProblem(500, `The upload arrived but the original couldn't be moved to .replaced: ${writeProblem(err as NodeJS.ErrnoException)}`);
+      }
+    } catch (err) {
+      await rm(temp, { force: true });
+      if (err instanceof HttpProblem) throw err;
+      throw new HttpProblem(400, writeProblem(err as NodeJS.ErrnoException));
+    }
+  }
 
   // The trailing /:name form lets in-browser emulators see the file's extension.
   for (const route of ["/api/games/:id/files/:index", "/api/games/:id/files/:index/:name"])
@@ -244,6 +328,18 @@ export function gameRoutes(app: FastifyInstance, ctx: AppContext) {
       return ctx.library.get(req.params.id);
     },
   );
+
+  /** Admin: remove a game. Its files go to .deleted/ in the games folder unless ?permanent=true. */
+  app.delete<{ Params: { id: string }; Querystring: { permanent?: string } }>("/api/games/:id", async (req) => {
+    requireAdmin(req);
+    if (!ctx.library.get(req.params.id)) throw new HttpProblem(404, "Game not found");
+    try {
+      await ctx.library.deleteGame(req.params.id, req.query.permanent === "true");
+    } catch (err) {
+      throw new HttpProblem(500, `Couldn't delete the game's files: ${writeProblem(err as NodeJS.ErrnoException)}`);
+    }
+    return { deleted: req.params.id };
+  });
 
   /** What an entry is (game, update, DLC) and which game an update or DLC belongs to. null puts it back to automatic. */
   app.put<{ Params: { id: string }; Body: { kind?: PackageKind | null; baseGameId?: string | null } }>("/api/games/:id/package", async (req) => {
