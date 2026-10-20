@@ -1,6 +1,6 @@
 {
   "name": "@lootden/server",
-  "version": "0.12.3",
+  "version": "0.13.0",
   "private": true,
   "type": "module",
   "main": "dist/src/index.js",
@@ -10,7 +10,7 @@
   "dependencies": {
     "@fastify/cookie": "^11.1.3",
     "@fastify/static": "^10.1.6",
-    "@lootden/shared": "0.12.3",
+    "@lootden/shared": "0.13.0",
     "fast-xml-parser": "^5.11.2",
     "fastify": "^5.2.0",
     "openid-client": "^6.8.8"
