@@ -478,6 +478,7 @@ export const api = {
   deleteBios: (name: string) => call("DELETE", `/api/emulation/bios/${encodeURIComponent(name)}`),
   game: (id: string) => call<GameDetail>("GET", `/api/games/${id}`),
   setPackage: (id: string, patch: { kind?: string | null; baseGameId?: string | null }) => call<GameDetail>("PUT", `/api/games/${id}/package`, patch),
+  deleteGame: (id: string, permanent = false) => call<{ deleted: string }>("DELETE", `/api/games/${id}${permanent ? "?permanent=true" : ""}`),
   updateGame: (id: string, patch: { title?: string | null; kidSafe?: boolean | null; controllerSupport?: string | null }) =>
     call<GameDetail>("PATCH", `/api/games/${id}`, patch),
   searchMetadata: (id: string, q: string) => call<Candidate[]>("GET", `/api/games/${id}/metadata/search${qs({ q })}`),

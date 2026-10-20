@@ -98,3 +98,35 @@ describe("installed games uploaded in parts", () => {
     await app.close();
   });
 });
+
+describe("deleting games", () => {
+  let dir: string;
+  before(async () => {
+    dir = await mkdtemp(path.join(os.tmpdir(), "gm-delete-"));
+    for (const name of ["Keep Me", "Bin Me", "Gone For Good"]) {
+      await mkdir(path.join(dir, name));
+      await writeFile(path.join(dir, name, "game.exe"), "exe");
+    }
+  });
+  after(() => rm(dir, { recursive: true, force: true }));
+
+  it("moves the files to .deleted, or removes them for good, and only for admins", async () => {
+    const { app, ctx } = await makeApp(dir, { apiToken: "svc" });
+    const id = (source: string) => ctx.library.list({}).find((g) => g.source === source)!.id;
+    const user = await ctx.users.create({ username: "player", password: "password1" });
+    const asUser = { authorization: `Bearer ${ctx.auth.createApiToken(user.id, "t").token}` };
+    const admin = { authorization: "Bearer svc" };
+
+    assert.equal((await app.inject({ method: "DELETE", url: `/api/games/${id("Bin Me")}`, headers: asUser })).statusCode, 403);
+    const binned = id("Bin Me");
+    assert.equal((await app.inject({ method: "DELETE", url: `/api/games/${binned}`, headers: admin })).statusCode, 200);
+    assert.equal(ctx.library.get(binned), undefined);
+    assert.deepEqual((await readdir(path.join(dir, ".deleted"))).map((n) => n.replace(/^\d+-/, "")), ["Bin Me"]);
+
+    assert.equal((await app.inject({ method: "DELETE", url: `/api/games/${id("Gone For Good")}?permanent=true`, headers: admin })).statusCode, 200);
+    assert.deepEqual((await readdir(dir)).sort(), [".deleted", "Keep Me"]);
+    assert.equal((await app.inject({ method: "DELETE", url: `/api/games/${binned}`, headers: admin })).statusCode, 404);
+    assert.deepEqual(ctx.library.list({}).map((g) => g.source), ["Keep Me"]);
+    await app.close();
+  });
+});

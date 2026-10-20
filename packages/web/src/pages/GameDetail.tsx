@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link, useParams, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { browserRomFile, platformFor, type GameDetail as Game } from "@lootden/shared";
 import { api, formatBytes, type Candidate } from "../api";
 import { useAuth } from "../auth";
@@ -276,7 +276,47 @@ function AdminTools({ game, onChange }: { game: Game; onChange: (g: Game) => voi
         </label>
       </div>
       <ArtworkEditor game={game} onChange={onChange} />
+      <DeleteGame game={game} />
     </section>
+  );
+}
+
+/** Admin: take the game out of the library, keeping its files in .deleted unless asked not to. */
+function DeleteGame({ game }: { game: Game }) {
+  const navigate = useNavigate();
+  const [permanent, setPermanent] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const remove = async () => {
+    const what = permanent
+      ? `Delete ${game.title} and its files (${formatBytes(game.sizeBytes)}) for good? This can't be undone.`
+      : `Remove ${game.title} from the library? Its files move to .deleted in the games folder, so you can put them back or delete them later.`;
+    if (!confirm(what)) return;
+    setBusy(true);
+    setError("");
+    try {
+      await api.deleteGame(game.id, permanent);
+      navigate("/library", { replace: true });
+    } catch (e) {
+      setError((e as Error).message);
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="delete-game">
+      <h3>Delete game</h3>
+      {error && <p className="error">{error}</p>}
+      <div className="inline">
+        <label className="check">
+          <input type="checkbox" checked={permanent} onChange={(e) => setPermanent(e.target.checked)} />
+          Also delete the files from the games folder
+        </label>
+        <button className="danger" disabled={busy} onClick={() => void remove()}>
+          {permanent ? "Delete game and files" : "Delete game"}
+        </button>
+      </div>
+      <p className="muted small">{permanent ? "Frees the space now and can't be undone." : <>The files go to <code>.deleted</code> in the games folder. Move them back to restore the game with its settings.</>}</p>
+    </div>
   );
 }
 

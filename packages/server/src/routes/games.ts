@@ -329,6 +329,18 @@ export function gameRoutes(app: FastifyInstance, ctx: AppContext) {
     },
   );
 
+  /** Admin: remove a game. Its files go to .deleted/ in the games folder unless ?permanent=true. */
+  app.delete<{ Params: { id: string }; Querystring: { permanent?: string } }>("/api/games/:id", async (req) => {
+    requireAdmin(req);
+    if (!ctx.library.get(req.params.id)) throw new HttpProblem(404, "Game not found");
+    try {
+      await ctx.library.deleteGame(req.params.id, req.query.permanent === "true");
+    } catch (err) {
+      throw new HttpProblem(500, `Couldn't delete the game's files: ${writeProblem(err as NodeJS.ErrnoException)}`);
+    }
+    return { deleted: req.params.id };
+  });
+
   /** What an entry is (game, update, DLC) and which game an update or DLC belongs to. null puts it back to automatic. */
   app.put<{ Params: { id: string }; Body: { kind?: PackageKind | null; baseGameId?: string | null } }>("/api/games/:id/package", async (req) => {
     requireAdmin(req);
