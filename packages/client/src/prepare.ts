@@ -11,7 +11,7 @@ export type PrepareStep =
   | { step: "unpack-disc"; file: string }
   | { step: "install"; setup: string; target: string }
   | { step: "zip"; folder: string }
-  | { step: "upload"; bytes: number }
+  | { step: "upload"; bytes: number; sent?: number }
   | { step: "done"; game: GameDetail };
 
 export interface PrepareOptions {
@@ -82,7 +82,7 @@ export async function uploadInstalledFolder(api: GameServerClient, gameId: strin
   opts.onStep?.({ step: "zip", folder });
   await zipFolder(opts.sevenZip, folder, zip);
   opts.onStep?.({ step: "upload", bytes: (await stat(zip)).size });
-  const game = await api.uploadPrepared(gameId, zip, opts.version);
+  const game = await api.uploadPrepared(gameId, zip, opts.version, (sent, bytes) => opts.onStep?.({ step: "upload", bytes, sent }));
   await rm(zip, { force: true });
   opts.onStep?.({ step: "done", game });
   return game;

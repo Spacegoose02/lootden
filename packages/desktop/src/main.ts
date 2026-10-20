@@ -678,11 +678,11 @@ function registerIpc(): void {
               : st.step === "zip"
                 ? "Zipping the installed game"
                 : st.step === "upload"
-                  ? `Uploading ${(st.bytes / 1024 ** 3).toFixed(1)} GB to the server`
+                  ? `Uploading ${(st.bytes / 1024 ** 3).toFixed(1)} GB to the server${st.sent ? ` (${Math.floor((st.sent / Math.max(st.bytes, 1)) * 100)}%)` : ""}`
                   : "Done";
       if (!message) return;
       const now = Date.now();
-      if (st.step === "download" && now - last < 500) return;
+      if ((st.step === "download" || (st.step === "upload" && st.sent && st.sent < st.bytes)) && now - last < 500) return;
       last = now;
       send({ gameId, type: "prepare", message });
     };
