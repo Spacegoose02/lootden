@@ -1,9 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import type { LocalStoreGame, StoreGame } from "@lootden/shared";
-import { api, formatPlaytime } from "../api";
-import { bridgeError, desktop } from "../desktop";
-import { Cover } from "./Cover";
+import { desktop } from "../desktop";
+import { StoreGameCard, storeKey, useStoreGames } from "./StoreGameCard";
 
 const SORTS = [
   ["title", "Title"],
@@ -12,32 +11,16 @@ const SORTS = [
 ] as const;
 type Sort = (typeof SORTS)[number][0];
 
-/** Library, Other stores: games from the accounts connected under Profile, Game libraries. */
+/** Library, Other stores: games from the accounts connected under Profile, Game libraries, and store games on this PC. */
 export function StoreGames() {
-  const [games, setGames] = useState<StoreGame[] | null>(null);
-  const [local, setLocal] = useState<LocalStoreGame[]>([]);
+  const { games: all, installed, error: loadError } = useStoreGames();
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
   const [store, setStore] = useState("");
   const [sort, setSort] = useState<Sort>("title");
   const [onlyInstalled, setOnlyInstalled] = useState(false);
 
-  useEffect(() => {
-    api.storeGames().then(setGames, (e: Error) => setError(e.message));
-    desktop?.storeGames?.().then(setLocal, () => setLocal([]));
-  }, []);
-
-  const installed = useMemo(() => new Map(local.map((l) => [`${l.addon}:${l.externalId}`, l])), [local]);
-  // Store games on this PC from accounts that aren't connected (or stores with no account side, like Ubisoft Connect).
-  const all = useMemo(() => {
-    if (!games) return null;
-    const known = new Set(games.map((g) => `${g.addon}:${g.externalId}`));
-    const extra: StoreGame[] = local
-      .filter((l) => !known.has(`${l.addon}:${l.externalId}`))
-      .map((l) => ({ addon: l.addon, store: l.store ?? l.addon, externalId: l.externalId, title: l.title, coverUrl: null, storeUrl: null, launchUrl: l.launchUrl ?? null, playtimeSeconds: null, lastPlayedAt: null, libraryGameId: null }));
-    return [...games, ...extra];
-  }, [games, local]);
-  if (error) return <p className="error">{error}</p>;
+  if (loadError && !all?.length) return <p className="error">{loadError}</p>;
   if (!all) return <p className="muted">Loading…</p>;
   if (!all.length)
     return (
@@ -52,24 +35,12 @@ export function StoreGames() {
   const stores = [...new Map(all.map((g) => [g.addon, g.store])).entries()].sort((a, b) => a[1].localeCompare(b[1]));
   const q = search.trim().toLowerCase();
   const time = (s: string | null) => (s ? Date.parse(s) : 0);
-  const isInstalled = (g: StoreGame) => installed.has(`${g.addon}:${g.externalId}`);
+  const isInstalled = (g: StoreGame) => installed.has(storeKey(g));
   const shown = all
     .filter((g) => (!q || g.title.toLowerCase().includes(q)) && (!store || g.addon === store) && (!onlyInstalled || isInstalled(g)))
     .sort((a, b) =>
       sort === "played" ? time(b.lastPlayedAt) - time(a.lastPlayedAt) : sort === "playtime" ? (b.playtimeSeconds ?? 0) - (a.playtimeSeconds ?? 0) : a.title.localeCompare(b.title),
     );
-
-  const play = async (g: StoreGame) => {
-    setError("");
-    try {
-      // The PC's own launcher (Heroic on Linux) when it says how, else the store's link.
-      const url = installed.get(`${g.addon}:${g.externalId}`)?.launchUrl ?? g.launchUrl!;
-      if (desktop?.launchStore) await desktop.launchStore(url);
-      else window.location.href = url;
-    } catch (e) {
-      setError(bridgeError(e));
-    }
-  };
 
   return (
     <>
@@ -98,43 +69,46 @@ export function StoreGames() {
           </label>
         )}
       </div>
+      {error && <p className="error">{error}</p>}
       <p className="muted count">
         {shown.length} of {all.length} games
       </p>
       <div className="grid store-grid">
         {shown.map((g) => (
-          <div key={`${g.addon}:${g.externalId}`} className="card store-card">
-            <Cover game={{ id: `${g.addon}:${g.externalId}`, title: g.title, coverUrl: g.coverUrl }} />
-            {isInstalled(g) && <span className="installed-dot" title="Installed on this PC" />}
-            <div className="card-body">
-              <div className="card-title" title={g.title}>
-                {g.title}
-              </div>
-              <div className="card-meta">
-                <span className="badge">{g.store}</span>
-                {g.playtimeSeconds ? ` ${formatPlaytime(g.playtimeSeconds)}` : ""}
-              </div>
-              <div className="store-actions">
-                {(g.launchUrl || installed.get(`${g.addon}:${g.externalId}`)?.launchUrl) && (
-                  <button className="small primary" onClick={() => play(g)} title={isInstalled(g) ? "Start it through the store's launcher" : "Opens the store's launcher to install or play it"}>
-                    {isInstalled(g) ? "▶ Play" : "Play"}
-                  </button>
-                )}
-                {g.libraryGameId && (
-                  <Link className="button small secondary" to={`/games/${g.libraryGameId}`} title="This game is on your LootDen server too">
-                    In LootDen
-                  </Link>
-                )}
-                {g.storeUrl && (
-                  <a className="button small ghost" href={g.storeUrl} target="_blank" rel="noreferrer">
-                    Store
-                  </a>
-                )}
-              </div>
-            </div>
-          </div>
+          <StoreGameCard key={storeKey(g)} game={g} local={installed.get(storeKey(g))} onError={setError} />
         ))}
       </div>
     </>
+  );
+}
+
+/**
+ * All games: store games under the LootDen ones (or alone, when one store is picked), so one
+ * library and one search cover everything.
+ */
+export function StoreSection({ games, installed, search, store, limit }: { games: StoreGame[]; installed: Map<string, LocalStoreGame>; search: string; store: string; limit?: number }) {
+  const [error, setError] = useState("");
+  const q = search.trim().toLowerCase();
+  const matches = games.filter((g) => (!q || g.title.toLowerCase().includes(q)) && (!store || g.addon === store));
+  if (!matches.length) return store ? <p className="muted">No games from that store match.</p> : null;
+  const shown = limit ? matches.slice(0, limit) : matches;
+  return (
+    <section className="store-matches">
+      {!store && <h2 className="collection-title">On your other stores</h2>}
+      {store && <p className="muted count">{matches.length} games</p>}
+      {error && <p className="error">{error}</p>}
+      <div className="grid store-grid">
+        {shown.map((g) => (
+          <StoreGameCard key={storeKey(g)} game={g} local={installed.get(storeKey(g))} onError={setError} />
+        ))}
+      </div>
+      {shown.length < matches.length && (
+        <p>
+          <Link to="/library?tab=stores" className="button ghost">
+            See all {matches.length} in Other stores
+          </Link>
+        </p>
+      )}
+    </section>
   );
 }

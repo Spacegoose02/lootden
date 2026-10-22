@@ -5,6 +5,7 @@ import { api, BACKLOG, BACKLOG_LABELS, formatBytes, formatPlaytime, type Backlog
 import { useAuth } from "../auth";
 import { Cover } from "./Cover";
 import { GameGrid } from "./GameCard";
+import { useStoreGames } from "./StoreGameCard";
 
 /** The profile's games by status, and "Pick something for me". */
 export function Backlog() {
@@ -177,6 +178,7 @@ export function Stats() {
           <h2>Biggest games</h2>
           <Bars rows={s.biggest.map((g) => ({ label: g.title, value: g.bytes, to: `/games/${g.id}` }))} format={formatBytes} />
         </section>
+        <StoreStats />
         {s.playtime.length > 1 && (
           <section className="panel">
             <h2>Play time by profile</h2>
@@ -191,5 +193,36 @@ export function Stats() {
         )}
       </div>
     </div>
+  );
+}
+
+/** Stats: the games on connected stores, and the play time they report, by store. */
+function StoreStats() {
+  const { games } = useStoreGames();
+  if (!games?.length) return null;
+  const by = new Map<string, { count: number; seconds: number }>();
+  for (const g of games) {
+    const b = by.get(g.store) ?? { count: 0, seconds: 0 };
+    b.count++;
+    b.seconds += g.playtimeSeconds ?? 0;
+    by.set(g.store, b);
+  }
+  const rows = [...by.entries()].sort((a, b) => b[1].count - a[1].count);
+  const played = rows.filter(([, b]) => b.seconds > 0);
+  const top = games.filter((g) => g.playtimeSeconds).sort((a, b) => b.playtimeSeconds! - a.playtimeSeconds!).slice(0, 8);
+  return (
+    <>
+      <section className="panel">
+        <h2>Other stores</h2>
+        <Bars rows={rows.map(([store, b]) => ({ label: store, value: b.count, to: "/library?tab=stores" }))} />
+        {played.length > 0 && <p className="muted small">Play time there: {played.map(([store, b]) => `${store} ${formatPlaytime(b.seconds)}`).join(" · ")}</p>}
+      </section>
+      {top.length > 0 && (
+        <section className="panel">
+          <h2>Most played on other stores</h2>
+          <Bars rows={top.map((g) => ({ label: `${g.title} (${g.store})`, value: g.playtimeSeconds! }))} format={formatPlaytime} />
+        </section>
+      )}
+    </>
   );
 }
