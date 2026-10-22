@@ -101,3 +101,46 @@ confirmed. If uploads still fail, the error text now names the cause; start ther
   uploads in progress, `.replaced` and `.deleted` don't show up as games.
 - A game's id is a hash of its path in the games folder, so renaming a folder makes it a new
   game; `replaceGame` in `src/catalog/library.ts` carries settings over when the app does it.
+
+## Security notes
+
+From the October 2026 review of the server, client, web UI and desktop app. Keep this list
+current when something here changes.
+
+How it's protected:
+
+- **Sign-in gate.** `onRequest` in `src/app.ts` requires a principal for every `/api/` route
+  except health, `auth/*` and avatars. It checks the matched route pattern
+  (`req.routeOptions.url`), not the raw URL, because the router decodes `%61pi` to `api`.
+  Admin routes call `requireAdmin` themselves; kid profiles are filtered with `visibleGame`.
+- **Passwords** are scrypt hashes; sessions and API tokens are random and stored only as
+  SHA-256. Login is limited to 10 failures per IP and username per 15 minutes, counted before
+  the password check so parallel guesses can't race past it. Changing a password signs out
+  the person's other browser sessions (API tokens stay; they're revoked per device in Profile).
+- **Single sign-on** links a login to an existing account only by its OIDC subject or by an
+  email the provider doesn't mark unverified, never by username. A username that's taken
+  stops the login with a message instead.
+- **Paths.** Game files go through `resolveGameFile`, deletes and replaces stay inside the
+  games folder, upload ids are `[A-Za-z0-9_-]{8,64}`, hosted app and BIOS names are checked
+  basenames, downloaded file names go through `safeName`/`safeFolderName`. Imports skip
+  symlinks inside a download. The client refuses archive and update paths outside the game
+  folder.
+- **Headers.** Every response has `nosniff`, `X-Frame-Options: SAMEORIGIN` and
+  `strict-origin-when-cross-origin`.
+- **Desktop app.** `contextIsolation`, `sandbox`, no `nodeIntegration`. Every IPC handler
+  but `gm:frame` checks the sender is the configured server (`fromServer`).
+
+Known trade-offs (owner's call):
+
+- The server is trusted completely by the desktop apps: it decides what gets installed and
+  run, and app updates are downloaded from it without a signature check. Protect the admin
+  accounts and the `GM_API_TOKEN` accordingly.
+- In-browser play loads EmulatorJS from its CDN into LootDen's own origin. Set
+  `GM_EMULATORJS_DATA` to a self-hosted copy to take the CDN out of the picture.
+- With `GM_OIDC_AUTO_CREATE` on (the default), anyone the identity provider lets sign in
+  gets an account. With Google as the provider, restrict who can sign in there or turn
+  auto-create off.
+- `?token=` is accepted as well as the `Authorization` header (for downloads and emulators);
+  it's masked in logs.
+- `npm audit` reports moderate issues only in electron-builder's dependencies (build time,
+  not shipped).

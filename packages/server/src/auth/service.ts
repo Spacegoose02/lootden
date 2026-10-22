@@ -56,6 +56,11 @@ export class AuthService {
     this.db.prepare("DELETE FROM sessions WHERE token_hash = ?").run(sha256(token));
   }
 
+  /** Signs a person out everywhere (but the session in `keep`), after their password changes. */
+  endUserSessions(userId: number, keep?: string): void {
+    this.db.prepare("DELETE FROM sessions WHERE user_id = ? AND token_hash != ?").run(userId, keep ? sha256(keep) : "");
+  }
+
   private userFromSession(token: string): UserRecord | undefined {
     const row = this.db.prepare("SELECT user_id, expires_at FROM sessions WHERE token_hash = ?").get(sha256(token)) as
       | { user_id: number; expires_at: string }

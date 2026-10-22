@@ -407,7 +407,7 @@ export class Library {
     const newId = gameIdFor(newSource);
     const replaced = path.join(this.gamesDir, ".replaced");
     await mkdir(replaced, { recursive: true });
-    await rename(path.join(this.gamesDir, old.source), path.join(replaced, `${Date.now()}-${old.source}`));
+    await rename(path.join(this.gamesDir, old.source), path.join(replaced, `${Date.now()}-${old.source.replaceAll("/", " - ")}`));
     this.db.exec("BEGIN");
     try {
       this.db

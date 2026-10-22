@@ -8,6 +8,8 @@ import { publicUser, type UserRecord } from "../users/repo.js";
 
 const FAIL_WINDOW_MS = 15 * 60_000;
 const MAX_FAILS = 10;
+/** A well-formed hash nothing matches, checked when the account is unknown or has no password. */
+const DUMMY_HASH = "scrypt$16384$8$1$AAAAAAAAAAAAAAAAAAAAAA==$" + Buffer.alloc(32).toString("base64");
 
 export function authRoutes(app: FastifyInstance, ctx: AppContext) {
   const failures = new Map<string, { count: number; since: number }>();
@@ -41,18 +43,19 @@ export function authRoutes(app: FastifyInstance, ctx: AppContext) {
    */
   app.post<{ Body: { username: string; password: string; client?: boolean; device?: string } }>("/api/auth/login", async (req, reply) => {
     const { username = "", password = "", client, device } = req.body ?? ({} as never);
-    const key = `${req.ip}|${username.toLowerCase()}`;
+    const key = `${req.ip}|${String(username).toLowerCase()}`;
+    const at = Date.now();
+    if (failures.size > 10_000) for (const [k, v] of failures) if (at - v.since >= FAIL_WINDOW_MS) failures.delete(k);
     const f = failures.get(key);
-    if (f && Date.now() - f.since < FAIL_WINDOW_MS && f.count >= MAX_FAILS) {
-      throw new HttpProblem(429, "Too many failed attempts; wait 15 minutes");
-    }
-    const user = ctx.users.byUsername(username);
-    if (!user || !(await verifyPassword(password, user.passwordHash))) {
-      const entry = f && Date.now() - f.since < FAIL_WINDOW_MS ? f : { count: 0, since: Date.now() };
-      entry.count++;
-      failures.set(key, entry);
-      throw new HttpProblem(401, "Wrong username or password");
-    }
+    const entry = f && at - f.since < FAIL_WINDOW_MS ? f : { count: 0, since: at };
+    if (entry.count >= MAX_FAILS) throw new HttpProblem(429, "Too many failed attempts; wait 15 minutes");
+    // Counted before the (slow) password check, so a burst of parallel guesses can't all slip past the limit.
+    entry.count++;
+    failures.set(key, entry);
+    const user = ctx.users.byUsername(String(username));
+    // Unknown names take as long as wrong passwords, so timing doesn't reveal which accounts exist.
+    const ok = await verifyPassword(String(password), user?.passwordHash ?? DUMMY_HASH);
+    if (!user || !ok) throw new HttpProblem(401, "Wrong username or password");
     failures.delete(key);
     if (client) {
       const { token } = ctx.auth.createApiToken(user.id, device || "LootDen client");
