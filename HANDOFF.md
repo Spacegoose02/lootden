@@ -80,7 +80,7 @@ open window broke as soon as requests stopped getting through.
 - The web Installed tab shows this PC's games with a note instead of an error when the
   server's list fails to load.
 
-## Library add-ons (foundation in progress, ships with the first store add-on)
+## Library add-ons (0.14.0, not released yet)
 
 The More2Do list asks for add-ons for other game libraries. The foundation is in place; each
 store comes as its own PR on top of it. Start with
@@ -93,8 +93,27 @@ store comes as its own PR on top of it. Start with
   (the store launcher's link), Store, and In LootDen when a library game has the same title.
 - The desktop app has `storeGames` (local scanners in `packages/client/src/stores/`) and
   `launchStore` (only the schemes in `STORE_LAUNCH_SCHEMES`).
-- Built in so far: `json-list` (any JSON list of games). Planned, one PR each: Steam, GOG,
-  Epic, Xbox, then others.
+- Built in so far: `steam` (Steam Web API key + Steam ID; desktop scanner reads
+  `libraryfolders.vdf` and `appmanifest_*.acf`), `gog` (paste a sign-in code once; refresh
+  token kept on the account; desktop finds Galaxy and Heroic installs), `epic` (same sign-in
+  pattern; desktop reads the Epic launcher's manifests and Heroic) and `json-list` (any JSON
+  list of games), `xbox` (OpenXBL key; played games from the title history; desktop reads the
+  Xbox app's `.GamingRoot` folders), `itch` (itch.io API key) and a desktop-only Ubisoft
+  Connect scanner. Games installed on the PC show under Other stores even without a
+  connected account. Not done: the EA app (no reliable way found yet to read its installs
+  or start them by link).
+
+### One library (with the add-ons)
+
+Store games are part of the library, not only their own tab (owner's pick from the "more
+features" list): Home has "Recently played on your other stores", All games has a library
+picker (All libraries, LootDen only, or one store) and lists store games under the LootDen
+ones, Stats has per-store counts and play time, and a game page says "Also on Steam" with
+Play there. Shared pieces are in `packages/web/src/components/StoreGameCard.tsx`
+(`useStoreGames`, `StoreGameCard`, `launchStoreGame`).
+
+Other ideas from that list, not started: collections and favorites, achievements, a random
+pick across every library with length and never-played filters.
 
 ## Earlier releases
 

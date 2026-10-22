@@ -120,3 +120,183 @@ describe("library add-ons", () => {
     assert.equal(byAdmin.games, 1, "an admin's account may read the LAN");
   });
 });
+
+describe("Steam add-on", () => {
+  it("lists owned games with play time, and says what to fix when the profile is private", async () => {
+    const { steam } = await import("../src/addons/steam.js");
+    let games: unknown = [
+      { appid: 620, name: "Portal 2", playtime_forever: 840, rtime_last_played: 1760000000 },
+      { appid: 1145360, name: "Hades", playtime_forever: 0 },
+    ];
+    const calls: string[] = [];
+    const fetchImpl = (async (input: string | URL | Request) => {
+      const url = new URL(String(input));
+      calls.push(url.hostname + url.pathname);
+      if (url.hostname === "steamcommunity.com") return new Response("<profile><steamID64>76561197960287930</steamID64></profile>");
+      if (url.searchParams.get("key") !== "k") return new Response("Forbidden", { status: 403 });
+      assert.equal(url.searchParams.get("steamid"), "76561197960287930");
+      return Response.json({ response: games ? { game_count: 2, games } : {} });
+    }) as typeof fetch;
+    const { app, ctx } = await makeApp(root, {}, { fetchImpl, addons: [steam], resolveHost: async () => ["93.184.216.34"] });
+    const sam = await signIn(app, ctx, "sam");
+
+    const bad = await app.inject({ method: "PUT", url: "/api/addons/steam/account", headers: sam, payload: { config: { steamId: "gabelogannewell", apiKey: "nope" } } });
+    assert.match(bad.json().error, /refused the API key/);
+    const ok = (await app.inject({ method: "PUT", url: "/api/addons/steam/account", headers: sam, payload: { config: { steamId: "https://steamcommunity.com/id/gabelogannewell/", apiKey: "k" } } })).json();
+    assert.equal(ok.games, 2);
+    assert.ok(calls.includes("steamcommunity.com/id/gabelogannewell/"), "custom URL names are resolved to the 64-bit id");
+    const list = (await app.inject({ url: "/api/store-games?addon=steam", headers: sam })).json();
+    assert.deepEqual(list.map((g: { title: string; launchUrl: string; playtimeSeconds: number | null; storeUrl: string }) => [g.title, g.launchUrl, g.playtimeSeconds, g.storeUrl]), [
+      ["Hades", "steam://rungameid/1145360", null, "https://store.steampowered.com/app/1145360"],
+      ["Portal 2", "steam://rungameid/620", 50400, "https://store.steampowered.com/app/620"],
+    ]);
+    assert.match(list[1].coverUrl, /620\/library_600x900\.jpg$/);
+    assert.equal(list[1].lastPlayedAt, new Date(1760000000 * 1000).toISOString());
+
+    games = null;
+    const priv = await app.inject({ method: "POST", url: "/api/addons/steam/sync", headers: sam });
+    assert.match(priv.json().error, /Game details to Public/);
+    assert.equal((await app.inject({ url: "/api/store-games?addon=steam", headers: sam })).json().length, 2, "a failed sync keeps the last list");
+  });
+});
+
+describe("GOG add-on", () => {
+  it("signs in with a pasted code, keeps the refreshed token, and lists every page of games", async () => {
+    const { gog, gogCode } = await import("../src/addons/gog.js");
+    assert.equal(gogCode("https://embed.gog.com/on_login_success?origin=client&code=abc123"), "abc123");
+    let issued = 0;
+    const refreshUsed: string[] = [];
+    const fetchImpl = (async (input: string | URL | Request, init?: RequestInit) => {
+      const url = new URL(String(input));
+      if (url.hostname === "auth.gog.com") {
+        const grant = url.searchParams.get("grant_type");
+        if (grant === "authorization_code" && url.searchParams.get("code") !== "abc123") return Response.json({ error_description: "bad code" }, { status: 400 });
+        if (grant === "refresh_token") refreshUsed.push(url.searchParams.get("refresh_token")!);
+        issued++;
+        return Response.json({ access_token: `at${issued}`, refresh_token: `rt${issued}` });
+      }
+      assert.match(new Headers(init?.headers).get("authorization") ?? "", /^Bearer at\d$/);
+      const page = Number(url.searchParams.get("page"));
+      return Response.json({
+        totalPages: 2,
+        products: page === 1 ? [{ id: 1, title: "Dredge", image: "//images.gog-statics.com/abc", url: "/en/game/dredge" }, { id: 9, title: "Soundtrack", isGame: false }] : [{ id: 2, title: "Hades", image: "//images.gog-statics.com/def", url: "/en/game/hades" }],
+      });
+    }) as typeof fetch;
+    const { app, ctx, db } = await makeApp(root, {}, { fetchImpl, addons: [gog], resolveHost: async () => ["93.184.216.34"] });
+    const sam = await signIn(app, ctx, "sam");
+
+    assert.match((await app.inject({ method: "PUT", url: "/api/addons/gog/account", headers: sam, payload: { config: {} } })).json().error, /Sign in to GOG/);
+    assert.match((await app.inject({ method: "PUT", url: "/api/addons/gog/account", headers: sam, payload: { config: { code: "old" } } })).json().error, /didn't accept that code/);
+    const ok = (await app.inject({ method: "PUT", url: "/api/addons/gog/account", headers: sam, payload: { config: { code: "https://embed.gog.com/on_login_success?origin=client&code=abc123" } } })).json();
+    assert.equal(ok.games, 2);
+    assert.deepEqual(ok.addons[0].account.config, { code: "" }, "the used code isn't kept or shown");
+    const stored = JSON.parse((db.prepare("SELECT config FROM addon_accounts").get() as { config: string }).config);
+    assert.deepEqual(stored, { code: "", refreshToken: "rt1" });
+
+    // Sync and Save (with the code left empty) use the refresh token, and keep the new one.
+    await app.inject({ method: "POST", url: "/api/addons/gog/sync", headers: sam });
+    await app.inject({ method: "PUT", url: "/api/addons/gog/account", headers: sam, payload: { config: { code: "" } } });
+    assert.deepEqual(refreshUsed, ["rt1", "rt2"]);
+    const games = (await app.inject({ url: "/api/store-games?addon=gog", headers: sam })).json();
+    assert.deepEqual(games.map((g: { title: string; coverUrl: string; storeUrl: string; launchUrl: string }) => [g.title, g.coverUrl, g.storeUrl, g.launchUrl]), [
+      ["Dredge", "https://images.gog-statics.com/abc_392.jpg", "https://www.gog.com/en/game/dredge", "goggalaxy://openGameView/1"],
+      ["Hades", "https://images.gog-statics.com/def_392.jpg", "https://www.gog.com/en/game/hades", "goggalaxy://openGameView/2"],
+    ]);
+  });
+});
+
+describe("Epic Games add-on", () => {
+  it("signs in with the pasted code, pages the library and keeps only games", async () => {
+    const { epic, epicCode } = await import("../src/addons/epic.js");
+    assert.equal(epicCode('{"redirectUrl":"https://localhost/launcher/authorized?code=xyz","authorizationCode":"xyz","sid":null}'), "xyz");
+    const forms: URLSearchParams[] = [];
+    const fetchImpl = (async (input: string | URL | Request, init?: RequestInit) => {
+      const url = new URL(String(input));
+      if (url.pathname.endsWith("/oauth/token")) {
+        const form = new URLSearchParams(String(init?.body));
+        forms.push(form);
+        assert.match(new Headers(init?.headers).get("authorization") ?? "", /^Basic /);
+        if (form.get("grant_type") === "authorization_code" && form.get("code") !== "xyz") return Response.json({ errorCode: "invalid" }, { status: 400 });
+        return Response.json({ access_token: "at", refresh_token: `rt${forms.length}` });
+      }
+      if (url.hostname.startsWith("library-service")) {
+        const second = url.searchParams.get("cursor") === "next";
+        return Response.json({
+          records: second
+            ? [{ namespace: "ue", catalogItemId: "asset", appName: "UEAsset" }, { namespace: "fn", catalogItemId: "dlc", appName: "FnDlc" }]
+            : [{ namespace: "sugar", catalogItemId: "c1", appName: "Sugar" }, { namespace: "fn", catalogItemId: "c2", appName: "Fortnite" }],
+          responseMetadata: second ? {} : { nextCursor: "next" },
+        });
+      }
+      if (url.hostname.startsWith("catalog")) {
+        const ns = url.pathname.split("/")[6];
+        const ids = url.searchParams.getAll("id");
+        const all: Record<string, unknown> = {
+          c1: { title: "Hades", keyImages: [{ type: "DieselGameBox", url: "https://cdn/wide.jpg" }, { type: "DieselGameBoxTall", url: "https://cdn/tall.jpg" }], customAttributes: { "com.epicgames.app.productSlug": { value: "hades" } } },
+          c2: { title: "Fortnite", keyImages: [] },
+          dlc: { title: "Fortnite Pack", mainGameItem: { id: "c2" } },
+        };
+        assert.ok(ns !== "ue", "Unreal assets aren't looked up");
+        return Response.json(Object.fromEntries(ids.map((id) => [id, all[id]])));
+      }
+      return new Response("?", { status: 404 });
+    }) as typeof fetch;
+    const { app, ctx } = await makeApp(root, {}, { fetchImpl, addons: [epic], resolveHost: async () => ["93.184.216.34"] });
+    const sam = await signIn(app, ctx, "sam");
+    assert.match((await app.inject({ method: "PUT", url: "/api/addons/epic/account", headers: sam, payload: { config: { code: "nope" } } })).json().error, /didn't accept that code/);
+    const ok = (await app.inject({ method: "PUT", url: "/api/addons/epic/account", headers: sam, payload: { config: { code: '{"authorizationCode":"xyz"}' } } })).json();
+    assert.equal(ok.games, 2);
+    const games = (await app.inject({ url: "/api/store-games?addon=epic", headers: sam })).json();
+    assert.deepEqual(games.map((g: { title: string; externalId: string; coverUrl: string | null; storeUrl: string | null; launchUrl: string }) => [g.title, g.externalId, g.coverUrl, g.storeUrl, g.launchUrl]), [
+      ["Fortnite", "Fortnite", null, null, "com.epicgames.launcher://apps/fn%3Ac2%3AFortnite?action=launch&silent=true"],
+      ["Hades", "Sugar", "https://cdn/tall.jpg", "https://store.epicgames.com/p/hades", "com.epicgames.launcher://apps/sugar%3Ac1%3ASugar?action=launch&silent=true"],
+    ]);
+    await app.inject({ method: "POST", url: "/api/addons/epic/sync", headers: sam });
+    assert.deepEqual([forms.at(-1)!.get("grant_type"), forms.at(-1)!.get("refresh_token")], ["refresh_token", "rt2"], "later syncs use the kept refresh token");
+  });
+});
+
+describe("Xbox add-on", () => {
+  it("lists played games (not apps) from OpenXBL", async () => {
+    const { xbox } = await import("../src/addons/xbox.js");
+    const fetchImpl = (async (_input: string | URL | Request, init?: RequestInit) => {
+      if (new Headers(init?.headers).get("x-authorization") !== "key") return new Response("no", { status: 401 });
+      return Response.json({
+        xuid: "1",
+        titles: [
+          { titleId: "1324021490", name: "Starfield", type: "Game", devices: ["PC", "XboxSeries"], displayImage: "http://store-images.s-microsoft.com/a.png", bingId: "9NCJSXWZTP88", titleHistory: { lastTimePlayed: "2026-10-01T10:00:00Z" } },
+          { titleId: "2", name: "Halo 3", type: "Game", devices: ["Xbox360"] },
+          { titleId: "3", name: "Netflix", type: "App", devices: ["XboxOne"] },
+        ],
+      });
+    }) as typeof fetch;
+    const { app, ctx } = await makeApp(root, {}, { fetchImpl, addons: [xbox], resolveHost: async () => ["93.184.216.34"] });
+    const sam = await signIn(app, ctx, "sam");
+    assert.match((await app.inject({ method: "PUT", url: "/api/addons/xbox/account", headers: sam, payload: { config: { apiKey: "bad" } } })).json().error, /refused the key/);
+    assert.equal((await app.inject({ method: "PUT", url: "/api/addons/xbox/account", headers: sam, payload: { config: { apiKey: "key" } } })).json().games, 2);
+    const games = (await app.inject({ url: "/api/store-games?addon=xbox", headers: sam })).json();
+    assert.deepEqual(games.map((g: { title: string; coverUrl: string | null; storeUrl: string | null; launchUrl: string | null; lastPlayedAt: string | null }) => [g.title, g.coverUrl, g.storeUrl, g.launchUrl, g.lastPlayedAt]), [
+      ["Halo 3", null, null, null, null],
+      ["Starfield", "https://store-images.s-microsoft.com/a.png", "https://www.xbox.com/games/store/x/9NCJSXWZTP88", "msxbox://game/?productId=9NCJSXWZTP88", "2026-10-01T10:00:00Z"],
+    ]);
+  });
+});
+
+describe("itch.io add-on", () => {
+  it("pages through owned keys and keeps only games", async () => {
+    const { itch } = await import("../src/addons/itch.js");
+    const fetchImpl = (async (input: string | URL | Request) => {
+      const url = new URL(String(input));
+      if (!url.pathname.startsWith("/api/1/good/")) return Response.json({ errors: ["invalid key"] }, { status: 403 });
+      const page = Number(url.searchParams.get("page"));
+      const key = (id: number, title: string, classification = "game") => ({ game_id: id, game: { id, title, classification, cover_url: `https://img.itch.zone/${id}.png`, url: `https://dev.itch.io/${id}` } });
+      return Response.json({ per_page: 2, page, owned_keys: page === 1 ? [key(1, "Celeste Classic"), key(2, "OST", "soundtrack")] : page === 2 ? [key(3, "Baba Is You")] : [] });
+    }) as typeof fetch;
+    const { app, ctx } = await makeApp(root, {}, { fetchImpl, addons: [itch], resolveHost: async () => ["93.184.216.34"] });
+    const sam = await signIn(app, ctx, "sam");
+    assert.match((await app.inject({ method: "PUT", url: "/api/addons/itch/account", headers: sam, payload: { config: { apiKey: "bad" } } })).json().error, /refused the API key/);
+    assert.equal((await app.inject({ method: "PUT", url: "/api/addons/itch/account", headers: sam, payload: { config: { apiKey: "good" } } })).json().games, 2);
+    const games = (await app.inject({ url: "/api/store-games?addon=itch", headers: sam })).json();
+    assert.deepEqual(games.map((g: { title: string; launchUrl: string }) => [g.title, g.launchUrl]), [["Baba Is You", "itch://games/3"], ["Celeste Classic", "itch://games/1"]]);
+  });
+});

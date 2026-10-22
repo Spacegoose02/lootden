@@ -4,7 +4,8 @@ import { platformFor, type GameSummary, type UserGameState } from "@lootden/shar
 import { api } from "../api";
 import { desktop } from "../desktop";
 import { InstalledGames } from "../components/InstalledGames";
-import { StoreGames } from "../components/StoreGames";
+import { StoreGames, StoreSection } from "../components/StoreGames";
+import { useStoreGames } from "../components/StoreGameCard";
 import { GameCollection, useViewPrefs, ViewPicker } from "../components/LibraryLayout";
 import { Backlog, Stats } from "../components/LibraryViews";
 
@@ -55,6 +56,11 @@ function AllGames() {
   const sort = params.get("sort") ?? "title";
   const system = params.get("system") ?? "pc";
   const onlyInstalled = params.get("installed") === "true";
+  // Which libraries: everything (LootDen, then the other stores), LootDen only, or one store.
+  const source = params.get("source") ?? "";
+  const store = useStoreGames();
+  const storeNames = [...new Map((store.games ?? []).map((g) => [g.addon, g.store])).entries()].sort((a, b) => a[1].localeCompare(b[1]));
+  const oneStore = source && source !== "lootden" ? source : "";
   const [prefs, setPrefs] = useViewPrefs("library");
   const [platforms, setPlatforms] = useState<Array<{ id: string; count: number }>>([]);
   // What's installed: this PC's copies in the app, else installs on any of this person's devices.
@@ -111,6 +117,17 @@ function AllGames() {
     <>
       <div className="filters panel">
         <input type="search" placeholder="Search games" value={search} onChange={(e) => set("search", e.target.value)} aria-label="Search" />
+        {storeNames.length > 0 && (
+          <select value={source} onChange={(e) => set("source", e.target.value)} aria-label="Library">
+            <option value="">All libraries</option>
+            <option value="lootden">LootDen only</option>
+            {storeNames.map(([id, name]) => (
+              <option key={id} value={id}>
+                {name}
+              </option>
+            ))}
+          </select>
+        )}
         {platforms.length > 1 && (
           <select value={system} onChange={(e) => set("system", e.target.value === "pc" ? "" : e.target.value)} aria-label="System">
             <option value="pc">PC</option>
@@ -158,12 +175,13 @@ function AllGames() {
         <ViewPicker prefs={prefs} onChange={setPrefs} />
       </div>
       {error && <p className="error">{error}</p>}
-      {shown === null ? <p className="muted">Loading…</p> : shown.length === 0 ? <p className="muted">No games match.</p> : (
+      {oneStore ? null : shown === null ? <p className="muted">Loading…</p> : shown.length === 0 ? <p className="muted">No games match.</p> : (
         <>
           <p className="muted count">{shown.length} games</p>
           <GameCollection games={shown} prefs={prefs} isInstalled={(g) => installedIds.has(g.id)} aspect={shelf} />
         </>
       )}
+      {source !== "lootden" && store.games && <StoreSection games={store.games} installed={store.installed} search={search} store={oneStore} limit={oneStore ? undefined : 48} />}
     </>
   );
 }

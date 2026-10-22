@@ -84,7 +84,7 @@ export class AddonRegistry {
     return this.addons.map((a) => {
       const row = this.account(userId, a.id);
       const config = json<Record<string, string>>(row?.config, {});
-      const masked = Object.fromEntries(a.fields.map((f) => [f.key, f.secret && config[f.key] ? MASK : (config[f.key] ?? "")]));
+      const masked = Object.fromEntries(a.fields.map((f) => [f.key, f.oneTime ? "" : f.secret && config[f.key] ? MASK : (config[f.key] ?? "")]));
       return {
         id: a.id,
         name: a.name,
@@ -102,10 +102,11 @@ export class AddonRegistry {
     const a = this.addon(id);
     if (!this.enabled(id)) throw new Error(`${a.name} is switched off on this server`);
     const cur = json<Record<string, string>>(this.account(userId, id)?.config, {});
-    const config: Record<string, string> = {};
+    // Values the add-on saved itself (tokens) carry over; the fields are replaced.
+    const config: Record<string, string> = { ...cur };
     for (const f of a.fields) {
       const v = typeof input[f.key] === "string" ? (input[f.key] as string).trim() : undefined;
-      config[f.key] = v === undefined || (f.secret && v === MASK) ? (cur[f.key] ?? "") : v;
+      config[f.key] = v === undefined || (f.secret && v === MASK) || (f.oneTime && !v) ? (cur[f.key] ?? "") : v;
       if (f.required && !config[f.key]) throw new Error(`${f.label} is needed`);
     }
     this.db
@@ -137,8 +138,14 @@ export class AddonRegistry {
     const row = this.account(userId, id);
     if (!row) throw new Error(`Connect ${a.name} first`);
     let games: OwnedGame[];
+    const config = json<Record<string, string>>(row.config, {});
+    // Saved straight away: a sign-in code is used up and a refreshed token replaces the old one, even if the sync then fails.
+    const save = (patch: Record<string, string>) => {
+      Object.assign(config, patch);
+      this.db.prepare("UPDATE addon_accounts SET config = ? WHERE user_id = ? AND addon = ?").run(JSON.stringify(config), userId, id);
+    };
     try {
-      games = await a.games({ config: json<Record<string, string>>(row.config, {}), fetch: this.guardedFetch(allowPrivate) });
+      games = await a.games({ config: { ...config }, fetch: this.guardedFetch(allowPrivate), save });
     } catch (err) {
       const message = (err as Error).message || String(err);
       this.db.prepare("UPDATE addon_accounts SET error = ?, last_sync_at = ? WHERE user_id = ? AND addon = ?").run(message, now(), userId, id);

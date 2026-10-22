@@ -3300,3 +3300,18 @@ html[data-lootden-frame] .lightbox {
 .game-libraries .settings-card {
   margin-top: 0.8rem;
 }
+.store-matches {
+  margin-top: 1.5rem;
+}
+.also-on-stores {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0.5rem 0;
+}
+.also-on-store {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
