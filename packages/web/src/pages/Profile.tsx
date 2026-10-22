@@ -6,12 +6,12 @@ import { api, avatarUrl, formatPlaytime } from "../api";
 import { useAuth } from "../auth";
 import { bridgeError, desktop, type InstalledGame } from "../desktop";
 import { THEMES, useTheme } from "../theme";
-import { BrandLogo } from "../components/BrandLogo";
 import { GameLibraries } from "../components/GameLibraries";
 
 export function Profile() {
   const { me, refresh } = useAuth();
-  const { theme, setTheme, touch, setTouch, logo, setLogo } = useTheme();
+  const { theme, touch, setTouch } = useTheme();
+  const current = THEMES.find((t) => t.id === theme) ?? THEMES[0]!;
   const user = me?.user;
   const [name, setName] = useState(user?.displayName ?? "");
   const [tokens, setTokens] = useState<ApiTokenInfo[]>([]);
@@ -44,39 +44,19 @@ export function Profile() {
 
       <section className="panel">
         <h2>Appearance</h2>
-        {(["Modern", "Retro"] as const).map((group) => (
-          <div key={group}>
-            <h3 className="theme-group">{group}</h3>
-            <div className="themes" role="radiogroup" aria-label={`${group} themes`}>
-              {THEMES.filter((t) => t.group === group).map((t) => (
-                <button key={t.id} role="radio" aria-checked={theme === t.id} className={`theme-card${theme === t.id ? " active" : ""}`} onClick={() => setTheme(t.id)}>
-                  <span className="theme-preview" style={{ background: t.swatch[1] }}>
-                    <span className="theme-preview-side" style={{ background: t.swatch[0] }} />
-                    <span className="theme-dots">
-                      <i style={{ background: t.swatch[2] }} />
-                      <i style={{ background: t.swatch[3] }} />
-                    </span>
-                  </span>
-                  <strong>{t.name}</strong>
-                  <small>{t.note}</small>
-                </button>
-              ))}
-            </div>
-          </div>
-        ))}
-        {__BRAND__.raccoon && (
-          <div className="inline logo-style">
-            <BrandLogo size={48} />
-            <div className="segmented" role="radiogroup" aria-label="Logo colours">
-              <button role="radio" aria-checked={logo === "theme"} className={logo === "theme" ? "active" : ""} onClick={() => setLogo("theme")}>
-                Logo in theme colours
-              </button>
-              <button role="radio" aria-checked={logo === "raccoon"} className={logo === "raccoon" ? "active" : ""} onClick={() => setLogo("raccoon")}>
-                Raccoon black, grey and white
-              </button>
-            </div>
-          </div>
-        )}
+        <div className="inline">
+          <span className="theme-dots static" aria-hidden="true">
+            {current.swatch.map((c, i) => (
+              <i key={i} style={{ background: c }} />
+            ))}
+          </span>
+          <span>
+            Theme: <strong>{current.name}</strong>
+          </span>
+          <Link className="button secondary" to="/settings/themes">
+            Change theme
+          </Link>
+        </div>
         <label className="check">
           <input type="checkbox" checked={touch === "on"} onChange={(e) => setTouch(e.target.checked ? "on" : "off")} />
           Touch and handheld mode (bigger targets for ROG Ally and tablets)
