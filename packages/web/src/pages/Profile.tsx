@@ -6,6 +6,7 @@ import { api, avatarUrl, formatPlaytime } from "../api";
 import { useAuth } from "../auth";
 import { bridgeError, desktop, type InstalledGame } from "../desktop";
 import { THEMES, useTheme } from "../theme";
+import { GameLibraries } from "../components/GameLibraries";
 
 export function Profile() {
   const { me, refresh } = useAuth();
@@ -119,6 +120,8 @@ export function Profile() {
               </p>
             )}
           </section>
+
+          <GameLibraries admin={user.role === "admin"} />
 
           <section className="panel">
             <h2>Devices and tokens</h2>

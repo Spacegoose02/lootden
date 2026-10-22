@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import type { LocalStoreGame } from "@lootden/shared";
 
 export interface Drive {
   path: string;
@@ -98,6 +99,9 @@ export interface DesktopBridge {
   play(gameId: string): Promise<{ executable: string } | null>;
   uninstall(gameId: string): Promise<boolean>;
   openFolder(gameId: string): Promise<void>;
+  /** Library add-ons: store games installed on this PC, and starting one through its launcher (apps from 0.14.0). */
+  storeGames?(): Promise<LocalStoreGame[]>;
+  launchStore?(url: string): Promise<void>;
   /** Disc/installer games: install once on this PC and upload the result. Missing in older apps. */
   prepare?(gameId: string): Promise<GameDetailLike | null>;
   uploadFolder?(gameId: string): Promise<GameDetailLike | null>;
