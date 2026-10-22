@@ -56,20 +56,34 @@ app's connect screen. Replacing those files and rebuilding is all it takes. The 
 theme-coloured SVG raccoon is still the fallback in `packages/web/public/logo.svg`; deleting
 `brand/logo.png` brings it back, along with the Profile option to recolour it.
 
-## Recent work (0.13.0, not released yet)
+## Recent work (0.13.2, not released yet)
 
-- Uploading an installed game from the desktop app now goes in 16 MB parts with retries
-  (`PUT /api/games/:id/prepared/parts/:upload`, then `.../finish`). Before, one multi-GB
-  request failed behind reverse proxies and tunnels. Errors now say what to fix (proxy upload
-  limit, read-only games mount, folder permissions). The old one-shot `PUT .../prepared`
-  stays for older apps.
-- Controller navigation: selects no longer trap the d-pad, the filter bar and the games
-  remember where you left them, Y switches between them.
-- Admins can delete games (`DELETE /api/games/:id`, `?permanent=true` to remove the files).
-- New logo and mascot.
+Offline mode for the desktop app. Before, a PC away from the server (a handheld out of the
+house, the server switched off) only got the "Connect to your LootDen server" screen, and an
+open window broke as soon as requests stopped getting through.
 
-The original upload error was only visible as a tiny screenshot, so the exact cause wasn't
-confirmed. If uploads still fail, the error text now names the cause; start there.
+- `packages/desktop/setup/offline.html` is a local page listing the games installed on this
+  PC (from their `.lootden.json` manifests) with Play and Folder buttons, search, and
+  controller and arrow-key navigation. It retries the server every 30 seconds and has
+  **Try again** and **Change server**.
+- `main.ts` asks `/api/health` (5 second timeout) before loading the server, so a reverse
+  proxy's error page also counts as offline. `did-fail-load` on the server's pages and the
+  web UI's `goOffline` bridge call (sent when `fetch` itself fails in `packages/web/src/api.ts`)
+  switch to the offline page too.
+- Play time from offline sessions is kept in the app's `settings.json` (`pendingPlays`) and
+  sent on the next server page load. `reportActivity` now returns whether the server
+  answered. Save backups are skipped offline; the next session online backs the folder up.
+- Covers for the offline page are cached in `<userData>/Covers` whenever the Installed list
+  is loaded online, refreshed weekly.
+- The web Installed tab shows this PC's games with a note instead of an error when the
+  server's list fails to load.
+
+## Earlier releases
+
+- 0.13.1: the home page no longer jumps when the featured game changes.
+- 0.13.0: chunked uploads of installed games (`PUT /api/games/:id/prepared/parts/:upload`,
+  then `.../finish`, 16 MB parts with retries; errors name the cause), controller navigation
+  fixes, admins can delete games (`DELETE /api/games/:id`), new logo and mascot.
 
 ## Already done from the backlog
 
@@ -83,8 +97,9 @@ confirmed. If uploads still fail, the error text now names the cause; start ther
 ## Next up (the owner's More2Do list)
 
 - An add-on system for other game libraries, then add-ons for Steam, GOG, Epic, Xbox and
-  others.
+  others (one PR each after the foundation).
 - More features that other game library apps have.
+- Offline mode is done in 0.13.2.
 
 ## Things to know
 

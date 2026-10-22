@@ -1,3 +1,4 @@
+import { desktop } from "./desktop";
 import type {
   ApiTokenInfo,
   AuthProviders,
@@ -23,12 +24,21 @@ export class ApiError extends Error {
   }
 }
 
+/** In the desktop app, a server that stopped answering hands over to the app's offline library. */
+let offlineCheck: Promise<unknown> | null = null;
+function serverUnreachable(): ApiError {
+  if (desktop?.goOffline && !offlineCheck) offlineCheck = desktop.goOffline().catch(() => false).finally(() => setTimeout(() => (offlineCheck = null), 10_000));
+  return new ApiError("Can't reach the LootDen server", 0);
+}
+
 async function call<T>(method: string, path: string, body?: unknown): Promise<T> {
   const res = await fetch(path, {
     method,
     credentials: "same-origin",
     headers: body !== undefined ? { "Content-Type": "application/json" } : undefined,
     body: body !== undefined ? JSON.stringify(body) : undefined,
+  }).catch(() => {
+    throw serverUnreachable();
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new ApiError((data as { error?: string }).error ?? `Request failed (${res.status})`, res.status);

@@ -31,6 +31,8 @@ const bridge = {
   openTools: () => ipcRenderer.invoke("gm:openTools"),
   openFolder: (gameId: string) => ipcRenderer.invoke("gm:openFolder", gameId),
   changeServer: () => ipcRenderer.invoke("gm:changeServer"),
+  /** The server stopped answering: switch to the offline library if it really is gone. */
+  goOffline: () => ipcRenderer.invoke("gm:goOffline"),
   toggleFullscreen: () => ipcRenderer.invoke("gm:toggleFullscreen"),
   appSettings: (patch?: object) => ipcRenderer.invoke("gm:appSettings", patch),
   appUpdate: (action?: "status" | "check" | "install") => ipcRenderer.invoke("gm:appUpdate", action),
@@ -75,4 +77,13 @@ document.addEventListener("DOMContentLoaded", markFrame);
 // The local setup page only needs to save the server address.
 contextBridge.exposeInMainWorld("lootdenSetup", {
   connect: (url: string) => ipcRenderer.invoke("gm:setServer", url),
+});
+
+// The local offline page: the games on this PC, playable while the server can't be reached.
+contextBridge.exposeInMainWorld("lootdenOffline", {
+  library: () => ipcRenderer.invoke("gm:offline:library"),
+  play: (gameId: string) => ipcRenderer.invoke("gm:offline:play", gameId),
+  openFolder: (gameId: string) => ipcRenderer.invoke("gm:offline:openFolder", gameId),
+  retry: () => ipcRenderer.invoke("gm:offline:retry"),
+  changeServer: () => ipcRenderer.invoke("gm:changeServer"),
 });

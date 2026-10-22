@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src 'self' data:" />
+    <title>LootDen (offline)</title>
+    <style>
+      * { box-sizing: border-box; }
+      body { margin: 0; min-height: 100vh; background: radial-gradient(900px 500px at 10% -10%, #3b136b, transparent 60%), #0d0820; color: #f3eeff; font: 16px/1.5 "Segoe UI", system-ui, sans-serif; }
+      header { display: flex; align-items: center; gap: 1rem; padding: 0.75rem 1.5rem; padding-top: calc(var(--lootden-titlebar, 0px) + 0.5rem); flex-wrap: wrap; }
+      header img { width: 44px; height: 44px; }
+      header h1 { margin: 0; font-size: 1.3rem; }
+      .status { flex: 1; min-width: 14rem; color: #b3a6d9; margin: 0; }
+      .status b { color: #ffcf5c; }
+      main { padding: 0.5rem 1.5rem 2rem; }
+      .bar { display: flex; gap: 0.75rem; align-items: center; margin-bottom: 1.25rem; flex-wrap: wrap; }
+      input { font: inherit; padding: 0.55em 1em; border-radius: 12px; border: 1px solid rgba(160, 120, 255, 0.35); background: #160d33; color: inherit; min-width: 16rem; }
+      button { font: inherit; font-weight: 700; padding: 0.55em 1.2em; border: 0; border-radius: 999px; cursor: pointer; color: #12051f; background: linear-gradient(135deg, #ff4fd8, #2ef2ff); }
+      button.ghost { background: rgba(160, 120, 255, 0.15); color: #f3eeff; font-weight: 600; }
+      button:disabled { opacity: 0.6; cursor: default; }
+      :focus-visible { outline: 3px solid #2ef2ff; outline-offset: 3px; }
+      .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 1.25rem; }
+      .card { background: rgba(36, 22, 74, 0.8); border: 1px solid rgba(160, 120, 255, 0.25); border-radius: 14px; overflow: hidden; display: flex; flex-direction: column; }
+      .cover { aspect-ratio: 3 / 4; background: linear-gradient(160deg, #2a1660, #120a2c); display: grid; place-items: center; text-align: center; padding: 1rem; font-weight: 700; color: #cbbcf5; }
+      .cover img { width: 100%; height: 100%; object-fit: cover; display: block; }
+      .card .cover:has(img) { padding: 0; }
+      .info { padding: 0.6rem 0.75rem 0.75rem; display: flex; flex-direction: column; gap: 0.5rem; flex: 1; }
+      .title { font-weight: 600; line-height: 1.25; }
+      .meta { color: #b3a6d9; font-size: 0.85rem; }
+      .actions { display: flex; gap: 0.4rem; margin-top: auto; }
+      .actions button { padding: 0.4em 0.9em; font-size: 0.9rem; }
+      .actions .play { flex: 1; }
+      .message { color: #b3a6d9; }
+      .error { color: #ff5c7a; min-height: 1.5em; margin: 0 0 1rem; }
+      /* No system title bar: the top strip moves the window, the buttons sit at its right. */
+      html[data-lootden-frame="hidden"] body::before { content: ""; position: fixed; inset: 0 0 auto 0; height: var(--lootden-titlebar, 40px); -webkit-app-region: drag; }
+      html[data-handheld="on"] body { font-size: 19px; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <img src="../build/icon.png" alt="" />
+      <h1>LootDen</h1>
+      <p class="status" id="status">Offline</p>
+      <button id="retry">Try again</button>
+      <button class="ghost" id="change">Change server</button>
+    </header>
+    <main>
+      <div class="bar">
+        <input type="search" id="search" placeholder="Search games on this PC" aria-label="Search" />
+        <span class="message" id="count"></span>
+      </div>
+      <p class="error" id="err" role="alert"></p>
+      <div class="grid" id="grid"></div>
+    </main>
+    <script>
+      const off = window.lootdenOffline;
+      const $ = (id) => document.getElementById(id);
+      let games = [];
+      let playing = null;
+
+      const platformName = (p) => (p && p !== "pc" ? p.toUpperCase() : "");
+      const cleanError = (x) => String(x?.message || x).replace(/^Error invoking remote method '[^']+': (Error: )?/, "");
+
+      function render() {
+        const q = $("search").value.trim().toLowerCase();
+        const shown = games.filter((g) => !q || g.title.toLowerCase().includes(q));
+        const grid = $("grid");
+        grid.replaceChildren();
+        $("count").textContent = games.length ? `${shown.length} of ${games.length} installed` : "";
+        if (!games.length) {
+          const p = document.createElement("p");
+          p.className = "message";
+          p.textContent = "No games are installed on this PC yet. Install some while connected to your server and they'll be playable here offline.";
+          grid.append(p);
+          return;
+        }
+        for (const g of shown) {
+          const card = document.createElement("article");
+          card.className = "card";
+          const cover = document.createElement("div");
+          cover.className = "cover";
+          if (g.cover) {
+            const img = document.createElement("img");
+            img.src = g.cover;
+            img.alt = "";
+            cover.append(img);
+          } else cover.textContent = g.title;
+          const info = document.createElement("div");
+          info.className = "info";
+          const title = document.createElement("div");
+          title.className = "title";
+          title.textContent = g.title;
+          const meta = document.createElement("div");
+          meta.className = "meta";
+          meta.textContent = [platformName(g.platform), g.version ? `v${g.version}` : "", g.needsSetup ? "Installer not run yet" : ""].filter(Boolean).join(" · ") || " ";
+          const actions = document.createElement("div");
+          actions.className = "actions";
+          const play = document.createElement("button");
+          play.className = "play";
+          play.textContent = playing === g.gameId ? "Playing…" : "▶ Play";
+          play.disabled = !!g.needsSetup || playing === g.gameId;
+          play.title = g.needsSetup ? "Run the installer while connected to your server first" : "";
+          play.addEventListener("click", () => start(g.gameId));
+          const folder = document.createElement("button");
+          folder.className = "ghost";
+          folder.textContent = "Folder";
+          folder.title = "Open the game's folder";
+          folder.addEventListener("click", () => off.openFolder(g.gameId).catch((x) => ($("err").textContent = cleanError(x))));
+          actions.append(play, folder);
+          info.append(title, meta, actions);
+          card.append(cover, info);
+          grid.append(card);
+        }
+      }
+
+      async function start(gameId) {
+        $("err").textContent = "";
+        try {
+          await off.play(gameId);
+        } catch (x) {
+          $("err").textContent = cleanError(x);
+        }
+      }
+
+      async function load() {
+        try {
+          const lib = await off.library();
+          games = lib.games.sort((a, b) => a.title.localeCompare(b.title));
+          const status = $("status");
+          status.replaceChildren("Can't reach ", Object.assign(document.createElement("b"), { textContent: lib.server || "your server" }), ". Games on this PC still play; play time is sent when you're back online.");
+          render();
+          if (!document.activeElement || document.activeElement === document.body) document.querySelector(".grid button:not(:disabled)")?.focus();
+        } catch (x) {
+          $("err").textContent = cleanError(x);
+        }
+      }
+
+      async function retry(quiet) {
+        const b = $("retry");
+        b.disabled = true;
+        if (!quiet) b.textContent = "Connecting…";
+        try {
+          if (!(await off.retry()) && !quiet) $("err").textContent = "Still can't reach the server.";
+        } catch (x) {
+          if (!quiet) $("err").textContent = cleanError(x);
+        } finally {
+          b.disabled = false;
+          b.textContent = "Try again";
+        }
+      }
+
+      $("retry").addEventListener("click", () => retry(false));
+      $("change").addEventListener("click", () => off.changeServer());
+      $("search").addEventListener("input", render);
+      window.lootden?.onProgress((p) => {
+        if (p.type === "playing") playing = p.gameId;
+        else if ((p.type === "stopped" || p.type === "error") && playing === p.gameId) playing = null;
+        if (p.type === "error") $("err").textContent = p.message;
+        if (["playing", "stopped", "error"].includes(p.type)) render();
+      });
+      // Back home: pick the server up again on its own while no game is running.
+      setInterval(() => {
+        if (!playing && document.visibilityState === "visible") void retry(true);
+      }, 30000);
+
+      // Controllers and arrow keys move between buttons; A or Enter presses.
+      function move(dx, dy) {
+        const items = [...document.querySelectorAll("button:not(:disabled), input")];
+        const cur = document.activeElement;
+        if (!items.includes(cur)) return items[0]?.focus();
+        const r = cur.getBoundingClientRect();
+        const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+        let best = null, bestScore = Infinity;
+        for (const el of items) {
+          if (el === cur) continue;
+          const o = el.getBoundingClientRect();
+          const ox = o.left + o.width / 2 - cx, oy = o.top + o.height / 2 - cy;
+          const along = dx ? ox * dx : oy * dy;
+          if (along <= 4) continue;
+          const score = along + 3 * Math.abs(dx ? oy : ox);
+          if (score < bestScore) (best = el), (bestScore = score);
+        }
+        best?.focus();
+        best?.scrollIntoView({ block: "nearest" });
+      }
+      const KEYS = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
+      document.addEventListener("keydown", (e) => {
+        if (!KEYS[e.key] || (e.target.tagName === "INPUT" && (e.key === "ArrowLeft" || e.key === "ArrowRight"))) return;
+        e.preventDefault();
+        move(...KEYS[e.key]);
+      });
+      let held = {};
+      function poll() {
+        for (const pad of navigator.getGamepads?.() ?? []) {
+          if (!pad) continue;
+          const ax = pad.axes[0] ?? 0, ay = pad.axes[1] ?? 0;
+          const now = {
+            up: pad.buttons[12]?.pressed || ay < -0.6,
+            down: pad.buttons[13]?.pressed || ay > 0.6,
+            left: pad.buttons[14]?.pressed || ax < -0.6,
+            right: pad.buttons[15]?.pressed || ax > 0.6,
+            a: pad.buttons[0]?.pressed,
+            y: pad.buttons[3]?.pressed,
+          };
+          const pressed = (k) => now[k] && !held[k];
+          if (pressed("up")) move(0, -1);
+          if (pressed("down")) move(0, 1);
+          if (pressed("left")) move(-1, 0);
+          if (pressed("right")) move(1, 0);
+          if (pressed("a")) document.activeElement?.click();
+          if (pressed("y")) void retry(false);
+          held = now;
+          break;
+        }
+        requestAnimationFrame(poll);
+      }
+      requestAnimationFrame(poll);
+
+      void load();
+    </script>
+  </body>
+</html>
