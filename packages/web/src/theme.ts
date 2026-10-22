@@ -54,6 +54,19 @@ const DEFS: ThemeDef[] = [
   { id: "solarized", name: "Solarized Dark", note: "Teal-blue base, measured accents", group: "Modern", scheme: "dark", bg: "#002b36", bg2: "#073642", panel: "#073642", border: "#0f4a57", text: "#eee8d5", muted: "#93a1a1", accent: "#2aa198", accent2: "#b58900", accentText: "#002b36" },
   { id: "mocha", name: "Mocha", note: "Soft pastels on dark espresso", group: "Modern", scheme: "dark", bg: "#1e1e2e", bg2: "#232336", panel: "#2a2a3d", border: "#3b3b54", text: "#cdd6f4", muted: "#a6adc8", accent: "#cba6f7", accent2: "#f5c2e7", accentText: "#1e1e2e" },
   { id: "midnight", name: "Midnight", note: "Plain dark with a blue accent", group: "Modern", scheme: "dark", radius: 10, bg: "#0e1116", bg2: "#161b22", panel: "#161b22", border: "#2a313c", text: "#e6edf3", muted: "#8b949e", accent: "#4c9aff", accent2: "#a371f7", accentText: "#ffffff" },
+  { id: "rose-pine", name: "Rosé Pine", note: "Muted rose and gold on dusky violet", group: "Modern", scheme: "dark", radius: 16, bg: "#191724", bg2: "#1f1d2e", panel: "#26233a", border: "#403d52", text: "#e0def4", muted: "#a19dbb", accent: "#ebbcba", accent2: "#f6c177", accentText: "#191724" },
+  { id: "kanagawa", name: "Kanagawa", note: "Ink-wash blues with autumn highlights", group: "Modern", scheme: "dark", radius: 8, bg: "#16161d", bg2: "#1f1f28", panel: "#2a2a37", border: "#363646", text: "#dcd7ba", muted: "#a6a69c", accent: "#7e9cd8", accent2: "#ffa066", accentText: "#16161d" },
+  { id: "evergreen", name: "Evergreen", note: "Deep forest green with amber light", group: "Modern", scheme: "dark", bg: "#0f1a14", bg2: "#14231b", panel: "#1a2c22", border: "#2b4536", text: "#e4f0e6", muted: "#9db8a5", accent: "#7fd18b", accent2: "#f2b84b", accentText: "#0a1a0f",
+    pageBg: "linear-gradient(180deg, #17301f 0%, transparent 400px)" },
+  { id: "aurora", name: "Aurora", note: "Northern lights over a polar night", group: "Modern", scheme: "dark", radius: 18, bg: "#060d1a", bg2: "#0b1628", panel: "#101f36", border: "#1e3557", text: "#e8f4ff", muted: "#93aecb", accent: "#4dffb4", accent2: "#b07cff", accentText: "#03140c",
+    pageBg: "radial-gradient(1100px 520px at 20% -15%, #0d4d3f 0%, transparent 60%), radial-gradient(900px 480px at 95% 0%, #3a1f6b 0%, transparent 55%)",
+    glow: "0 0 24px rgba(77, 255, 180, 0.28)" },
+  { id: "tropical", name: "Tropical Sunset", note: "Coral and mango on a dark lagoon", group: "Modern", scheme: "dark", radius: 18, bg: "#0b1f24", bg2: "#10292f", panel: "#15333a", border: "#245059", text: "#fff3ea", muted: "#a9c9c8", accent: "#ff6f59", accent2: "#ffc145", accentText: "#2a0b05",
+    pageBg: "radial-gradient(1000px 500px at 100% -10%, #5a2a2a 0%, transparent 55%)" },
+  { id: "latte", name: "Latte", note: "Soft pastels on warm cream", group: "Modern", scheme: "light", bg: "#eff1f5", bg2: "#e6e9ef", panel: "#ffffff", border: "#ccd0da", text: "#4c4f69", muted: "#6c6f85", accent: "#8839ef", accent2: "#d20f39", accentText: "#ffffff" },
+  { id: "sakura", name: "Sakura", note: "Cherry blossom pink, light and airy", group: "Modern", scheme: "light", radius: 20, bg: "#fdf2f5", bg2: "#fff8fa", panel: "#ffffff", border: "#f2d3dc", text: "#3d2530", muted: "#8a6572", accent: "#d63d6f", accent2: "#5c8f4e", accentText: "#ffffff",
+    pageBg: "linear-gradient(180deg, #fbe1ea 0%, transparent 380px)" },
+  { id: "paper", name: "Paper", note: "Ink on warm sepia pages", group: "Modern", scheme: "light", radius: 6, bg: "#f4ecd8", bg2: "#efe4cb", panel: "#fbf6ea", border: "#d9c9a3", text: "#3b2f1e", muted: "#7a6a4f", accent: "#a2471d", accent2: "#2f5d62", accentText: "#ffffff" },
 
   // ---- Retro ----
   { id: "doom", name: "Inferno", note: "Hell-red with molten gold, 90s shooter", group: "Retro", scheme: "dark", radius: 4, bg: "#160606", bg2: "#200909", panel: "#2a0c0c", border: "#4a1616", text: "#f6e3d3", muted: "#c29a8a", accent: "#f4b63f", accent2: "#e53b2c", accentText: "#1a0503" },
@@ -66,12 +79,35 @@ const DEFS: ThemeDef[] = [
   { id: "amber", name: "Amber Terminal", note: "Warm amber monochrome monitor", group: "Retro", scheme: "dark", radius: 0, font: MONO, bg: "#100800", bg2: "#170c01", panel: "#1d1002", border: "#4a2a05", text: "#ffd08a", muted: "#c48a3a", accent: "#ffb000", accent2: "#ff7a00", accentText: "#1a0d00" },
   { id: "cyberpunk", name: "Cyberpunk", note: "Acid yellow and magenta on black", group: "Retro", scheme: "dark", radius: 0, bg: "#0b0b10", bg2: "#121219", panel: "#16161f", border: "#2a2a3a", text: "#f4f4f8", muted: "#9b9bb0", accent: "#fcee0a", accent2: "#ff2a6d", accentText: "#0b0b10" },
   { id: "c64", name: "Commodore 64", note: "READY. Light blue on violet", group: "Retro", scheme: "dark", radius: 0, font: MONO, bg: "#40318d", bg2: "#4b3b9e", panel: "#3a2c80", border: "#7869c4", text: "#d8d2ff", muted: "#a59cf0", accent: "#7ce0ff", accent2: "#a4f0a0", accentText: "#1e1650" },
+  { id: "red-visor", name: "Red Visor", note: "Red-on-black 3D headset glow", group: "Retro", scheme: "dark", radius: 0, font: MONO, bg: "#000000", bg2: "#0c0000", panel: "#140101", border: "#4d0606", text: "#ff4a3d", muted: "#b0241b", accent: "#ff1a0d", accent2: "#ff8a80", accentText: "#000000" },
+  { id: "famicom", name: "Famicom", note: "Cream plastic, maroon trim, gold dots", group: "Retro", scheme: "light", radius: 4, bg: "#ece4d4", bg2: "#e2d8c3", panel: "#f6f1e6", border: "#b9a98a", text: "#2b1d16", muted: "#6e5b49", accent: "#9b1b30", accent2: "#c99a2e", accentText: "#ffffff" },
   { id: "gameboy", name: "Pocket Green", note: "Four shades of handheld green", group: "Retro", scheme: "light", radius: 2, font: MONO, bg: "#9bbc0f", bg2: "#8bac0f", panel: "#a9c71f", border: "#306230", text: "#0f380f", muted: "#306230", accent: "#0f380f", accent2: "#306230", accentText: "#9bbc0f",
     glow: "none" },
   { id: "classic-desktop", name: "Classic Desktop", note: "Grey windows and navy title bars", group: "Retro", scheme: "light", radius: 0, bg: "#c3c3c3", bg2: "#d4d0c8", panel: "#d4d0c8", border: "#808080", text: "#000000", muted: "#404040", accent: "#000080", accent2: "#1084d0", accentText: "#ffffff", glow: "inset -1px -1px #404040, inset 1px 1px #ffffff" },
 ];
 
-export const THEMES = DEFS.map(({ id, name, note, group, bg, panel, accent, accent2 }) => ({ id, name, note, group, swatch: [bg, panel, accent, accent2] as const }));
+/** What the Themes tab needs to draw each theme's preview without applying it. */
+export const THEMES = DEFS.map((t) => ({
+  id: t.id,
+  name: t.name,
+  note: t.note,
+  group: t.group,
+  scheme: t.scheme,
+  swatch: [t.bg, t.panel, t.accent, t.accent2] as const,
+  preview: {
+    bg: t.bg,
+    bg2: t.bg2,
+    panel: t.panel,
+    border: t.border,
+    text: t.text,
+    muted: t.muted,
+    accent: t.accent,
+    accent2: t.accent2,
+    accentText: t.accentText ?? (t.scheme === "dark" ? "#0b0b10" : "#ffffff"),
+    radius: t.radius ?? 14,
+    font: t.font,
+  },
+}));
 export type ThemeId = string;
 
 function tokens(t: ThemeDef): Record<string, string> {

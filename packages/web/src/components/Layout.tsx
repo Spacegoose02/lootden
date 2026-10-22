@@ -121,7 +121,9 @@ export function Layout() {
     { to: "/news", label: "News" },
     // Inside the desktop app the page is still there (Profile links to it for the Playnite extension), just not in the menu.
     ...(desktop ? [] : [{ to: "/apps", label: "Get the app" }]),
-    ...(admin ? [{ to: "/downloads", label: "Downloads" }, { to: "/settings", label: "Settings" }] : []),
+    ...(admin ? [{ to: "/downloads", label: "Downloads" }] : []),
+    // Everyone gets Settings for the Themes tab; the other sections are admin only.
+    { to: "/settings", label: "Settings" },
   ];
   const signOut = async () => {
     await logout();
