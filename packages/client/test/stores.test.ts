@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { after, before, describe, it } from "node:test";
 import { scanStoreGames, type StoreScanner } from "../src/stores/index.js";
+import { epicFromHeroic, epicFromManifest } from "../src/stores/epic.js";
 import { gogFromHeroic, gogFromRegistry } from "../src/stores/gog.js";
 import { steamInstalled, steamLibraries } from "../src/stores/steam.js";
 import { parseRegQuery } from "../src/stores/windows.js";
@@ -65,5 +66,14 @@ describe("store scanners", () => {
     assert.deepEqual(gogFromHeroic(heroic), [
       { addon: "gog", externalId: "1423049311", title: "Cyberpunk 2077", installDir: "/home/me/Games/Heroic/Cyberpunk 2077", launchUrl: "heroic://launch?appName=1423049311&runner=gog" },
     ]);
+  });
+
+  it("finds Epic games from the launcher's manifests and Heroic", () => {
+    const item = (patch: object) => JSON.stringify({ AppName: "Fortnite", DisplayName: "Fortnite", InstallLocation: "C:\\Epic Games\\Fortnite", bIsIncompleteInstall: false, ...patch });
+    assert.deepEqual(epicFromManifest(item({})), { addon: "epic", externalId: "Fortnite", title: "Fortnite", installDir: "C:\\Epic Games\\Fortnite" });
+    assert.equal(epicFromManifest(item({ bIsIncompleteInstall: true })), null, "still downloading");
+    assert.equal(epicFromManifest(item({ AppName: "dlc1", MainGameAppName: "Fortnite" })), null, "DLC");
+    const heroic = JSON.stringify({ Sugar: { app_name: "Sugar", title: "Hades", install_path: "/games/Hades" }, Dlc: { app_name: "Dlc", install_path: "/games/x", is_dlc: true } });
+    assert.deepEqual(epicFromHeroic(heroic), [{ addon: "epic", externalId: "Sugar", title: "Hades", installDir: "/games/Hades", launchUrl: "heroic://launch?appName=Sugar&runner=legendary" }]);
   });
 });
