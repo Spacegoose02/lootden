@@ -4,7 +4,6 @@ import { existsSync } from "node:fs";
 import { mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { pathToFileURL } from "node:url";
 import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, net, Notification, screen, session, shell, Tray, type IpcMainInvokeEvent } from "electron";
 import {
   addBiosFile,
@@ -40,6 +39,7 @@ import {
   UpdateMismatchError,
   type InstallEvent,
 } from "@lootden/client";
+import { isExternalLink, isFile, onOrigin, permissionAllowed } from "./links.js";
 import { SettingsStore, type DesktopSettings } from "./settings.js";
 import { downloadUpdate, installKind, launchUpdate, pickUpdate, type AvailableUpdate } from "./updater.js";
 
@@ -70,6 +70,9 @@ if (existsSync(legacyUserData)) app.setPath("userData", legacyUserData);
 if (!app.requestSingleInstanceLock()) app.quit();
 for (const p of PROTOCOLS) app.setAsDefaultProtocolClient(p);
 
+/** The bundled page that asks for the server's address. */
+const SETUP_PAGE = path.join(__dirname, "..", "setup", "index.html");
+
 const origin = () => {
   try {
     return new URL(settings.get().serverUrl).origin;
@@ -84,14 +87,10 @@ function fromServer(e: IpcMainInvokeEvent): void {
   if (!origin() || !url.startsWith(origin() + "/")) throw new Error("Not allowed from this page");
 }
 
-const SETUP_PAGE = path.join(__dirname, "..", "setup", "index.html");
 const OFFLINE_PAGE = path.join(__dirname, "..", "setup", "offline.html");
 
-/** Whether the call comes from one of the app's own pages, not just any file:// page (one on a network share, say). */
-function isAppPage(e: IpcMainInvokeEvent, ...pages: string[]): boolean {
-  const url = (e.senderFrame?.url ?? "").replace(/[?#].*$/, "");
-  return pages.some((p) => url === pathToFileURL(p).href);
-}
+/** Whether the call comes from the app's own page, not just any file:// page (one on a network share, say). */
+const isAppPage = (e: IpcMainInvokeEvent, page: string) => isFile(e.senderFrame?.url ?? "", page);
 
 /** The offline page, loaded from the app's files. */
 function fromLocal(e: IpcMainInvokeEvent): void {
@@ -525,7 +524,8 @@ async function installNow(): Promise<void> {
 
 function registerIpc(): void {
   ipcMain.handle("gm:setServer", async (e, url: string) => {
-    if (!e.senderFrame?.url.startsWith("file://")) throw new Error("Not allowed from this page");
+    // Only the bundled setup page: any other file:// page (say, one on a network share) could repoint the app.
+    if (!isFile(e.senderFrame?.url ?? "", SETUP_PAGE)) throw new Error("Not allowed from this page");
     const parsed = new URL(/^https?:\/\//.test(url) ? url : `http://${url}`);
     const health = await net.fetch(`${parsed.origin}/api/health`).then((r) => r.json() as Promise<{ status?: string }>).catch(() => null);
     if (health?.status !== "ok") throw new Error(`No LootDen server answered at ${parsed.origin}`);
@@ -1233,22 +1233,23 @@ async function createWindow(): Promise<void> {
   Menu.setApplicationMenu(null);
   // Links to other sites (news, screenshots) open in the normal browser.
   win.webContents.setWindowOpenHandler(({ url }) => {
-    void shell.openExternal(url);
+    if (isExternalLink(url)) void shell.openExternal(url);
     return { action: "deny" };
   });
+  win.webContents.session.setPermissionRequestHandler((_wc, permission, callback, details) => callback(permissionAllowed(permission, details.requestingUrl, origin())));
   win.webContents.on("will-navigate", (event, url) => {
     if (origin() && url.startsWith(`${origin()}/api/auth/oidc/login`)) {
       event.preventDefault();
       void startSignIn(url);
       return;
     }
-    if (url.startsWith("file://") || (origin() && url.startsWith(origin()))) return;
+    if (isFile(url, SETUP_PAGE) || onOrigin(url, origin())) return;
     // Single sign-on: the server redirects the window to the identity provider, which may
     // hand on to another (TinyAuth to Google). Those pages keep their cookies in this
     // window, so they stay here until the provider sends the window back to the server.
-    if (onSignInPages()) return;
+    if (onSignInPages() && /^https?:\/\//.test(url)) return;
     event.preventDefault();
-    void shell.openExternal(url);
+    if (isExternalLink(url)) void shell.openExternal(url);
   });
   // Closing hides the window to the tray: the app keeps tracking play time and installs.
   win.on("close", (event) => {
@@ -1276,10 +1277,10 @@ async function createWindow(): Promise<void> {
   // The server's pages failing to load (it's off, or this PC is away from home) shows the
   // offline library instead of an error page. Aborted loads (-3) are just navigations replaced by others.
   win.webContents.on("did-fail-load", (_e, code, _desc, url, isMainFrame) => {
-    if (isMainFrame && code !== -3 && origin() && url.startsWith(origin())) showOffline();
+    if (isMainFrame && code !== -3 && onOrigin(url, origin())) showOffline();
   });
   win.webContents.on("did-finish-load", () => {
-    if (origin() && win?.webContents.getURL().startsWith(origin())) void flushPendingPlays();
+    if (onOrigin(win?.webContents.getURL() ?? "", origin())) void flushPendingPlays();
   });
   if (!s.serverUrl) await win.loadFile(SETUP_PAGE);
   // A reverse proxy answers with its own error page when the server behind it is down, so ask the server itself first.
