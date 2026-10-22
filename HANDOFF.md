@@ -68,6 +68,13 @@ theme-coloured SVG raccoon is still the fallback in `packages/web/public/logo.sv
 - Admins can delete games (`DELETE /api/games/:id`, `?permanent=true` to remove the files).
 - New logo and mascot.
 
+- Themes have their own **Settings, Themes** tab (`components/ThemePicker.tsx`) with a small
+  mock of the app in each theme's colours and a Dark/Light filter. Ten new themes (Rosé Pine,
+  Kanagawa, Evergreen, Aurora, Tropical Sunset, Latte, Sakura, Paper, Red Visor, Famicom), 33
+  in all. Everyone gets Settings in the menu now, but non-admins only see the Themes tab.
+  Profile shows the current theme with a link there. The choice is still `gm-theme` in
+  localStorage. Theme colours must stay `#hex`: the desktop title bar buttons only accept hex.
+
 The original upload error was only visible as a tiny screenshot, so the exact cause wasn't
 confirmed. If uploads still fail, the error text now names the cause; start there.
 
