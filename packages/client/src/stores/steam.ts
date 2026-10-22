@@ -1,17 +1,15 @@
-import { execFile } from "node:child_process";
 import { readdir, readFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import type { LocalStoreGame } from "@lootden/shared";
 import type { StoreScanner } from "./index.js";
 import { parseVdf, type Vdf } from "./vdf.js";
+import { regQuery } from "./windows.js";
 
 /** Where Steam usually lives: the registry's answer on Windows, the usual folders on Linux (including Flatpak). */
 async function steamRoots(platform: NodeJS.Platform): Promise<string[]> {
   if (platform === "win32") {
-    const fromRegistry = await new Promise<string | null>((resolve) =>
-      execFile("reg", ["query", "HKCU\\Software\\Valve\\Steam", "/v", "SteamPath"], { windowsHide: true }, (err, out) => resolve(err ? null : (out.match(/SteamPath\s+REG_SZ\s+(.+)/)?.[1]?.trim() ?? null))),
-    );
+    const fromRegistry = [...(await regQuery("HKCU\\Software\\Valve\\Steam", false)).values()][0]?.SteamPath ?? null;
     return [fromRegistry, "C:\\Program Files (x86)\\Steam", "C:\\Program Files\\Steam"].filter((p): p is string => !!p).map((p) => path.normalize(p));
   }
   const home = os.homedir();

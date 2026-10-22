@@ -1,4 +1,5 @@
 import type { LocalStoreGame } from "@lootden/shared";
+import { gogScanner } from "./gog.js";
 import { steamScanner } from "./steam.js";
 
 /**
@@ -13,7 +14,7 @@ export interface StoreScanner {
   scan(): Promise<LocalStoreGame[]>;
 }
 
-export const STORE_SCANNERS: StoreScanner[] = [steamScanner];
+export const STORE_SCANNERS: StoreScanner[] = [steamScanner, gogScanner];
 
 /** Every store game installed on this PC. A store that isn't installed, or fails to read, adds nothing. */
 export async function scanStoreGames(scanners: StoreScanner[] = STORE_SCANNERS, platform: NodeJS.Platform = process.platform): Promise<LocalStoreGame[]> {
