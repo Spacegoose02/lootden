@@ -20,6 +20,11 @@ export interface AddonContext {
   config: Record<string, string>;
   /** fetch with a 30 second timeout. */
   fetch: FetchLike;
+  /**
+   * Stores values the add-on needs next time, such as a refreshed sign-in token. Keys that
+   * aren't fields stay on the server and are never shown.
+   */
+  save(patch: Record<string, string>): void;
 }
 
 /**

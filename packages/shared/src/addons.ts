@@ -12,6 +12,10 @@ export interface AddonField {
   /** Never sent back to the browser once saved (API keys, tokens). */
   secret?: boolean;
   required?: boolean;
+  /** A page to open for the value, such as a store's sign-in page that shows a code. */
+  link?: { url: string; label: string };
+  /** Saved once used (a sign-in code): the field stays empty afterwards. */
+  oneTime?: boolean;
 }
 
 /** An add-on as a person sees it on their profile. */
@@ -59,6 +63,8 @@ export interface LocalStoreGame {
   externalId: string;
   title: string;
   installDir: string;
+  /** How to start it on this PC when it differs from the store's usual link (Heroic on Linux). */
+  launchUrl?: string;
 }
 
 /**

@@ -93,7 +93,23 @@ function AddonCard({ addon, admin, onList, say }: { addon: AddonView; admin: boo
       {addon.enabled && addon.fields.length > 0 && (
         <div className="field-grid">
           {addon.fields.map((f) => (
-            <Field key={f.key} label={f.label} hint={f.help}>
+            <Field
+              key={f.key}
+              label={f.label}
+              hint={
+                <>
+                  {f.link && (
+                    <>
+                      <a href={f.link.url} target="_blank" rel="noreferrer">
+                        {f.link.label}
+                      </a>
+                      {f.help ? ". " : ""}
+                    </>
+                  )}
+                  {f.help}
+                </>
+              }
+            >
               <input type={f.secret ? "password" : "text"} placeholder={f.placeholder} value={config[f.key] ?? ""} onChange={(e) => setConfig({ ...config, [f.key]: e.target.value })} autoComplete="off" />
             </Field>
           ))}

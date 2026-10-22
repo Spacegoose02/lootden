@@ -27,7 +27,7 @@ export function StoreGames() {
     desktop?.storeGames?.().then(setLocal, () => setLocal([]));
   }, []);
 
-  const installed = useMemo(() => new Set(local.map((l) => `${l.addon}:${l.externalId}`)), [local]);
+  const installed = useMemo(() => new Map(local.map((l) => [`${l.addon}:${l.externalId}`, l])), [local]);
   if (error) return <p className="error">{error}</p>;
   if (!games) return <p className="muted">Loading…</p>;
   if (!games.length)
@@ -53,8 +53,10 @@ export function StoreGames() {
   const play = async (g: StoreGame) => {
     setError("");
     try {
-      if (desktop?.launchStore) await desktop.launchStore(g.launchUrl!);
-      else window.location.href = g.launchUrl!;
+      // The PC's own launcher (Heroic on Linux) when it says how, else the store's link.
+      const url = installed.get(`${g.addon}:${g.externalId}`)?.launchUrl ?? g.launchUrl!;
+      if (desktop?.launchStore) await desktop.launchStore(url);
+      else window.location.href = url;
     } catch (e) {
       setError(bridgeError(e));
     }
@@ -104,7 +106,7 @@ export function StoreGames() {
                 {g.playtimeSeconds ? ` ${formatPlaytime(g.playtimeSeconds)}` : ""}
               </div>
               <div className="store-actions">
-                {g.launchUrl && (
+                {(g.launchUrl || installed.get(`${g.addon}:${g.externalId}`)?.launchUrl) && (
                   <button className="small primary" onClick={() => play(g)} title={isInstalled(g) ? "Start it through the store's launcher" : "Opens the store's launcher to install or play it"}>
                     {isInstalled(g) ? "▶ Play" : "Play"}
                   </button>

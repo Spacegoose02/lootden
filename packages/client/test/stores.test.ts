@@ -4,7 +4,9 @@ import os from "node:os";
 import path from "node:path";
 import { after, before, describe, it } from "node:test";
 import { scanStoreGames, type StoreScanner } from "../src/stores/index.js";
+import { gogFromHeroic, gogFromRegistry } from "../src/stores/gog.js";
 import { steamInstalled, steamLibraries } from "../src/stores/steam.js";
+import { parseRegQuery } from "../src/stores/windows.js";
 import { parseVdf } from "../src/stores/vdf.js";
 
 let work: string;
@@ -44,5 +46,24 @@ describe("store scanners", () => {
     const broken: StoreScanner = { addon: "b", platforms: ["linux", "win32"], scan: async () => { throw new Error("no launcher"); } };
     const elsewhere: StoreScanner = { addon: "c", platforms: ["darwin"], scan: async () => [{ addon: "c", externalId: "2", title: "Two", installDir: "/y" }] };
     assert.deepEqual((await scanStoreGames([ok, broken, elsewhere], "linux")).map((g) => g.title), ["One"]);
+  });
+
+  it("finds GOG games from Galaxy's registry keys and Heroic", () => {
+    const reg = [
+      "",
+      "HKEY_LOCAL_MACHINE\\SOFTWARE\\WOW6432Node\\GOG.com\\Games\\1207658924",
+      "    gameID    REG_SZ    1207658924",
+      "    gameName    REG_SZ    Unreal Tournament 2004",
+      "    path    REG_SZ    C:\\GOG Games\\UT2004",
+      "",
+      "HKEY_LOCAL_MACHINE\\SOFTWARE\\WOW6432Node\\GOG.com\\Games\\1207658924\\Extra",
+      "    other    REG_DWORD    0x1",
+      "",
+    ].join("\r\n");
+    assert.deepEqual(gogFromRegistry(parseRegQuery(reg)), [{ addon: "gog", externalId: "1207658924", title: "Unreal Tournament 2004", installDir: "C:\\GOG Games\\UT2004" }]);
+    const heroic = JSON.stringify({ installed: [{ appName: "1423049311", install_path: "/home/me/Games/Heroic/Cyberpunk 2077", platform: "windows" }, { appName: "x" }] });
+    assert.deepEqual(gogFromHeroic(heroic), [
+      { addon: "gog", externalId: "1423049311", title: "Cyberpunk 2077", installDir: "/home/me/Games/Heroic/Cyberpunk 2077", launchUrl: "heroic://launch?appName=1423049311&runner=gog" },
+    ]);
   });
 });
