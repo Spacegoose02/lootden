@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { existsSync } from "node:fs";
-import { readdir, rm } from "node:fs/promises";
+import { mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, net, Notification, screen, session, shell, Tray, type IpcMainInvokeEvent } from "electron";
@@ -85,6 +85,38 @@ function fromServer(e: IpcMainInvokeEvent): void {
   if (!origin() || !url.startsWith(origin() + "/")) throw new Error("Not allowed from this page");
 }
 
+const OFFLINE_PAGE = path.join(__dirname, "..", "setup", "offline.html");
+
+/** Whether the call comes from the app's own page, not just any file:// page (one on a network share, say). */
+const isAppPage = (e: IpcMainInvokeEvent, page: string) => isFile(e.senderFrame?.url ?? "", page);
+
+/** The offline page, loaded from the app's files. */
+function fromLocal(e: IpcMainInvokeEvent): void {
+  if (!isAppPage(e, OFFLINE_PAGE)) throw new Error("Not allowed from this page");
+}
+
+/** Whether a LootDen server answers at the address, within a few seconds. */
+async function serverUp(at = origin()): Promise<boolean> {
+  if (!at) return false;
+  const health = await net
+    .fetch(`${at}/api/health`, { signal: AbortSignal.timeout(5000) })
+    .then((r) => r.json() as Promise<{ status?: string }>)
+    .catch(() => null);
+  return health?.status === "ok";
+}
+
+/** The server can't be reached: show the games on this PC, which play without it. */
+function showOffline(): void {
+  if (customFrame) win?.setTitleBarOverlay({ color: "#0d0820", symbolColor: "#f3eeff", height: TITLEBAR_HEIGHT });
+  void win?.loadFile(OFFLINE_PAGE).catch(() => {});
+}
+
+/** Back online: open the server's pages and send the play time recorded while offline. */
+async function goOnline(): Promise<void> {
+  await win?.loadURL(origin());
+  void flushPendingPlays();
+}
+
 /** 7za shipped with the app: in resources/ when packaged, in vendor/ when run from source. */
 function bundled7za(): string {
   const platform = process.platform === "win32" ? "win" : "linux";
@@ -147,6 +179,67 @@ async function client(): Promise<GameServerClient> {
   const { token } = (await res.json()) as { token: string };
   settings.update({ apiToken: token });
   return new GameServerClient({ serverUrl: s.serverUrl, apiToken: token });
+}
+
+/**
+ * A client even when the server can't be reached to register this computer: calls through
+ * it fail, which the offline paths expect.
+ */
+const clientOrOffline = () => client().catch(() => new GameServerClient({ serverUrl: settings.get().serverUrl, apiToken: "" }));
+
+/** Play time goes to the server; while it's out of reach it waits in the settings until the app is back online. */
+async function recordPlay(api: GameServerClient, gameId: string, seconds: number): Promise<boolean> {
+  if (await api.reportActivity({ gameId, device: os.hostname(), event: "played", seconds })) return true;
+  settings.update({ pendingPlays: [...settings.get().pendingPlays, { gameId, seconds, playedAt: new Date().toISOString() }] });
+  return false;
+}
+
+let flushing = false;
+async function flushPendingPlays(): Promise<void> {
+  if (flushing || !settings.get().pendingPlays.length) return;
+  flushing = true;
+  try {
+    const api = await client();
+    for (const p of settings.get().pendingPlays) {
+      if (!(await api.reportActivity({ gameId: p.gameId, device: os.hostname(), event: "played", seconds: p.seconds }))) return;
+      settings.update({ pendingPlays: settings.get().pendingPlays.filter((x) => x.playedAt !== p.playedAt || x.gameId !== p.gameId) });
+    }
+  } catch {
+    // Still offline, or not signed in yet: try again on the next page load.
+  } finally {
+    flushing = false;
+  }
+}
+
+// ---- Covers for the offline page ------------------------------------------------
+
+const coversDir = () => path.join(app.getPath("userData"), "Covers");
+const COVER_TYPES: Record<string, string> = { "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp", "image/gif": "gif", "image/avif": "avif" };
+
+/** Keeps a copy of each installed game's cover, refreshed weekly, so the offline page has artwork. */
+async function cacheCovers(gameIds: string[]): Promise<void> {
+  const api = await client().catch(() => null);
+  if (!api) return;
+  await mkdir(coversDir(), { recursive: true });
+  const have = await readdir(coversDir()).catch(() => [] as string[]);
+  for (const id of gameIds) {
+    const file = have.find((f) => f.startsWith(`${id}.`));
+    const age = file ? Date.now() - (await stat(path.join(coversDir(), file))).mtimeMs : Infinity;
+    if (age < 7 * 86400_000) continue;
+    const res = await net.fetch(`${origin()}/api/games/${encodeURIComponent(id)}/cover`, { headers: api.headers() }).catch(() => null);
+    const ext = COVER_TYPES[(res?.headers.get("content-type") ?? "").split(";")[0]!.trim()];
+    if (!res?.ok || !ext) continue;
+    if (file) await rm(path.join(coversDir(), file), { force: true });
+    await writeFile(path.join(coversDir(), `${id}.${ext}`), new Uint8Array(await res.arrayBuffer()));
+  }
+}
+
+async function cachedCover(gameId: string, files: string[]): Promise<string | null> {
+  const file = files.find((f) => f.startsWith(`${gameId}.`));
+  if (!file) return null;
+  const type = Object.entries(COVER_TYPES).find(([, ext]) => file.endsWith(`.${ext}`))?.[0];
+  const data = await readFile(path.join(coversDir(), file)).catch(() => null);
+  return data && type ? `data:${type};base64,${data.toString("base64")}` : null;
 }
 
 /** Every folder installs might be in: the ones used so far, plus a Games folder on each drive. */
@@ -459,7 +552,9 @@ function registerIpc(): void {
   });
   ipcMain.handle("gm:installed", async (e) => {
     fromServer(e);
-    return listInstalled(await searchDirs());
+    const games = await listInstalled(await searchDirs());
+    void cacheCovers(games.map((g) => g.gameId)).catch(() => {});
+    return games;
   });
 
   /**
@@ -528,6 +623,11 @@ function registerIpc(): void {
 
   ipcMain.handle("gm:play", async (e, gameId: string) => {
     fromServer(e);
+    return play(gameId);
+  });
+
+  /** Starts an installed game. Works offline: play time waits until the server is back. */
+  async function play(gameId: string) {
     const game = await findInstalled(gameId);
     if (game.platform && game.platform !== "pc") return playEmulatedGame(gameId, game.dir, game.platform);
     if (game.needsSetup && !game.installedDir) throw new Error(`${game.title} is still ${game.needsSetup === "disc" ? "a disc image" : "an installer"}. Use Run installer first.`);
@@ -543,8 +643,9 @@ function registerIpc(): void {
     void launchAndTrack(game.dir, exe).then(
       async (seconds) => {
         send({ gameId, type: "stopped", seconds });
-        const api = await client();
-        await api.reportActivity({ gameId, device: os.hostname(), event: "played", seconds });
+        const api = await clientOrOffline();
+        // Offline: no save backup this time; the next session online backs the folder up.
+        if (!(await recordPlay(api, gameId, seconds))) return;
         // Save sync: back up after every session when the game has a save location.
         const saved = await syncSaves(api, gameId, game.dir).catch((err: Error) => ({ error: err.message }));
         if (saved) send({ gameId, type: "saves", ...saved });
@@ -552,11 +653,11 @@ function registerIpc(): void {
       (err: Error) => send({ gameId, type: "error", message: err.message }),
     );
     return { executable: exe };
-  });
+  }
 
   /** Emulated games: restore newer saves, run the emulator, back up what changed. */
   async function playEmulatedGame(gameId: string, dir: string, platform: string) {
-    const api = await client();
+    const api = await clientOrOffline();
     let started: (v: { executable: string }) => void = () => {};
     const ready = new Promise<{ executable: string }>((resolve) => (started = resolve));
     const session = playEmulated(api, gameId, dir, platform, {
@@ -572,7 +673,7 @@ function registerIpc(): void {
     session.then(
       async (r) => {
         send({ gameId, type: "stopped", seconds: r.seconds });
-        await api.reportActivity({ gameId, device: os.hostname(), event: "played", seconds: r.seconds });
+        await recordPlay(api, gameId, r.seconds);
         if (r.backup) send({ gameId, type: "saves", backupId: r.backup.id, size: r.backup.size });
       },
       (err: Error) => send({ gameId, type: "error", message: err.message }),
@@ -973,10 +1074,54 @@ function registerIpc(): void {
   });
 
   ipcMain.handle("gm:changeServer", async (e) => {
-    fromServer(e);
+    if (!isAppPage(e, OFFLINE_PAGE)) fromServer(e);
     settings.update({ serverUrl: "", apiToken: "" });
     if (customFrame) win?.setTitleBarOverlay({ color: "#0d0820", symbolColor: "#f3eeff", height: TITLEBAR_HEIGHT });
     await win?.loadFile(SETUP_PAGE);
+  });
+
+  // ---- Offline: the server can't be reached --------------------------------------
+
+  /** The server's pages ask for this when their requests stop getting through. */
+  ipcMain.handle("gm:goOffline", async (e) => {
+    fromServer(e);
+    if (await serverUp()) return false;
+    showOffline();
+    return true;
+  });
+  ipcMain.handle("gm:offline:library", async (e) => {
+    fromLocal(e);
+    const covers = await readdir(coversDir()).catch(() => [] as string[]);
+    const games = await listInstalled(await searchDirs());
+    return {
+      server: origin(),
+      pendingPlays: settings.get().pendingPlays.length,
+      games: await Promise.all(
+        games.map(async (g) => ({
+          gameId: g.gameId,
+          title: g.title,
+          platform: g.platform,
+          version: g.version ?? null,
+          installedAt: g.installedAt,
+          needsSetup: g.needsSetup && !g.installedDir ? g.needsSetup : null,
+          cover: await cachedCover(g.gameId, covers),
+        })),
+      ),
+    };
+  });
+  ipcMain.handle("gm:offline:play", async (e, gameId: string) => {
+    fromLocal(e);
+    return play(gameId);
+  });
+  ipcMain.handle("gm:offline:openFolder", async (e, gameId: string) => {
+    fromLocal(e);
+    await shell.openPath((await findInstalled(gameId)).dir);
+  });
+  ipcMain.handle("gm:offline:retry", async (e) => {
+    fromLocal(e);
+    if (!(await serverUp())) return false;
+    await goOnline();
+    return true;
   });
 
   // The page draws the title bar; it asks how, and passes its theme's colours for the buttons.
@@ -1113,8 +1258,18 @@ async function createWindow(): Promise<void> {
     // The provider's pages have no LootDen title bar; Escape backs out of a sign-in.
     if (input.type === "keyDown" && input.key === "Escape" && onSignInPages()) void win?.loadURL(origin());
   });
-  if (s.serverUrl) await win.loadURL(s.serverUrl).catch(() => win?.loadFile(SETUP_PAGE));
-  else await win.loadFile(SETUP_PAGE);
+  // The server's pages failing to load (it's off, or this PC is away from home) shows the
+  // offline library instead of an error page. Aborted loads (-3) are just navigations replaced by others.
+  win.webContents.on("did-fail-load", (_e, code, _desc, url, isMainFrame) => {
+    if (isMainFrame && code !== -3 && onOrigin(url, origin())) showOffline();
+  });
+  win.webContents.on("did-finish-load", () => {
+    if (onOrigin(win?.webContents.getURL() ?? "", origin())) void flushPendingPlays();
+  });
+  if (!s.serverUrl) await win.loadFile(SETUP_PAGE);
+  // A reverse proxy answers with its own error page when the server behind it is down, so ask the server itself first.
+  else if (!(await serverUp())) showOffline();
+  else await win.loadURL(s.serverUrl).catch(() => {});
   if (pendingDeepLink) {
     await openDeepLink(pendingDeepLink);
     pendingDeepLink = null;

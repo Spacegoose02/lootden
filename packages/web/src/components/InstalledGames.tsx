@@ -16,7 +16,7 @@ interface Entry {
   installedAt: string | null;
   lastPlayedAt: string | null;
   playtimeSeconds: number;
-  /** The server no longer has this game; it can still be played from this PC. */
+  /** The server no longer has this game (or can't be reached); it can still be played from this PC. */
   gone: boolean;
 }
 
@@ -66,6 +66,8 @@ export function InstalledGames() {
   const [local, setLocal] = useState<InstalledGame[] | null>(null);
   const [states, setStates] = useState<UserGameState[]>([]);
   const [error, setError] = useState("");
+  /** The server's list couldn't be loaded; the app still shows and plays what's on this PC. */
+  const [unreachable, setUnreachable] = useState(false);
   const [search, setSearch] = useState("");
   const [platform, setPlatform] = useState("");
   const [sort, setSort] = useState<Sort>("played");
@@ -78,7 +80,11 @@ export function InstalledGames() {
     if (desktop) void desktop.installed().then(setLocal, () => setLocal([]));
   };
   useEffect(() => {
-    api.games().then(setGames, (e: Error) => setError(e.message));
+    api.games().then(setGames, (e: Error) => {
+      if (!desktop) return setError(e.message);
+      setGames([]);
+      setUnreachable(true);
+    });
     api.myGames().then(setStates, () => setStates([]));
     refreshLocal();
   }, []);
@@ -113,13 +119,13 @@ export function InstalledGames() {
         installedAt: l?.installedAt ?? latest(installedOn.map((x) => x.installedAt)),
         lastPlayedAt: latest(s.map((x) => x.lastPlayedAt)),
         playtimeSeconds: s.reduce((t, x) => t + x.playtimeSeconds, 0),
-        gone: !byId.has(id),
+        gone: !unreachable && !byId.has(id),
       });
     };
     for (const l of local ?? []) add(l.gameId, l);
     if (scope === "all") for (const s of states) if (s.installedAt && !s.uninstalledAt && !out.has(s.gameId)) add(s.gameId, null);
     return [...out.values()];
-  }, [games, local, states, scope]);
+  }, [games, local, states, scope, unreachable]);
 
   if (error) return <p className="error">{error}</p>;
   if (!entries || (desktop && local === null)) return <p className="muted">Loading…</p>;
@@ -252,6 +258,7 @@ export function InstalledGames() {
         <p className="muted">No installed games match.</p>
       ) : (
         <>
+          {unreachable && <p className="muted small">Can't reach the server right now, so this shows only the games on this PC. They still play.</p>}
           <p className="muted count">{shown.length} installed</p>
           {prefs.mode === "list" ? (
             <ul className="game-list installed-list">

@@ -634,7 +634,8 @@ export async function playEmulated(
   const after = await snapshot(plan);
   const changed = [...after].filter(([rel, t]) => before.get(rel) !== t).map(([rel]) => rel);
   let backup: SaveBackup | null = null;
-  if (changed.length) {
+  // Offline, the save stays in the emulator's folder; the next session online that changes it backs it up.
+  if (changed.length && (await api.health().then(() => true, () => false))) {
     const tmp = await mkdtemp(path.join(os.tmpdir(), "lootden-emusave-"));
     try {
       const zip = path.join(tmp, "save.zip");

@@ -25,11 +25,13 @@ export interface DesktopSettings {
   openAtLogin: boolean;
   /** The "still running in the tray" hint was shown once. */
   trayHintShown: boolean;
+  /** Play time recorded while the server couldn't be reached, sent when the app is back online. */
+  pendingPlays: Array<{ gameId: string; seconds: number; playedAt: string }>;
 }
 
 export function defaultSettings(): DesktopSettings {
   const installDir = process.platform === "win32" ? "C:\\Games" : path.join(os.homedir(), "Games");
-  return { serverUrl: "", apiToken: "", installDir, libraryDirs: [installDir], keepArchives: false, fullscreen: false, handheld: "auto", toolsDir: "", closeToTray: true, autoUpdate: true, openAtLogin: false, trayHintShown: false };
+  return { serverUrl: "", apiToken: "", installDir, libraryDirs: [installDir], keepArchives: false, fullscreen: false, handheld: "auto", toolsDir: "", closeToTray: true, autoUpdate: true, openAtLogin: false, trayHintShown: false, pendingPlays: [] };
 }
 
 export class SettingsStore {
@@ -44,7 +46,7 @@ export class SettingsStore {
   }
 
   get(): DesktopSettings {
-    return { ...this.value, libraryDirs: [...this.value.libraryDirs] };
+    return { ...this.value, libraryDirs: [...this.value.libraryDirs], pendingPlays: [...this.value.pendingPlays] };
   }
 
   update(patch: Partial<DesktopSettings>): DesktopSettings {

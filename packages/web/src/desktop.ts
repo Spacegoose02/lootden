@@ -120,6 +120,8 @@ export interface DesktopBridge {
   biosFromServer?(): Promise<{ added: string[]; skipped: string[] }>;
   openTools?(): Promise<void>;
   changeServer(): Promise<void>;
+  /** Switches to the app's offline library when the server really can't be reached (apps from 0.13.2). */
+  goOffline?(): Promise<boolean>;
   toggleFullscreen(): Promise<boolean>;
   /** Tray, start-up and update options (missing in apps before 0.9.1). */
   appSettings?(patch?: Partial<Pick<AppSettings, "closeToTray" | "autoUpdate" | "openAtLogin" | "handheld" | "fullscreen">>): Promise<AppSettings>;
