@@ -37,6 +37,7 @@ import {
   UpdateMismatchError,
   type InstallEvent,
 } from "@lootden/client";
+import { isExternalLink, isFile, onOrigin, permissionAllowed } from "./links.js";
 import { SettingsStore, type DesktopSettings } from "./settings.js";
 import { downloadUpdate, installKind, launchUpdate, pickUpdate, type AvailableUpdate } from "./updater.js";
 
@@ -66,6 +67,9 @@ if (existsSync(legacyUserData)) app.setPath("userData", legacyUserData);
 
 if (!app.requestSingleInstanceLock()) app.quit();
 for (const p of PROTOCOLS) app.setAsDefaultProtocolClient(p);
+
+/** The bundled page that asks for the server's address. */
+const SETUP_PAGE = path.join(__dirname, "..", "setup", "index.html");
 
 const origin = () => {
   try {
@@ -425,7 +429,8 @@ async function installNow(): Promise<void> {
 
 function registerIpc(): void {
   ipcMain.handle("gm:setServer", async (e, url: string) => {
-    if (!e.senderFrame?.url.startsWith("file://")) throw new Error("Not allowed from this page");
+    // Only the bundled setup page: any other file:// page (say, one on a network share) could repoint the app.
+    if (!isFile(e.senderFrame?.url ?? "", SETUP_PAGE)) throw new Error("Not allowed from this page");
     const parsed = new URL(/^https?:\/\//.test(url) ? url : `http://${url}`);
     const health = await net.fetch(`${parsed.origin}/api/health`).then((r) => r.json() as Promise<{ status?: string }>).catch(() => null);
     if (health?.status !== "ok") throw new Error(`No LootDen server answered at ${parsed.origin}`);
@@ -971,7 +976,7 @@ function registerIpc(): void {
     fromServer(e);
     settings.update({ serverUrl: "", apiToken: "" });
     if (customFrame) win?.setTitleBarOverlay({ color: "#0d0820", symbolColor: "#f3eeff", height: TITLEBAR_HEIGHT });
-    await win?.loadFile(path.join(__dirname, "..", "setup", "index.html"));
+    await win?.loadFile(SETUP_PAGE);
   });
 
   // The page draws the title bar; it asks how, and passes its theme's colours for the buttons.
@@ -1067,22 +1072,23 @@ async function createWindow(): Promise<void> {
   Menu.setApplicationMenu(null);
   // Links to other sites (news, screenshots) open in the normal browser.
   win.webContents.setWindowOpenHandler(({ url }) => {
-    void shell.openExternal(url);
+    if (isExternalLink(url)) void shell.openExternal(url);
     return { action: "deny" };
   });
+  win.webContents.session.setPermissionRequestHandler((_wc, permission, callback, details) => callback(permissionAllowed(permission, details.requestingUrl, origin())));
   win.webContents.on("will-navigate", (event, url) => {
     if (origin() && url.startsWith(`${origin()}/api/auth/oidc/login`)) {
       event.preventDefault();
       void startSignIn(url);
       return;
     }
-    if (url.startsWith("file://") || (origin() && url.startsWith(origin()))) return;
+    if (isFile(url, SETUP_PAGE) || onOrigin(url, origin())) return;
     // Single sign-on: the server redirects the window to the identity provider, which may
     // hand on to another (TinyAuth to Google). Those pages keep their cookies in this
     // window, so they stay here until the provider sends the window back to the server.
-    if (onSignInPages()) return;
+    if (onSignInPages() && /^https?:\/\//.test(url)) return;
     event.preventDefault();
-    void shell.openExternal(url);
+    if (isExternalLink(url)) void shell.openExternal(url);
   });
   // Closing hides the window to the tray: the app keeps tracking play time and installs.
   win.on("close", (event) => {
@@ -1107,8 +1113,8 @@ async function createWindow(): Promise<void> {
     // The provider's pages have no LootDen title bar; Escape backs out of a sign-in.
     if (input.type === "keyDown" && input.key === "Escape" && onSignInPages()) void win?.loadURL(origin());
   });
-  if (s.serverUrl) await win.loadURL(s.serverUrl).catch(() => win?.loadFile(path.join(__dirname, "..", "setup", "index.html")));
-  else await win.loadFile(path.join(__dirname, "..", "setup", "index.html"));
+  if (s.serverUrl) await win.loadURL(s.serverUrl).catch(() => win?.loadFile(SETUP_PAGE));
+  else await win.loadFile(SETUP_PAGE);
   if (pendingDeepLink) {
     await openDeepLink(pendingDeepLink);
     pendingDeepLink = null;
