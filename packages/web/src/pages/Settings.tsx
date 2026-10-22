@@ -6,6 +6,8 @@ import { AdminApps } from "../components/AdminApps";
 import { AdminIntegrations } from "../components/AdminIntegrations";
 import { AdminVideos } from "../components/AdminVideos";
 import { Card, Field, Pill, Toggle, useConnectors } from "../components/SettingsUi";
+import { ThemePicker } from "../components/ThemePicker";
+import { useAuth } from "../auth";
 
 type Msg = (m: string, error?: boolean) => void;
 
@@ -18,23 +20,29 @@ const SECTIONS: Array<{ id: string; title: string; blurb: string }> = [
   { id: "safety", title: "Scanning & alerts", blurb: "Virus scan and notifications" },
   { id: "services", title: "Sign-in & services", blurb: "SSO, metadata keys, itch.io, Nexus" },
   { id: "content", title: "News & apps", blurb: "Feeds, videos and app builds" },
+  { id: "themes", title: "Themes", blurb: "Colours and look of LootDen" },
 ];
+/** Sections everyone can open; the rest are admin settings. */
+const PERSONAL = new Set(["themes"]);
 
 /** Every admin setting in one place, grouped into a few sections. */
 export function Settings() {
-  const { section = "library" } = useParams();
+  const { me } = useAuth();
+  const admin = me?.role === "admin";
+  const sections = admin ? SECTIONS : SECTIONS.filter((s) => PERSONAL.has(s.id));
+  const { section = sections[0]!.id } = useParams();
   const [msg, setMsg] = useState<{ text: string; error?: boolean } | null>(null);
   const say: Msg = (text, error) => setMsg(text ? { text, error } : null);
   useEffect(() => setMsg(null), [section]);
-  if (!SECTIONS.some((s) => s.id === section)) return <Navigate to="/settings" replace />;
-  const current = SECTIONS.find((s) => s.id === section)!;
+  if (!sections.some((s) => s.id === section)) return <Navigate to="/settings" replace />;
+  const current = sections.find((s) => s.id === section)!;
 
   return (
     <div className="settings">
       <aside className="settings-nav" aria-label="Settings sections">
         <h1>Settings</h1>
         <nav>
-          {SECTIONS.map((s) => (
+          {sections.map((s) => (
             <NavLink key={s.id} to={`/settings/${s.id}`} className={() => (s.id === section ? "active" : "")}>
               <strong>{s.title}</strong>
               <small>{s.blurb}</small>
@@ -57,6 +65,7 @@ export function Settings() {
         {section === "safety" && <SafetySection say={say} />}
         {section === "services" && <ServicesSection say={say} />}
         {section === "content" && <ContentSection say={say} />}
+        {section === "themes" && <ThemePicker />}
       </div>
     </div>
   );

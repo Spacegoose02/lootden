@@ -103,6 +103,28 @@ store comes as its own PR on top of it. Start with
 - 0.13.0: chunked uploads of installed games (`PUT /api/games/:id/prepared/parts/:upload`,
   then `.../finish`, 16 MB parts with retries; errors name the cause), controller navigation
   fixes, admins can delete games (`DELETE /api/games/:id`), new logo and mascot.
+=======
+## Recent work (0.13.0, not released yet)
+
+- Uploading an installed game from the desktop app now goes in 16 MB parts with retries
+  (`PUT /api/games/:id/prepared/parts/:upload`, then `.../finish`). Before, one multi-GB
+  request failed behind reverse proxies and tunnels. Errors now say what to fix (proxy upload
+  limit, read-only games mount, folder permissions). The old one-shot `PUT .../prepared`
+  stays for older apps.
+- Controller navigation: selects no longer trap the d-pad, the filter bar and the games
+  remember where you left them, Y switches between them.
+- Admins can delete games (`DELETE /api/games/:id`, `?permanent=true` to remove the files).
+- New logo and mascot.
+
+- Themes have their own **Settings, Themes** tab (`components/ThemePicker.tsx`) with a small
+  mock of the app in each theme's colours and a Dark/Light filter. Ten new themes (Rosé Pine,
+  Kanagawa, Evergreen, Aurora, Tropical Sunset, Latte, Sakura, Paper, Red Visor, Famicom), 33
+  in all. Everyone gets Settings in the menu now, but non-admins only see the Themes tab.
+  Profile shows the current theme with a link there. The choice is still `gm-theme` in
+  localStorage. Theme colours must stay `#hex`: the desktop title bar buttons only accept hex.
+
+The original upload error was only visible as a tiny screenshot, so the exact cause wasn't
+confirmed. If uploads still fail, the error text now names the cause; start there.
 
 ## Already done from the backlog
 
