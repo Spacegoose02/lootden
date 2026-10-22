@@ -8,6 +8,7 @@ import { epicFromHeroic, epicFromManifest } from "../src/stores/epic.js";
 import { gogFromHeroic, gogFromRegistry } from "../src/stores/gog.js";
 import { steamInstalled, steamLibraries } from "../src/stores/steam.js";
 import { parseRegQuery } from "../src/stores/windows.js";
+import { gamingRootFolders, xboxFromConfig } from "../src/stores/xbox.js";
 import { parseVdf } from "../src/stores/vdf.js";
 
 let work: string;
@@ -75,5 +76,23 @@ describe("store scanners", () => {
     assert.equal(epicFromManifest(item({ AppName: "dlc1", MainGameAppName: "Fortnite" })), null, "DLC");
     const heroic = JSON.stringify({ Sugar: { app_name: "Sugar", title: "Hades", install_path: "/games/Hades" }, Dlc: { app_name: "Dlc", install_path: "/games/x", is_dlc: true } });
     assert.deepEqual(epicFromHeroic(heroic), [{ addon: "epic", externalId: "Sugar", title: "Hades", installDir: "/games/Hades", launchUrl: "heroic://launch?appName=Sugar&runner=legendary" }]);
+  });
+
+  it("reads the Xbox app's game folders and MicrosoftGame.config", () => {
+    const names = Buffer.from("XboxGames\0Other Games\0", "utf16le");
+    const header = Buffer.alloc(8);
+    header.write("RGBX", 0, "latin1");
+    header.writeUInt32LE(1, 4);
+    assert.deepEqual(gamingRootFolders(Buffer.concat([header, names])), ["XboxGames", "Other Games"]);
+    assert.deepEqual(gamingRootFolders(Buffer.from("junk")), []);
+    const xml = `<?xml version="1.0"?><Game configVersion="1"><Identity Name="Microsoft.Starfield" Publisher="CN=x"/><StoreId>9NCJSXWZTP88</StoreId><TitleId>4ED3C6F2</TitleId><ShellVisuals DefaultDisplayName="Starfield &amp; Friends"/></Game>`;
+    assert.deepEqual(xboxFromConfig(xml, "D:\\XboxGames\\Starfield"), {
+      addon: "xbox",
+      externalId: String(0x4ed3c6f2),
+      title: "Starfield & Friends",
+      installDir: "D:\\XboxGames\\Starfield",
+      launchUrl: "msxbox://game/?productId=9NCJSXWZTP88",
+    });
+    assert.equal(xboxFromConfig("<Game/>", "x"), null);
   });
 });

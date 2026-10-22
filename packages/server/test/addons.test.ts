@@ -255,3 +255,29 @@ describe("Epic Games add-on", () => {
     assert.deepEqual([forms.at(-1)!.get("grant_type"), forms.at(-1)!.get("refresh_token")], ["refresh_token", "rt2"], "later syncs use the kept refresh token");
   });
 });
+
+describe("Xbox add-on", () => {
+  it("lists played games (not apps) from OpenXBL", async () => {
+    const { xbox } = await import("../src/addons/xbox.js");
+    const fetchImpl = (async (_input: string | URL | Request, init?: RequestInit) => {
+      if (new Headers(init?.headers).get("x-authorization") !== "key") return new Response("no", { status: 401 });
+      return Response.json({
+        xuid: "1",
+        titles: [
+          { titleId: "1324021490", name: "Starfield", type: "Game", devices: ["PC", "XboxSeries"], displayImage: "http://store-images.s-microsoft.com/a.png", bingId: "9NCJSXWZTP88", titleHistory: { lastTimePlayed: "2026-10-01T10:00:00Z" } },
+          { titleId: "2", name: "Halo 3", type: "Game", devices: ["Xbox360"] },
+          { titleId: "3", name: "Netflix", type: "App", devices: ["XboxOne"] },
+        ],
+      });
+    }) as typeof fetch;
+    const { app, ctx } = await makeApp(root, {}, { fetchImpl, addons: [xbox], resolveHost: async () => ["93.184.216.34"] });
+    const sam = await signIn(app, ctx, "sam");
+    assert.match((await app.inject({ method: "PUT", url: "/api/addons/xbox/account", headers: sam, payload: { config: { apiKey: "bad" } } })).json().error, /refused the key/);
+    assert.equal((await app.inject({ method: "PUT", url: "/api/addons/xbox/account", headers: sam, payload: { config: { apiKey: "key" } } })).json().games, 2);
+    const games = (await app.inject({ url: "/api/store-games?addon=xbox", headers: sam })).json();
+    assert.deepEqual(games.map((g: { title: string; coverUrl: string | null; storeUrl: string | null; launchUrl: string | null; lastPlayedAt: string | null }) => [g.title, g.coverUrl, g.storeUrl, g.launchUrl, g.lastPlayedAt]), [
+      ["Halo 3", null, null, null, null],
+      ["Starfield", "https://store-images.s-microsoft.com/a.png", "https://www.xbox.com/games/store/x/9NCJSXWZTP88", "msxbox://game/?productId=9NCJSXWZTP88", "2026-10-01T10:00:00Z"],
+    ]);
+  });
+});
