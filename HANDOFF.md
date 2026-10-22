@@ -38,7 +38,9 @@ in-process (`packages/server/test/helpers.ts`), so they need no network.
 ## Releasing
 
 1. Bump `version` in the root `package.json` and in every `packages/*/package.json`
-   (including the desktop app's `@lootden/client` dependency), commit "LootDen x.y.z".
+   (including the desktop app's `@lootden/client` dependency), `VERSION` in
+   `packages/server/src/app.ts` (what `/api/health` reports), and `package-lock.json`
+   (`npm install --package-lock-only`); commit "LootDen x.y.z".
 2. Merge the PR to `main` once CI (`.github/workflows/ci.yml`: tests, Playnite build, Docker
    build) is green. Sessions can't merge without a review, so the owner merges.
 3. Publish a GitHub release with tag `vX.Y.Z` on `main` (the owner clicks Publish; tag pushes
