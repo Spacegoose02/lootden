@@ -204,3 +204,54 @@ describe("GOG add-on", () => {
     ]);
   });
 });
+
+describe("Epic Games add-on", () => {
+  it("signs in with the pasted code, pages the library and keeps only games", async () => {
+    const { epic, epicCode } = await import("../src/addons/epic.js");
+    assert.equal(epicCode('{"redirectUrl":"https://localhost/launcher/authorized?code=xyz","authorizationCode":"xyz","sid":null}'), "xyz");
+    const forms: URLSearchParams[] = [];
+    const fetchImpl = (async (input: string | URL | Request, init?: RequestInit) => {
+      const url = new URL(String(input));
+      if (url.pathname.endsWith("/oauth/token")) {
+        const form = new URLSearchParams(String(init?.body));
+        forms.push(form);
+        assert.match(new Headers(init?.headers).get("authorization") ?? "", /^Basic /);
+        if (form.get("grant_type") === "authorization_code" && form.get("code") !== "xyz") return Response.json({ errorCode: "invalid" }, { status: 400 });
+        return Response.json({ access_token: "at", refresh_token: `rt${forms.length}` });
+      }
+      if (url.hostname.startsWith("library-service")) {
+        const second = url.searchParams.get("cursor") === "next";
+        return Response.json({
+          records: second
+            ? [{ namespace: "ue", catalogItemId: "asset", appName: "UEAsset" }, { namespace: "fn", catalogItemId: "dlc", appName: "FnDlc" }]
+            : [{ namespace: "sugar", catalogItemId: "c1", appName: "Sugar" }, { namespace: "fn", catalogItemId: "c2", appName: "Fortnite" }],
+          responseMetadata: second ? {} : { nextCursor: "next" },
+        });
+      }
+      if (url.hostname.startsWith("catalog")) {
+        const ns = url.pathname.split("/")[6];
+        const ids = url.searchParams.getAll("id");
+        const all: Record<string, unknown> = {
+          c1: { title: "Hades", keyImages: [{ type: "DieselGameBox", url: "https://cdn/wide.jpg" }, { type: "DieselGameBoxTall", url: "https://cdn/tall.jpg" }], customAttributes: { "com.epicgames.app.productSlug": { value: "hades" } } },
+          c2: { title: "Fortnite", keyImages: [] },
+          dlc: { title: "Fortnite Pack", mainGameItem: { id: "c2" } },
+        };
+        assert.ok(ns !== "ue", "Unreal assets aren't looked up");
+        return Response.json(Object.fromEntries(ids.map((id) => [id, all[id]])));
+      }
+      return new Response("?", { status: 404 });
+    }) as typeof fetch;
+    const { app, ctx } = await makeApp(root, {}, { fetchImpl, addons: [epic], resolveHost: async () => ["93.184.216.34"] });
+    const sam = await signIn(app, ctx, "sam");
+    assert.match((await app.inject({ method: "PUT", url: "/api/addons/epic/account", headers: sam, payload: { config: { code: "nope" } } })).json().error, /didn't accept that code/);
+    const ok = (await app.inject({ method: "PUT", url: "/api/addons/epic/account", headers: sam, payload: { config: { code: '{"authorizationCode":"xyz"}' } } })).json();
+    assert.equal(ok.games, 2);
+    const games = (await app.inject({ url: "/api/store-games?addon=epic", headers: sam })).json();
+    assert.deepEqual(games.map((g: { title: string; externalId: string; coverUrl: string | null; storeUrl: string | null; launchUrl: string }) => [g.title, g.externalId, g.coverUrl, g.storeUrl, g.launchUrl]), [
+      ["Fortnite", "Fortnite", null, null, "com.epicgames.launcher://apps/fn%3Ac2%3AFortnite?action=launch&silent=true"],
+      ["Hades", "Sugar", "https://cdn/tall.jpg", "https://store.epicgames.com/p/hades", "com.epicgames.launcher://apps/sugar%3Ac1%3ASugar?action=launch&silent=true"],
+    ]);
+    await app.inject({ method: "POST", url: "/api/addons/epic/sync", headers: sam });
+    assert.deepEqual([forms.at(-1)!.get("grant_type"), forms.at(-1)!.get("refresh_token")], ["refresh_token", "rt2"], "later syncs use the kept refresh token");
+  });
+});

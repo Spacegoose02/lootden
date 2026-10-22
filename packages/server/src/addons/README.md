@@ -22,6 +22,7 @@ In LootDen. Admins can switch an add-on off for everyone from the same card.
 | --- | --- |
 | `steam` | Owned games and play time from the Steam Web API (Steam ID + API key); the desktop app reads Steam's library folders for installed games (`packages/client/src/stores/steam.ts`) |
 | `gog` | Owned games through GOG's sign-in (the Galaxy client's public credentials, as Heroic and Playnite use). The person pastes the code once; the refresh token is kept with `ctx.save()`. Desktop: Galaxy's registry keys on Windows, Heroic's `gog_store/installed.json` |
+| `epic` | Owned games through Epic's sign-in (the Epic launcher's public credentials, as Legendary and Heroic use), titles and covers from Epic's catalogue; skips Unreal assets and DLC. Desktop: the launcher's `Manifests/*.item` on Windows, Heroic's Legendary `installed.json` |
 | `json-list` | A JSON list of games at any address; for stores without an add-on, and the template for new ones |
 
 ## Adding one
