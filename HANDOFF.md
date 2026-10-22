@@ -80,7 +80,7 @@ open window broke as soon as requests stopped getting through.
 - The web Installed tab shows this PC's games with a note instead of an error when the
   server's list fails to load.
 
-## Library add-ons (foundation in progress, ships with the first store add-on)
+## Library add-ons (0.14.0, not released yet)
 
 The More2Do list asks for add-ons for other game libraries. The foundation is in place; each
 store comes as its own PR on top of it. Start with
@@ -93,8 +93,9 @@ store comes as its own PR on top of it. Start with
   (the store launcher's link), Store, and In LootDen when a library game has the same title.
 - The desktop app has `storeGames` (local scanners in `packages/client/src/stores/`) and
   `launchStore` (only the schemes in `STORE_LAUNCH_SCHEMES`).
-- Built in so far: `json-list` (any JSON list of games). Planned, one PR each: Steam, GOG,
-  Epic, Xbox, then others.
+- Built in so far: `steam` (Steam Web API key + Steam ID; desktop scanner reads
+  `libraryfolders.vdf` and `appmanifest_*.acf`) and `json-list` (any JSON list of games).
+  Planned, one PR each: GOG, Epic, Xbox, then others (itch.io, Ubisoft and EA launchers).
 
 ## Earlier releases
 

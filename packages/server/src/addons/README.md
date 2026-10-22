@@ -20,6 +20,7 @@ In LootDen. Admins can switch an add-on off for everyone from the same card.
 
 | Add-on | What it reads |
 | --- | --- |
+| `steam` | Owned games and play time from the Steam Web API (Steam ID + API key); the desktop app reads Steam's library folders for installed games (`packages/client/src/stores/steam.ts`) |
 | `json-list` | A JSON list of games at any address; for stores without an add-on, and the template for new ones |
 
 ## Adding one

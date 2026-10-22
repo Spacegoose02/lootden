@@ -120,3 +120,42 @@ describe("library add-ons", () => {
     assert.equal(byAdmin.games, 1, "an admin's account may read the LAN");
   });
 });
+
+describe("Steam add-on", () => {
+  it("lists owned games with play time, and says what to fix when the profile is private", async () => {
+    const { steam } = await import("../src/addons/steam.js");
+    let games: unknown = [
+      { appid: 620, name: "Portal 2", playtime_forever: 840, rtime_last_played: 1760000000 },
+      { appid: 1145360, name: "Hades", playtime_forever: 0 },
+    ];
+    const calls: string[] = [];
+    const fetchImpl = (async (input: string | URL | Request) => {
+      const url = new URL(String(input));
+      calls.push(url.hostname + url.pathname);
+      if (url.hostname === "steamcommunity.com") return new Response("<profile><steamID64>76561197960287930</steamID64></profile>");
+      if (url.searchParams.get("key") !== "k") return new Response("Forbidden", { status: 403 });
+      assert.equal(url.searchParams.get("steamid"), "76561197960287930");
+      return Response.json({ response: games ? { game_count: 2, games } : {} });
+    }) as typeof fetch;
+    const { app, ctx } = await makeApp(root, {}, { fetchImpl, addons: [steam], resolveHost: async () => ["93.184.216.34"] });
+    const sam = await signIn(app, ctx, "sam");
+
+    const bad = await app.inject({ method: "PUT", url: "/api/addons/steam/account", headers: sam, payload: { config: { steamId: "gabelogannewell", apiKey: "nope" } } });
+    assert.match(bad.json().error, /refused the API key/);
+    const ok = (await app.inject({ method: "PUT", url: "/api/addons/steam/account", headers: sam, payload: { config: { steamId: "https://steamcommunity.com/id/gabelogannewell/", apiKey: "k" } } })).json();
+    assert.equal(ok.games, 2);
+    assert.ok(calls.includes("steamcommunity.com/id/gabelogannewell/"), "custom URL names are resolved to the 64-bit id");
+    const list = (await app.inject({ url: "/api/store-games?addon=steam", headers: sam })).json();
+    assert.deepEqual(list.map((g: { title: string; launchUrl: string; playtimeSeconds: number | null; storeUrl: string }) => [g.title, g.launchUrl, g.playtimeSeconds, g.storeUrl]), [
+      ["Hades", "steam://rungameid/1145360", null, "https://store.steampowered.com/app/1145360"],
+      ["Portal 2", "steam://rungameid/620", 50400, "https://store.steampowered.com/app/620"],
+    ]);
+    assert.match(list[1].coverUrl, /620\/library_600x900\.jpg$/);
+    assert.equal(list[1].lastPlayedAt, new Date(1760000000 * 1000).toISOString());
+
+    games = null;
+    const priv = await app.inject({ method: "POST", url: "/api/addons/steam/sync", headers: sam });
+    assert.match(priv.json().error, /Game details to Public/);
+    assert.equal((await app.inject({ url: "/api/store-games?addon=steam", headers: sam })).json().length, 2, "a failed sync keeps the last list");
+  });
+});
