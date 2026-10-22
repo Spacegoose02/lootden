@@ -4,6 +4,7 @@ import { platformFor, type GameSummary, type UserGameState } from "@lootden/shar
 import { api } from "../api";
 import { desktop } from "../desktop";
 import { InstalledGames } from "../components/InstalledGames";
+import { StoreGames } from "../components/StoreGames";
 import { GameCollection, useViewPrefs, ViewPicker } from "../components/LibraryLayout";
 import { Backlog, Stats } from "../components/LibraryViews";
 
@@ -27,6 +28,7 @@ export function Library() {
           [
             ["all", "All games"],
             ["installed", desktop ? "Installed" : "My installs"],
+            ["stores", "Other stores"],
             ["backlog", "Backlog"],
             ["stats", "Stats"],
           ] as const
@@ -36,7 +38,7 @@ export function Library() {
           </button>
         ))}
       </div>
-      {tab === "installed" ? <InstalledGames /> : tab === "backlog" ? <Backlog /> : tab === "stats" ? <Stats /> : <AllGames />}
+      {tab === "installed" ? <InstalledGames /> : tab === "stores" ? <StoreGames /> : tab === "backlog" ? <Backlog /> : tab === "stats" ? <Stats /> : <AllGames />}
     </>
   );
 }

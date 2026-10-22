@@ -48,6 +48,9 @@ setInterval(() => void ctx.wanted.run().catch((err) => app.log.warn(err, "Wanted
 // Release sources switched on under Settings, Sources: every half hour.
 setTimeout(() => void ctx.sources.run().catch(() => {}), 2 * 60_000).unref();
 setInterval(() => void ctx.sources.run().catch(() => {}), 30 * 60_000).unref();
+// Library add-ons: everyone's connected store accounts, twice a day.
+setTimeout(() => void ctx.addons.syncAll().catch(() => {}), 10 * 60_000).unref();
+setInterval(() => void ctx.addons.syncAll().catch(() => {}), 12 * 3600_000).unref();
 // Update checks for PC games, once a day.
 setTimeout(() => void ctx.versions.run().catch(() => {}), 10 * 60_000).unref();
 setInterval(() => void ctx.versions.run().catch(() => {}), 24 * 3600_000).unref();

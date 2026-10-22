@@ -1,6 +1,7 @@
 // Types and helpers shared by the server and the client.
 // Keep this package dependency-free so both sides can import it anywhere.
 
+export * from "./addons.js";
 export * from "./emulators.js";
 export * from "./packages.js";
 import type { KindReason, PackageKind } from "./packages.js";
