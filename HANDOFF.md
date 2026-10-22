@@ -80,7 +80,7 @@ open window broke as soon as requests stopped getting through.
 - The web Installed tab shows this PC's games with a note instead of an error when the
   server's list fails to load.
 
-## Library add-ons (0.14.0, not released yet)
+## Library add-ons (released in 0.14.1)
 
 The More2Do list asks for add-ons for other game libraries. The foundation is in place; each
 store comes as its own PR on top of it. Start with

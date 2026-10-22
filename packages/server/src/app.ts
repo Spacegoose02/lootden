@@ -53,7 +53,7 @@ import { addonRoutes } from "./routes/addons.js";
 import { DirectDownloads } from "./direct/manager.js";
 import { directRoutes } from "./routes/direct.js";
 
-export const VERSION = "0.14.0";
+export const VERSION = "0.14.1";
 
 /** Routes reachable without signing in. */
 const PUBLIC = [/^\/api\/health$/, /^\/api\/auth\//, /^\/api\/avatars\//];
