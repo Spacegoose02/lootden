@@ -97,7 +97,8 @@ store comes as its own PR on top of it. Start with
   `libraryfolders.vdf` and `appmanifest_*.acf`), `gog` (paste a sign-in code once; refresh
   token kept on the account; desktop finds Galaxy and Heroic installs), `epic` (same sign-in
   pattern; desktop reads the Epic launcher's manifests and Heroic) and `json-list` (any JSON
-  list of games). Planned, one PR each: Xbox, then others (itch.io, Ubisoft and EA launchers).
+  list of games), `xbox` (OpenXBL key; played games from the title history; desktop reads the
+  Xbox app's `.GamingRoot` folders). Planned next: others (itch.io, Ubisoft and EA launchers).
 
 ## Earlier releases
 
