@@ -6,11 +6,12 @@ import type { StoreScanner } from "./index.js";
 
 /** One of the Epic Games Launcher's install manifests (.item files, JSON). */
 export function epicFromManifest(text: string): LocalStoreGame | null {
-  const m = JSON.parse(text) as { AppName?: string; DisplayName?: string; InstallLocation?: string; bIsIncompleteInstall?: boolean; bIsApplication?: boolean; MainGameAppName?: string };
+  const m = JSON.parse(text) as { AppName?: string; DisplayName?: string; InstallLocation?: string; bIsIncompleteInstall?: boolean; bIsApplication?: boolean; MainGameAppName?: string; CatalogNamespace?: string; CatalogItemId?: string };
   if (!m.AppName || !m.InstallLocation || m.bIsIncompleteInstall || m.bIsApplication === false) return null;
   // DLC installs carry their main game's AppName; the game itself is listed once.
   if (m.MainGameAppName && m.MainGameAppName !== m.AppName) return null;
-  return { addon: "epic", externalId: m.AppName, title: m.DisplayName || path.basename(m.InstallLocation), installDir: m.InstallLocation };
+  const launchUrl = m.CatalogNamespace && m.CatalogItemId ? `com.epicgames.launcher://apps/${encodeURIComponent(`${m.CatalogNamespace}:${m.CatalogItemId}:${m.AppName}`)}?action=launch&silent=true` : undefined;
+  return { addon: "epic", store: "Epic Games", externalId: m.AppName, title: m.DisplayName || path.basename(m.InstallLocation), installDir: m.InstallLocation, ...(launchUrl ? { launchUrl } : {}) };
 }
 
 /** Games Heroic installed from Epic (through Legendary). */
@@ -20,6 +21,7 @@ export function epicFromHeroic(text: string): LocalStoreGame[] {
     .filter((g) => g.app_name && g.install_path && !g.is_dlc)
     .map((g) => ({
       addon: "epic",
+      store: "Epic Games",
       externalId: g.app_name!,
       title: g.title || path.basename(g.install_path!),
       installDir: g.install_path!,

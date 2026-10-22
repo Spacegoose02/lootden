@@ -26,6 +26,7 @@ export function xboxFromConfig(xml: string, dir: string): LocalStoreGame | null 
   const storeId = xml.match(/<StoreId>\s*([A-Z0-9]{12})\s*<\/StoreId>/)?.[1];
   return {
     addon: "xbox",
+    store: "Xbox",
     // Xbox Live (and OpenXBL) give the title id in decimal.
     externalId: String(parseInt(hexId, 16)),
     title: name.replace(/&amp;/g, "&").replace(/&apos;/g, "'").replace(/&quot;/g, '"'),

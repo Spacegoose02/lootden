@@ -2,6 +2,7 @@ import type { LocalStoreGame } from "@lootden/shared";
 import { epicScanner } from "./epic.js";
 import { gogScanner } from "./gog.js";
 import { steamScanner } from "./steam.js";
+import { ubisoftScanner } from "./ubisoft.js";
 import { xboxScanner } from "./xbox.js";
 
 /**
@@ -16,7 +17,7 @@ export interface StoreScanner {
   scan(): Promise<LocalStoreGame[]>;
 }
 
-export const STORE_SCANNERS: StoreScanner[] = [steamScanner, gogScanner, epicScanner, xboxScanner];
+export const STORE_SCANNERS: StoreScanner[] = [steamScanner, gogScanner, epicScanner, xboxScanner, ubisoftScanner];
 
 /** Every store game installed on this PC. A store that isn't installed, or fails to read, adds nothing. */
 export async function scanStoreGames(scanners: StoreScanner[] = STORE_SCANNERS, platform: NodeJS.Platform = process.platform): Promise<LocalStoreGame[]> {

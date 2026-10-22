@@ -281,3 +281,22 @@ describe("Xbox add-on", () => {
     ]);
   });
 });
+
+describe("itch.io add-on", () => {
+  it("pages through owned keys and keeps only games", async () => {
+    const { itch } = await import("../src/addons/itch.js");
+    const fetchImpl = (async (input: string | URL | Request) => {
+      const url = new URL(String(input));
+      if (!url.pathname.startsWith("/api/1/good/")) return Response.json({ errors: ["invalid key"] }, { status: 403 });
+      const page = Number(url.searchParams.get("page"));
+      const key = (id: number, title: string, classification = "game") => ({ game_id: id, game: { id, title, classification, cover_url: `https://img.itch.zone/${id}.png`, url: `https://dev.itch.io/${id}` } });
+      return Response.json({ per_page: 2, page, owned_keys: page === 1 ? [key(1, "Celeste Classic"), key(2, "OST", "soundtrack")] : page === 2 ? [key(3, "Baba Is You")] : [] });
+    }) as typeof fetch;
+    const { app, ctx } = await makeApp(root, {}, { fetchImpl, addons: [itch], resolveHost: async () => ["93.184.216.34"] });
+    const sam = await signIn(app, ctx, "sam");
+    assert.match((await app.inject({ method: "PUT", url: "/api/addons/itch/account", headers: sam, payload: { config: { apiKey: "bad" } } })).json().error, /refused the API key/);
+    assert.equal((await app.inject({ method: "PUT", url: "/api/addons/itch/account", headers: sam, payload: { config: { apiKey: "good" } } })).json().games, 2);
+    const games = (await app.inject({ url: "/api/store-games?addon=itch", headers: sam })).json();
+    assert.deepEqual(games.map((g: { title: string; launchUrl: string }) => [g.title, g.launchUrl]), [["Baba Is You", "itch://games/3"], ["Celeste Classic", "itch://games/1"]]);
+  });
+});

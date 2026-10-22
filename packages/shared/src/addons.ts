@@ -65,6 +65,8 @@ export interface LocalStoreGame {
   installDir: string;
   /** How to start it on this PC when it differs from the store's usual link (Heroic on Linux). */
   launchUrl?: string;
+  /** The store's name, for stores found only on the PC (no server add-on to name them). */
+  store?: string;
 }
 
 /**

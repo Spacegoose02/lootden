@@ -8,6 +8,7 @@ import { epicFromHeroic, epicFromManifest } from "../src/stores/epic.js";
 import { gogFromHeroic, gogFromRegistry } from "../src/stores/gog.js";
 import { steamInstalled, steamLibraries } from "../src/stores/steam.js";
 import { parseRegQuery } from "../src/stores/windows.js";
+import { ubisoftFromRegistry } from "../src/stores/ubisoft.js";
 import { gamingRootFolders, xboxFromConfig } from "../src/stores/xbox.js";
 import { parseVdf } from "../src/stores/vdf.js";
 
@@ -62,20 +63,20 @@ describe("store scanners", () => {
       "    other    REG_DWORD    0x1",
       "",
     ].join("\r\n");
-    assert.deepEqual(gogFromRegistry(parseRegQuery(reg)), [{ addon: "gog", externalId: "1207658924", title: "Unreal Tournament 2004", installDir: "C:\\GOG Games\\UT2004" }]);
+    assert.deepEqual(gogFromRegistry(parseRegQuery(reg)), [{ addon: "gog", store: "GOG", externalId: "1207658924", title: "Unreal Tournament 2004", installDir: "C:\\GOG Games\\UT2004", launchUrl: "goggalaxy://openGameView/1207658924" }]);
     const heroic = JSON.stringify({ installed: [{ appName: "1423049311", install_path: "/home/me/Games/Heroic/Cyberpunk 2077", platform: "windows" }, { appName: "x" }] });
     assert.deepEqual(gogFromHeroic(heroic), [
-      { addon: "gog", externalId: "1423049311", title: "Cyberpunk 2077", installDir: "/home/me/Games/Heroic/Cyberpunk 2077", launchUrl: "heroic://launch?appName=1423049311&runner=gog" },
+      { addon: "gog", store: "GOG", externalId: "1423049311", title: "Cyberpunk 2077", installDir: "/home/me/Games/Heroic/Cyberpunk 2077", launchUrl: "heroic://launch?appName=1423049311&runner=gog" },
     ]);
   });
 
   it("finds Epic games from the launcher's manifests and Heroic", () => {
     const item = (patch: object) => JSON.stringify({ AppName: "Fortnite", DisplayName: "Fortnite", InstallLocation: "C:\\Epic Games\\Fortnite", bIsIncompleteInstall: false, ...patch });
-    assert.deepEqual(epicFromManifest(item({})), { addon: "epic", externalId: "Fortnite", title: "Fortnite", installDir: "C:\\Epic Games\\Fortnite" });
+    assert.deepEqual(epicFromManifest(item({})), { addon: "epic", store: "Epic Games", externalId: "Fortnite", title: "Fortnite", installDir: "C:\\Epic Games\\Fortnite" });
     assert.equal(epicFromManifest(item({ bIsIncompleteInstall: true })), null, "still downloading");
     assert.equal(epicFromManifest(item({ AppName: "dlc1", MainGameAppName: "Fortnite" })), null, "DLC");
     const heroic = JSON.stringify({ Sugar: { app_name: "Sugar", title: "Hades", install_path: "/games/Hades" }, Dlc: { app_name: "Dlc", install_path: "/games/x", is_dlc: true } });
-    assert.deepEqual(epicFromHeroic(heroic), [{ addon: "epic", externalId: "Sugar", title: "Hades", installDir: "/games/Hades", launchUrl: "heroic://launch?appName=Sugar&runner=legendary" }]);
+    assert.deepEqual(epicFromHeroic(heroic), [{ addon: "epic", store: "Epic Games", externalId: "Sugar", title: "Hades", installDir: "/games/Hades", launchUrl: "heroic://launch?appName=Sugar&runner=legendary" }]);
   });
 
   it("reads the Xbox app's game folders and MicrosoftGame.config", () => {
@@ -88,11 +89,21 @@ describe("store scanners", () => {
     const xml = `<?xml version="1.0"?><Game configVersion="1"><Identity Name="Microsoft.Starfield" Publisher="CN=x"/><StoreId>9NCJSXWZTP88</StoreId><TitleId>4ED3C6F2</TitleId><ShellVisuals DefaultDisplayName="Starfield &amp; Friends"/></Game>`;
     assert.deepEqual(xboxFromConfig(xml, "D:\\XboxGames\\Starfield"), {
       addon: "xbox",
+      store: "Xbox",
       externalId: String(0x4ed3c6f2),
       title: "Starfield & Friends",
       installDir: "D:\\XboxGames\\Starfield",
       launchUrl: "msxbox://game/?productId=9NCJSXWZTP88",
     });
     assert.equal(xboxFromConfig("<Game/>", "x"), null);
+  });
+
+  it("finds Ubisoft Connect games and gives Epic manifests a launcher link", () => {
+    const reg = "HKEY_LOCAL_MACHINE\\SOFTWARE\\WOW6432Node\\Ubisoft\\Launcher\\Installs\\635\r\n    InstallDir    REG_SZ    C:/Games/Assassin's Creed Origins/\r\n";
+    assert.deepEqual(ubisoftFromRegistry(parseRegQuery(reg)), [
+      { addon: "ubisoft", store: "Ubisoft Connect", externalId: "635", title: "Assassin's Creed Origins", installDir: "C:/Games/Assassin's Creed Origins", launchUrl: "uplay://launch/635/0" },
+    ]);
+    const m = epicFromManifest(JSON.stringify({ AppName: "Sugar", DisplayName: "Hades", InstallLocation: "C:\\Hades", CatalogNamespace: "min", CatalogItemId: "abc" }));
+    assert.equal(m!.launchUrl, "com.epicgames.launcher://apps/min%3Aabc%3ASugar?action=launch&silent=true");
   });
 });
