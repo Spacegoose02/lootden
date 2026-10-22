@@ -28,9 +28,18 @@ export function StoreGames() {
   }, []);
 
   const installed = useMemo(() => new Map(local.map((l) => [`${l.addon}:${l.externalId}`, l])), [local]);
+  // Store games on this PC from accounts that aren't connected (or stores with no account side, like Ubisoft Connect).
+  const all = useMemo(() => {
+    if (!games) return null;
+    const known = new Set(games.map((g) => `${g.addon}:${g.externalId}`));
+    const extra: StoreGame[] = local
+      .filter((l) => !known.has(`${l.addon}:${l.externalId}`))
+      .map((l) => ({ addon: l.addon, store: l.store ?? l.addon, externalId: l.externalId, title: l.title, coverUrl: null, storeUrl: null, launchUrl: l.launchUrl ?? null, playtimeSeconds: null, lastPlayedAt: null, libraryGameId: null }));
+    return [...games, ...extra];
+  }, [games, local]);
   if (error) return <p className="error">{error}</p>;
-  if (!games) return <p className="muted">Loading…</p>;
-  if (!games.length)
+  if (!all) return <p className="muted">Loading…</p>;
+  if (!all.length)
     return (
       <div className="panel empty">
         <p>No games from other stores yet.</p>
@@ -40,11 +49,11 @@ export function StoreGames() {
       </div>
     );
 
-  const stores = [...new Map(games.map((g) => [g.addon, g.store])).entries()].sort((a, b) => a[1].localeCompare(b[1]));
+  const stores = [...new Map(all.map((g) => [g.addon, g.store])).entries()].sort((a, b) => a[1].localeCompare(b[1]));
   const q = search.trim().toLowerCase();
   const time = (s: string | null) => (s ? Date.parse(s) : 0);
   const isInstalled = (g: StoreGame) => installed.has(`${g.addon}:${g.externalId}`);
-  const shown = games
+  const shown = all
     .filter((g) => (!q || g.title.toLowerCase().includes(q)) && (!store || g.addon === store) && (!onlyInstalled || isInstalled(g)))
     .sort((a, b) =>
       sort === "played" ? time(b.lastPlayedAt) - time(a.lastPlayedAt) : sort === "playtime" ? (b.playtimeSeconds ?? 0) - (a.playtimeSeconds ?? 0) : a.title.localeCompare(b.title),
@@ -90,7 +99,7 @@ export function StoreGames() {
         )}
       </div>
       <p className="muted count">
-        {shown.length} of {games.length} games
+        {shown.length} of {all.length} games
       </p>
       <div className="grid store-grid">
         {shown.map((g) => (

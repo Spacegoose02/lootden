@@ -24,6 +24,8 @@ In LootDen. Admins can switch an add-on off for everyone from the same card.
 | `gog` | Owned games through GOG's sign-in (the Galaxy client's public credentials, as Heroic and Playnite use). The person pastes the code once; the refresh token is kept with `ctx.save()`. Desktop: Galaxy's registry keys on Windows, Heroic's `gog_store/installed.json` |
 | `epic` | Owned games through Epic's sign-in (the Epic launcher's public credentials, as Legendary and Heroic use), titles and covers from Epic's catalogue; skips Unreal assets and DLC. Desktop: the launcher's `Manifests/*.item` on Windows, Heroic's Legendary `installed.json` |
 | `xbox` | Games the account has played (console and PC) from Xbox Live's title history, through an OpenXBL key (xbl.io); apps are skipped, PC games get an `msxbox://` Play link. Desktop (Windows): the Xbox app's game folders from each drive's `.GamingRoot`, `MicrosoftGame.config` for the title id |
+| `itch` | Games bought or claimed on itch.io (API key from the account settings); soundtracks and tools skipped; Play opens the itch app |
+| Ubisoft Connect (desktop only) | No account side: `packages/client/src/stores/ubisoft.ts` reads the launcher's registry keys, and the games show on this PC only |
 | `json-list` | A JSON list of games at any address; for stores without an add-on, and the template for new ones |
 
 ## Adding one
@@ -46,4 +48,6 @@ In LootDen. Admins can switch an add-on off for everyone from the same card.
    fake `fetchImpl`, and rebuild.
 6. Optional: a desktop scanner in `packages/client/src/stores/<id>.ts` implementing
    `StoreScanner` (same `addon` id, `externalId`s matching the server's), listed in
-   `STORE_SCANNERS`.
+   `STORE_SCANNERS`. Give each game its `store` name and `launchUrl`: installed games show
+   under Other stores even when no account is connected, and a store with no account side
+   at all (Ubisoft Connect) can be a scanner alone.

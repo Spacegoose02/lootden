@@ -42,7 +42,7 @@ export async function steamInstalled(library: string): Promise<LocalStoreGame[]>
     if (typeof state.StateFlags === "string" && (Number(state.StateFlags) & 4) === 0) continue;
     // Proton, the Steam runtimes and redistributables are tools, not games.
     if (/^(Proton|Steam Linux Runtime|Steamworks Common Redistributables)/.test(state.name)) continue;
-    out.push({ addon: "steam", externalId: state.appid, title: state.name, installDir: path.join(apps, "common", typeof state.installdir === "string" ? state.installdir : "") });
+    out.push({ addon: "steam", store: "Steam", externalId: state.appid, title: state.name, launchUrl: `steam://rungameid/${state.appid}`, installDir: path.join(apps, "common", typeof state.installdir === "string" ? state.installdir : "") });
   }
   return out;
 }

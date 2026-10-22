@@ -98,7 +98,10 @@ store comes as its own PR on top of it. Start with
   token kept on the account; desktop finds Galaxy and Heroic installs), `epic` (same sign-in
   pattern; desktop reads the Epic launcher's manifests and Heroic) and `json-list` (any JSON
   list of games), `xbox` (OpenXBL key; played games from the title history; desktop reads the
-  Xbox app's `.GamingRoot` folders). Planned next: others (itch.io, Ubisoft and EA launchers).
+  Xbox app's `.GamingRoot` folders), `itch` (itch.io API key) and a desktop-only Ubisoft
+  Connect scanner. Games installed on the PC show under Other stores even without a
+  connected account. Not done: the EA app (no reliable way found yet to read its installs
+  or start them by link).
 
 ## Earlier releases
 

@@ -10,7 +10,7 @@ export function gogFromRegistry(keys: Map<string, Record<string, string>>): Loca
   const out: LocalStoreGame[] = [];
   for (const v of keys.values()) {
     if (!v.gameID || !v.path) continue;
-    out.push({ addon: "gog", externalId: v.gameID, title: v.gameName || path.win32.basename(v.path), installDir: v.path });
+    out.push({ addon: "gog", store: "GOG", externalId: v.gameID, title: v.gameName || path.win32.basename(v.path), installDir: v.path, launchUrl: `goggalaxy://openGameView/${v.gameID}` });
   }
   return out;
 }
@@ -22,6 +22,7 @@ export function gogFromHeroic(text: string): LocalStoreGame[] {
     .filter((g) => g.appName && g.install_path)
     .map((g) => ({
       addon: "gog",
+      store: "GOG",
       externalId: g.appName!,
       title: g.title || path.basename(g.install_path!),
       installDir: g.install_path!,
