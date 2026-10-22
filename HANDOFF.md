@@ -103,6 +103,18 @@ store comes as its own PR on top of it. Start with
   connected account. Not done: the EA app (no reliable way found yet to read its installs
   or start them by link).
 
+### One library (with the add-ons)
+
+Store games are part of the library, not only their own tab (owner's pick from the "more
+features" list): Home has "Recently played on your other stores", All games has a library
+picker (All libraries, LootDen only, or one store) and lists store games under the LootDen
+ones, Stats has per-store counts and play time, and a game page says "Also on Steam" with
+Play there. Shared pieces are in `packages/web/src/components/StoreGameCard.tsx`
+(`useStoreGames`, `StoreGameCard`, `launchStoreGame`).
+
+Other ideas from that list, not started: collections and favorites, achievements, a random
+pick across every library with length and never-played filters.
+
 ## Earlier releases
 
 - 0.13.1: the home page no longer jumps when the featured game changes.

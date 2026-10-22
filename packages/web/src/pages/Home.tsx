@@ -8,6 +8,7 @@ import { Cover } from "../components/Cover";
 import { GameRow } from "../components/GameCard";
 import { ListingRow } from "../components/Listing";
 import { VideoRow } from "../components/Videos";
+import { StoreGameCard, storeKey, useStoreGames } from "../components/StoreGameCard";
 
 const NOTES: Record<string, string> = {
   setup:
@@ -24,6 +25,9 @@ export function Home() {
   const [upcoming, setUpcoming] = useState<GameListing[]>([]);
   const [error, setError] = useState("");
   const [slide, setSlide] = useState(0);
+  // Games played lately on connected stores (Steam, Xbox...), next to the LootDen ones.
+  const store = useStoreGames();
+  const storeRecent = (store.games ?? []).filter((g) => g.lastPlayedAt).sort((a, b) => Date.parse(b.lastPlayedAt!) - Date.parse(a.lastPlayedAt!)).slice(0, 20);
 
   useEffect(() => {
     api.home().then(setData, (e: Error) => setError(e.message));
@@ -67,7 +71,24 @@ export function Home() {
   const row = (s: HomeData["sections"][number] | null) => (s ? <GameRow key={s.id} title={s.title} games={s.games} note={NOTES[s.id]} /> : null);
 
   // Library rows first, with the extras slotted between them so the page alternates.
-  const blocks: ReactNode[] = [row(take("continue")), row(take("recent"))];
+  const blocks: ReactNode[] = [row(take("continue"))];
+  if (storeRecent.length)
+    blocks.push(
+      <section className="row" key="stores">
+        <div className="row-head">
+          <h2>Recently played on your other stores</h2>
+          <Link to="/library?tab=stores" className="muted small">
+            All store games
+          </Link>
+        </div>
+        <div className="row-track">
+          {storeRecent.map((g) => (
+            <StoreGameCard key={storeKey(g)} game={g} local={store.installed.get(storeKey(g))} />
+          ))}
+        </div>
+      </section>,
+    );
+  blocks.push(row(take("recent")));
   if (news.length) blocks.push(<NewsStrip key="news" items={news} />);
   if (videos[0]) blocks.push(<VideoRow key="v0" title={videos[0].title} videos={videos[0].videos} />);
   blocks.push(row(take("top")));

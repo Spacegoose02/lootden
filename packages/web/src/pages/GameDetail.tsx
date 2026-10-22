@@ -12,7 +12,8 @@ import { SavesPanel } from "../components/SavesPanel";
 import { UpdatesPanel } from "../components/UpdatesPanel";
 import { PreparePanel } from "../components/PreparePanel";
 import { JournalPanel, ModsPanel, VersionBanner } from "../components/GameExtras";
-import { desktop } from "../desktop";
+import { bridgeError, desktop } from "../desktop";
+import { launchStoreGame, storeKey, useStoreGames } from "../components/StoreGameCard";
 import { KindBadge, UpdateActions, useInstalled, versionLabel } from "../components/UpdateActions";
 import type { GameSummary } from "@lootden/shared";
 
@@ -66,6 +67,7 @@ export function GameDetail() {
             </p>
           )}
           <Badges game={game} />
+          <AlsoOnStores gameId={game.id} />
           {game.platform === "pc" && !isAddon && <VersionBanner gameId={game.id} isAdmin={me?.role === "admin"} />}
           {m?.ageRatings.length ? (
             <p className="muted small">Age ratings: {m.ageRatings.map((r) => `${r.organization} ${r.rating}`).join(", ")}</p>
@@ -367,5 +369,29 @@ function PackageAdmin({ game, onChange }: { game: Game; onChange: (g: Game) => v
       </div>
       {error && <p className="error small">{error}</p>}
     </section>
+  );
+}
+
+/** "You also have this on Steam": the same game on this person's other stores, with Play through that store. */
+function AlsoOnStores({ gameId }: { gameId: string }) {
+  const { games, installed } = useStoreGames();
+  const [error, setError] = useState("");
+  const same = (games ?? []).filter((g) => g.libraryGameId === gameId);
+  if (!same.length) return null;
+  return (
+    <p className="also-on-stores small">
+      <span className="muted">Also on </span>
+      {same.map((g) => (
+        <span key={storeKey(g)} className="also-on-store">
+          <span className="badge">{g.store}</span>
+          {(installed.get(storeKey(g))?.launchUrl ?? g.launchUrl) && (
+            <button className="small ghost" onClick={() => launchStoreGame(g, installed.get(storeKey(g))).catch((e) => setError(bridgeError(e)))}>
+              Play there
+            </button>
+          )}
+        </span>
+      ))}
+      {error && <span className="error"> {error}</span>}
+    </p>
   );
 }
