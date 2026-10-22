@@ -157,4 +157,32 @@ describe("OIDC single sign-on", () => {
     await app.close();
     await idp.close();
   });
+
+  it("never takes over a local account by username, or by an email the provider hasn't verified", async () => {
+    const config = (issuer: string) => ({
+      publicUrl: "https://games.example.com",
+      oidc: { issuer, clientId: "gm", clientSecret: "", name: "SSO", scopes: "openid email", autoCreate: true, adminGroup: "" },
+    });
+    const signIn = async (claims: Record<string, unknown>) => {
+      const idp = await fakeIdp(claims);
+      const { app, ctx } = await makeApp(root, config(idp.issuer));
+      const admin = await ctx.users.create({ username: "admin", email: "boss@example.com", password: "password1", role: "admin" });
+      const start = await app.inject("/api/auth/oidc/login");
+      const cb = new URL(idp.approve(start.headers.location as string));
+      const done = await app.inject(cb.pathname + cb.search);
+      const linked = ctx.users.byId(admin.id)!.oidcSubject;
+      await app.close();
+      await idp.close();
+      return { done, linked };
+    };
+
+    // admin@gmail.com (or a chosen nickname) must not become the local "admin".
+    for (const claims of [{ sub: "g1", email: "admin@gmail.com", email_verified: true }, { sub: "g2", preferred_username: "admin" }]) {
+      const { done, linked } = await signIn(claims);
+      assert.equal(linked, null);
+      assert.match(decodeURIComponent(String(done.headers.location)), /already an account named admin/);
+    }
+    const unverified = await signIn({ sub: "g3", preferred_username: "someone", email: "boss@example.com", email_verified: false });
+    assert.equal(unverified.linked, null);
+  });
 });

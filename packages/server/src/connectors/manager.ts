@@ -1,5 +1,5 @@
 import { createReadStream, createWriteStream } from "node:fs";
-import { mkdir, readdir, rename, rm, stat, utimes } from "node:fs/promises";
+import { lstat, mkdir, readdir, rename, rm, stat, utimes } from "node:fs/promises";
 import { Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import path from "node:path";
@@ -30,11 +30,12 @@ export interface FolderItem {
 }
 
 /** Copies a file or folder, reporting bytes as they go (fs.cp can't say how far it got). */
-async function copyTree(source: string, target: string, onBytes: (n: number) => void): Promise<void> {
-  const s = await stat(source);
+async function copyTree(source: string, target: string, onBytes: (n: number) => void, top = true): Promise<void> {
+  // Inside a download, symlinks (say, one to /data) are skipped, never copied into the library.
+  const s = top ? await stat(source) : await lstat(source);
   if (s.isDirectory()) {
     await mkdir(target, { recursive: true });
-    for (const e of await readdir(source)) await copyTree(path.join(source, e), path.join(target, e), onBytes);
+    for (const e of await readdir(source)) await copyTree(path.join(source, e), path.join(target, e), onBytes, false);
   } else if (s.isFile()) {
     const count = new Transform({
       transform(chunk: Buffer, _enc, done) {

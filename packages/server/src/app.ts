@@ -55,6 +55,23 @@ export const VERSION = "0.13.1";
 /** Routes reachable without signing in. */
 const PUBLIC = [/^\/api\/health$/, /^\/api\/auth\//, /^\/api\/avatars\//];
 
+/** The request's path with %-escapes undone; the raw path when it doesn't decode. */
+function decodedPath(raw: string): string {
+  const p = raw.split("?")[0]!;
+  try {
+    return decodeURIComponent(p);
+  } catch {
+    return p;
+  }
+}
+
+/** Headers every response gets: no MIME sniffing, no framing by other sites, no full URLs in referrers. */
+const SECURITY_HEADERS = {
+  "x-content-type-options": "nosniff",
+  "x-frame-options": "SAMEORIGIN",
+  "referrer-policy": "strict-origin-when-cross-origin",
+};
+
 export interface BuildOptions {
   /** Injected for tests so metadata providers never hit the network. */
   fetchImpl?: FetchLike;
@@ -137,9 +154,14 @@ export function buildApp(config: ServerConfig, db: Db, opts: BuildOptions = {}):
   app.addContentTypeParser(/^image\//, { parseAs: "buffer", bodyLimit: 16 * 1024 * 1024 }, (_req, body, done) => done(null, body));
   app.addContentTypeParser("application/octet-stream", (_req, payload, done) => done(null, payload));
   app.decorateRequest("principal", null);
+  app.addHook("onSend", async (_req, reply) => {
+    reply.headers(SECURITY_HEADERS);
+  });
 
   app.addHook("onRequest", async (req) => {
-    const url = req.url.split("?")[0]!;
+    // The matched route, not the raw URL: the router decodes "/%61pi/games" to /api/games,
+    // so checking req.url alone let encoded paths skip sign-in.
+    const url = req.routeOptions.url ?? decodedPath(req.url);
     const header = req.headers.authorization;
     const bearer = header?.startsWith("Bearer ") ? header.slice(7) : (req.query as Record<string, string | undefined>)?.token;
     if (bearer) {

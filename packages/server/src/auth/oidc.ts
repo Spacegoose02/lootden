@@ -138,14 +138,19 @@ export class OidcService {
 
     let user = this.users.byOidcSubject(sub);
     if (!user) {
-      // Link to an existing local account with the same email or username.
-      const existing = (email && this.users.byEmail(email)) || this.users.byUsername(preferred);
+      // Link to an existing local account with the same email, unless the provider says it's unverified.
+      // Never by username: anyone can pick "admin" as a nickname (or an admin@ address) at many providers.
+      const existing = email && claims.email_verified !== false && claims.email_verified !== "false" ? this.users.byEmail(email) : undefined;
       if (existing) user = await this.users.update(existing.id, { oidcSubject: sub });
     }
     if (!user) {
       if (!this.config.oidc.autoCreate) throw new Error("No account for this login; ask an admin to create one");
+      const username = preferred.replace(/[^\w.@-]/g, "_");
+      if (this.users.byUsername(username)) {
+        throw new Error(`There's already an account named ${username}; an admin can link it by giving it the email you sign in with`);
+      }
       user = await this.users.create({
-        username: preferred.replace(/[^\w.@-]/g, "_"),
+        username,
         displayName: String(claims.name ?? preferred),
         email,
         role: isAdmin || this.users.count() === 0 ? "admin" : "user",

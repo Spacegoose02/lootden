@@ -1,6 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import type { ActivityEvent, Role } from "@lootden/shared";
 import { verifyPassword } from "../auth/crypto.js";
+import { SESSION_COOKIE } from "../auth/service.js";
 import { HttpProblem, requireAdmin, requirePerson, type AppContext } from "../context.js";
 import { avatarSvg, randomAvatarSeed } from "../users/avatars.js";
 import { publicUser } from "../users/repo.js";
@@ -33,6 +34,8 @@ export function userRoutes(app: FastifyInstance, ctx: AppContext) {
       throw new HttpProblem(403, "Current password is wrong");
     }
     await ctx.users.update(me.id, { password: req.body?.newPassword ?? "" });
+    // Other browsers signed in with the old password are signed out; this one stays.
+    ctx.auth.endUserSessions(me.id, req.cookies[SESSION_COOKIE]);
     return { ok: true };
   });
 
@@ -99,7 +102,9 @@ export function userRoutes(app: FastifyInstance, ctx: AppContext) {
       const b = req.body ?? {};
       if (b.role && !["admin", "user"].includes(b.role)) throw new HttpProblem(400, "role is admin or user");
       if (user.role === "admin" && b.role === "user" && ctx.users.adminCount() === 1) throw new HttpProblem(409, "Keep at least one admin");
-      return publicUser(await ctx.users.update(id, { ...b, avatar: b.avatar === "random" ? randomAvatarSeed() : b.avatar }));
+      const updated = await ctx.users.update(id, { ...b, avatar: b.avatar === "random" ? randomAvatarSeed() : b.avatar });
+      if (b.password !== undefined) ctx.auth.endUserSessions(id);
+      return publicUser(updated);
     },
   );
 
