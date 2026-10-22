@@ -94,8 +94,10 @@ store comes as its own PR on top of it. Start with
 - The desktop app has `storeGames` (local scanners in `packages/client/src/stores/`) and
   `launchStore` (only the schemes in `STORE_LAUNCH_SCHEMES`).
 - Built in so far: `steam` (Steam Web API key + Steam ID; desktop scanner reads
-  `libraryfolders.vdf` and `appmanifest_*.acf`) and `json-list` (any JSON list of games).
-  Planned, one PR each: GOG, Epic, Xbox, then others (itch.io, Ubisoft and EA launchers).
+  `libraryfolders.vdf` and `appmanifest_*.acf`), `gog` (paste a sign-in code once; refresh
+  token kept on the account; desktop finds Galaxy and Heroic installs) and `json-list` (any
+  JSON list of games). Planned, one PR each: Epic, Xbox, then others (itch.io, Ubisoft and
+  EA launchers).
 
 ## Earlier releases
 
