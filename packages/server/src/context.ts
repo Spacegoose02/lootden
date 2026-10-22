@@ -26,6 +26,7 @@ import type { NexusMods } from "./news/nexus.js";
 import type { TimeToBeat } from "./metadata/time-to-beat.js";
 import type { SourceRegistry } from "./sources/registry.js";
 import type { DirectDownloads } from "./direct/manager.js";
+import type { AddonRegistry } from "./addons/registry.js";
 
 /** Everything route modules need, built once in buildApp. */
 export interface AppContext {
@@ -56,6 +57,8 @@ export interface AppContext {
   journal: JournalStore;
   nexus: NexusMods;
   sources: SourceRegistry;
+  /** Library add-ons: people's Steam, GOG, Epic... accounts and the games they own there. */
+  addons: AddonRegistry;
   timeToBeat: (providerId: string | null, title: string) => Promise<TimeToBeat | null>;
 }
 

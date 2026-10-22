@@ -80,6 +80,22 @@ open window broke as soon as requests stopped getting through.
 - The web Installed tab shows this PC's games with a note instead of an error when the
   server's list fails to load.
 
+## Library add-ons (foundation in progress, ships with the first store add-on)
+
+The More2Do list asks for add-ons for other game libraries. The foundation is in place; each
+store comes as its own PR on top of it. Start with
+[packages/server/src/addons/README.md](packages/server/src/addons/README.md).
+
+- Accounts are per person (Profile, Game libraries), stored in `addon_accounts`; owned games
+  in `store_games`. Synced on connect, Sync now, and every 12 hours (`index.ts`). Admins can
+  switch an add-on off for everyone.
+- Library, Other stores (`packages/web/src/components/StoreGames.tsx`) lists them with Play
+  (the store launcher's link), Store, and In LootDen when a library game has the same title.
+- The desktop app has `storeGames` (local scanners in `packages/client/src/stores/`) and
+  `launchStore` (only the schemes in `STORE_LAUNCH_SCHEMES`).
+- Built in so far: `json-list` (any JSON list of games). Planned, one PR each: Steam, GOG,
+  Epic, Xbox, then others.
+
 ## Earlier releases
 
 - 0.13.1: the home page no longer jumps when the featured game changes.

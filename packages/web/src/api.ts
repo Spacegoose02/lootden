@@ -1,5 +1,7 @@
 import { desktop } from "./desktop";
 import type {
+  AddonView,
+  StoreGame,
   ApiTokenInfo,
   AuthProviders,
   EmulatorInfo,
@@ -573,6 +575,13 @@ export const api = {
   mods: (id: string) => call<{ configured: boolean; domain: string | null; mods: NexusMod[] }>("GET", `/api/games/${id}/mods`),
   testNexus: () => call<{ message: string }>("POST", "/api/mods/test"),
   sources: () => call<ReleaseSourceView[]>("GET", "/api/sources"),
+  // Library add-ons: this person's store accounts and the games they own there.
+  addons: () => call<AddonView[]>("GET", "/api/addons"),
+  connectAddon: (id: string, config: Record<string, string>) => call<{ games: number; addons: AddonView[] }>("PUT", `/api/addons/${id}/account`, { config }),
+  syncAddon: (id: string) => call<{ games: number; addons: AddonView[] }>("POST", `/api/addons/${id}/sync`),
+  disconnectAddon: (id: string) => call<AddonView[]>("DELETE", `/api/addons/${id}/account`),
+  setAddonEnabled: (id: string, enabled: boolean) => call<AddonView[]>("PUT", `/api/addons/${id}`, { enabled }),
+  storeGames: (addon?: string) => call<StoreGame[]>("GET", `/api/store-games${addon ? `?addon=${encodeURIComponent(addon)}` : ""}`),
   saveSource: (id: string, c: Partial<SourceConfig>) => call<ReleaseSourceView>("PUT", `/api/sources/${id}`, c),
   testSource: (id: string) => call<{ message: string; sources: ReleaseSourceView[] }>("POST", `/api/sources/${id}/test`),
   sourceReleases: (limit = 40) => call<SourceRelease[]>("GET", `/api/sources/latest${qs({ limit: String(limit) })}`),

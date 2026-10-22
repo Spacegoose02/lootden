@@ -30,6 +30,8 @@ const bridge = {
   biosFromServer: () => ipcRenderer.invoke("gm:biosFromServer"),
   openTools: () => ipcRenderer.invoke("gm:openTools"),
   openFolder: (gameId: string) => ipcRenderer.invoke("gm:openFolder", gameId),
+  storeGames: () => ipcRenderer.invoke("gm:storeGames"),
+  launchStore: (url: string) => ipcRenderer.invoke("gm:launchStore", url),
   changeServer: () => ipcRenderer.invoke("gm:changeServer"),
   /** The server stopped answering: switch to the offline library if it really is gone. */
   goOffline: () => ipcRenderer.invoke("gm:goOffline"),

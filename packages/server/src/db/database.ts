@@ -316,6 +316,31 @@ const MIGRATIONS: string[] = [
   -- Download links a release source lists for a release (JSON), so Discover can fetch it directly.
   ALTER TABLE source_items ADD COLUMN downloads TEXT;
   `,
+  `
+  -- Library add-ons: each person's store accounts (Steam, GOG...) and the games they own there.
+  CREATE TABLE addon_accounts (
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    addon TEXT NOT NULL,
+    config TEXT NOT NULL DEFAULT '{}',
+    connected_at TEXT NOT NULL,
+    last_sync_at TEXT,
+    error TEXT,
+    PRIMARY KEY (user_id, addon)
+  );
+  CREATE TABLE store_games (
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    addon TEXT NOT NULL,
+    external_id TEXT NOT NULL,
+    title TEXT NOT NULL,
+    cover_url TEXT,
+    store_url TEXT,
+    launch_url TEXT,
+    playtime_seconds INTEGER,
+    last_played_at TEXT,
+    synced_at TEXT NOT NULL,
+    PRIMARY KEY (user_id, addon, external_id)
+  );
+  `,
 ];
 
 export function openDatabase(file: string): Db {

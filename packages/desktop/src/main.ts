@@ -32,6 +32,8 @@ import {
   uploadInstalledFolder,
   type PrepareStep,
   saveExecutable,
+  scanStoreGames,
+  isStoreLaunchUrl,
   uninstallGame,
   applyUpdate,
   undoUpdate,
@@ -1020,6 +1022,20 @@ function registerIpc(): void {
     await uninstallGame(game.dir);
     await (await client()).reportActivity({ gameId, device: os.hostname(), event: "uninstalled" });
     return true;
+  });
+
+  // ---- Library add-ons: games from other stores ------------------------------------
+
+  /** Store games installed on this PC, found by each add-on's scanner. */
+  ipcMain.handle("gm:storeGames", async (e) => {
+    fromServer(e);
+    return scanStoreGames();
+  });
+  /** Starts (or installs) a store game through its launcher. Only store launcher links open. */
+  ipcMain.handle("gm:launchStore", async (e, url: string) => {
+    fromServer(e);
+    if (typeof url !== "string" || !isStoreLaunchUrl(url)) throw new Error("That isn't a store launcher link");
+    await shell.openExternal(url);
   });
 
   ipcMain.handle("gm:openFolder", async (e, gameId: string) => {

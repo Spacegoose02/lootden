@@ -47,6 +47,9 @@ import { HowLongToBeat } from "./metadata/hltb.js";
 import { timeToBeat } from "./metadata/time-to-beat.js";
 import { SourceRegistry } from "./sources/registry.js";
 import { sourceRoutes } from "./routes/sources.js";
+import { AddonRegistry } from "./addons/registry.js";
+import type { LibraryAddon } from "./addons/types.js";
+import { addonRoutes } from "./routes/addons.js";
 import { DirectDownloads } from "./direct/manager.js";
 import { directRoutes } from "./routes/direct.js";
 
@@ -60,6 +63,9 @@ export interface BuildOptions {
   fetchImpl?: FetchLike;
   /** Folder with the built web UI; served at / when present. */
   webDir?: string;
+  /** Tests: the library add-ons to offer, and DNS for their private-network check. */
+  addons?: LibraryAddon[];
+  resolveHost?: (host: string) => Promise<string[]>;
 }
 
 type Log = { info(o: object, m: string): void; warn(o: object, m: string): void };
@@ -114,6 +120,7 @@ export function buildContext(config: ServerConfig, db: Db, log: Log, opts: Build
     journal: new JournalStore(db),
     nexus: new NexusMods(() => settings().nexus.apiKey, opts.fetchImpl),
     sources: new SourceRegistry(db, wishlist, notifier, opts.fetchImpl),
+    addons: new AddonRegistry(db, library, opts.fetchImpl, opts.addons, opts.resolveHost),
     timeToBeat: timeToBeat(metadata.igdb, new HowLongToBeat(opts.fetchImpl), () => settings().hltb.enabled !== false),
   };
 }
@@ -178,6 +185,7 @@ export function buildApp(config: ServerConfig, db: Db, opts: BuildOptions = {}):
   wishlistRoutes(app, ctx);
   extraRoutes(app, ctx);
   sourceRoutes(app, ctx);
+  addonRoutes(app, ctx);
   directRoutes(app, ctx);
 
   const webDir = opts.webDir;
