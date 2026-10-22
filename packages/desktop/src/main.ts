@@ -4,6 +4,7 @@ import { existsSync } from "node:fs";
 import { mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, net, Notification, screen, session, shell, Tray, type IpcMainInvokeEvent } from "electron";
 import {
   addBiosFile,
@@ -81,13 +82,19 @@ function fromServer(e: IpcMainInvokeEvent): void {
   if (!origin() || !url.startsWith(origin() + "/")) throw new Error("Not allowed from this page");
 }
 
-/** The app's own pages (connect and offline), loaded from its files. */
-function fromLocal(e: IpcMainInvokeEvent): void {
-  if (!e.senderFrame?.url.startsWith("file://")) throw new Error("Not allowed from this page");
-}
-
 const SETUP_PAGE = path.join(__dirname, "..", "setup", "index.html");
 const OFFLINE_PAGE = path.join(__dirname, "..", "setup", "offline.html");
+
+/** Whether the call comes from one of the app's own pages, not just any file:// page (one on a network share, say). */
+function isAppPage(e: IpcMainInvokeEvent, ...pages: string[]): boolean {
+  const url = (e.senderFrame?.url ?? "").replace(/[?#].*$/, "");
+  return pages.some((p) => url === pathToFileURL(p).href);
+}
+
+/** The offline page, loaded from the app's files. */
+function fromLocal(e: IpcMainInvokeEvent): void {
+  if (!isAppPage(e, OFFLINE_PAGE)) throw new Error("Not allowed from this page");
+}
 
 /** Whether a LootDen server answers at the address, within a few seconds. */
 async function serverUp(at = origin()): Promise<boolean> {
@@ -1067,7 +1074,7 @@ function registerIpc(): void {
   });
 
   ipcMain.handle("gm:changeServer", async (e) => {
-    if (!e.senderFrame?.url.startsWith("file://")) fromServer(e);
+    if (!isAppPage(e, OFFLINE_PAGE)) fromServer(e);
     settings.update({ serverUrl: "", apiToken: "" });
     if (customFrame) win?.setTitleBarOverlay({ color: "#0d0820", symbolColor: "#f3eeff", height: TITLEBAR_HEIGHT });
     await win?.loadFile(SETUP_PAGE);
