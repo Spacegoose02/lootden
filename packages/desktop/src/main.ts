@@ -32,6 +32,7 @@ import {
   type PrepareStep,
   saveExecutable,
   scanStoreGames,
+  STORE_SCANNERS,
   isStoreLaunchUrl,
   uninstallGame,
   applyUpdate,
@@ -1029,7 +1030,37 @@ function registerIpc(): void {
   /** Store games installed on this PC, found by each add-on's scanner. */
   ipcMain.handle("gm:storeGames", async (e) => {
     fromServer(e);
-    return scanStoreGames();
+    const { disabled, folders } = settings.get().storeScan;
+    return scanStoreGames(STORE_SCANNERS, process.platform, { disabled, folders });
+  });
+  /**
+   * This PC's scanner settings: which launchers to look in, and folders picked to look in too.
+   * The page can switch launchers and drop folders; a new folder only comes from the folder picker.
+   */
+  const storeScanView = () => {
+    const s = settings.get().storeScan;
+    return { stores: STORE_SCANNERS.filter((x) => x.platforms.includes(process.platform)).map((x) => ({ id: x.addon, name: x.name, enabled: !s.disabled.includes(x.addon) })), folders: s.folders };
+  };
+  ipcMain.handle("gm:storeScan", (e, patch?: { disabled?: unknown; folders?: unknown }) => {
+    fromServer(e);
+    if (patch) {
+      const cur = settings.get().storeScan;
+      const known = new Set(STORE_SCANNERS.map((x) => x.addon));
+      const disabled = Array.isArray(patch.disabled) ? patch.disabled.filter((d): d is string => typeof d === "string" && known.has(d)) : cur.disabled;
+      const folders = Array.isArray(patch.folders) ? cur.folders.filter((f) => (patch.folders as unknown[]).includes(f)) : cur.folders;
+      settings.update({ storeScan: { disabled: [...new Set(disabled)], folders } });
+    }
+    return storeScanView();
+  });
+  ipcMain.handle("gm:addStoreFolder", async (e) => {
+    fromServer(e);
+    const r = await dialog.showOpenDialog(win!, { title: "Look for store games in", properties: ["openDirectory"] });
+    const dir = r.canceled ? null : r.filePaths[0];
+    if (dir) {
+      const cur = settings.get().storeScan;
+      if (!cur.folders.includes(dir)) settings.update({ storeScan: { ...cur, folders: [...cur.folders, dir] } });
+    }
+    return storeScanView();
   });
   /** Starts (or installs) a store game through its launcher. Only store launcher links open. */
   ipcMain.handle("gm:launchStore", async (e, url: string) => {

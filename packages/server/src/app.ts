@@ -48,6 +48,8 @@ import { timeToBeat } from "./metadata/time-to-beat.js";
 import { SourceRegistry } from "./sources/registry.js";
 import { sourceRoutes } from "./routes/sources.js";
 import { AddonRegistry } from "./addons/registry.js";
+import { StoreGameDetails } from "./addons/details.js";
+import { Vault } from "./auth/vault.js";
 import type { LibraryAddon } from "./addons/types.js";
 import { addonRoutes } from "./routes/addons.js";
 import { DirectDownloads } from "./direct/manager.js";
@@ -137,7 +139,8 @@ export function buildContext(config: ServerConfig, db: Db, log: Log, opts: Build
     journal: new JournalStore(db),
     nexus: new NexusMods(() => settings().nexus.apiKey, opts.fetchImpl),
     sources: new SourceRegistry(db, wishlist, notifier, opts.fetchImpl),
-    addons: new AddonRegistry(db, library, opts.fetchImpl, opts.addons, opts.resolveHost),
+    addons: new AddonRegistry(db, library, opts.fetchImpl, opts.addons, opts.resolveHost, Vault.open(config.dataDir, config.secretKey)),
+    storeDetails: new StoreGameDetails(db, metadata, config.dataDir, log),
     timeToBeat: timeToBeat(metadata.igdb, new HowLongToBeat(opts.fetchImpl), () => settings().hltb.enabled !== false),
   };
 }

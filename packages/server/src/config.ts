@@ -11,6 +11,8 @@ export interface ServerConfig {
   publicUrl: string;
   /** Optional service token with admin rights (scripts, the first client before accounts exist). */
   apiToken: string;
+  /** Encrypts store accounts' keys in the database; empty means a random key kept in <data>/secret.key. */
+  secretKey: string;
   /** Minutes between automatic rescans; 0 turns periodic rescans off. */
   scanIntervalMinutes: number;
   /** React to file changes in the games folder. */
@@ -81,6 +83,7 @@ export function loadConfig(rawEnv: NodeJS.ProcessEnv = process.env): ServerConfi
     dataDir: path.resolve(env.GM_DATA_DIR || "/data"),
     publicUrl: (env.GM_PUBLIC_URL || "").replace(/\/+$/, ""),
     apiToken: env.GM_API_TOKEN || "",
+    secretKey: env.GM_SECRET_KEY || "",
     scanIntervalMinutes: int(env.GM_SCAN_INTERVAL_MINUTES, 30),
     watch: bool(env.GM_WATCH, true),
     logLevel: env.GM_LOG_LEVEL || "info",

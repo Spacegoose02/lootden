@@ -73,7 +73,7 @@ export function StoreGames() {
       <p className="muted count">
         {shown.length} of {all.length} games
       </p>
-      <div className="grid store-grid">
+      <div className="grid store-grid" data-nav-zone>
         {shown.map((g) => (
           <StoreGameCard key={storeKey(g)} game={g} local={installed.get(storeKey(g))} onError={setError} />
         ))}
@@ -97,7 +97,7 @@ export function StoreSection({ games, installed, search, store, limit }: { games
       {!store && <h2 className="collection-title">On your other stores</h2>}
       {store && <p className="muted count">{matches.length} games</p>}
       {error && <p className="error">{error}</p>}
-      <div className="grid store-grid">
+      <div className="grid store-grid" data-nav-zone>
         {shown.map((g) => (
           <StoreGameCard key={storeKey(g)} game={g} local={installed.get(storeKey(g))} onError={setError} />
         ))}

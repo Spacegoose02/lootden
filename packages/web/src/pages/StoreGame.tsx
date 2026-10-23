@@ -1,0 +1,196 @@
+import { useEffect, useState } from "react";
+import { Link, useParams, useSearchParams } from "react-router-dom";
+import type { GameListing, LocalStoreGame, StoreGame as StoreGameT, StoreGameDetail } from "@lootden/shared";
+import { api, formatPlaytime } from "../api";
+import { bridgeError, desktop } from "../desktop";
+import { ArtworkPicker } from "../components/ArtworkEditor";
+import { GameMedia } from "../components/GameMedia";
+import { listingDate } from "../components/Listing";
+import { launchStoreGame } from "../components/StoreGameCard";
+
+const SOURCES: Record<string, string> = { igdb: "IGDB", rawg: "RAWG", steam: "Steam" };
+
+/** A game from another store: its details from IGDB, RAWG or Steam, Play through the store, and the person's own changes. */
+export function StoreGame() {
+  const { addon = "", id = "" } = useParams();
+  const [params] = useSearchParams();
+  // Games only found on this PC aren't on the server; their card sends the title along.
+  const localTitle = params.get("title") ?? "";
+  const [detail, setDetail] = useState<StoreGameDetail | null>(null);
+  const [local, setLocal] = useState<LocalStoreGame | null>(null);
+  const [error, setError] = useState("");
+  const [editing, setEditing] = useState(false);
+
+  useEffect(() => {
+    setDetail(null);
+    setError("");
+    api.storeGame(addon, id, localTitle).then(setDetail, (e: Error) => setError(e.message));
+    desktop?.storeGames?.().then((l) => setLocal(l.find((g) => g.addon === addon && g.externalId === id) ?? null), () => {});
+  }, [addon, id, localTitle]);
+
+  if (error) return <p className="error">{error}</p>;
+  if (!detail) return <p className="muted">Loading…</p>;
+
+  const info = detail.info;
+  const game: StoreGameT = detail.game ?? {
+    addon,
+    store: local?.store ?? addon,
+    externalId: id,
+    title: detail.custom.title ?? local?.title ?? localTitle,
+    coverUrl: null,
+    storeUrl: null,
+    launchUrl: local?.launchUrl ?? null,
+    playtimeSeconds: null,
+    lastPlayedAt: null,
+    libraryGameId: null,
+  };
+  const launch = local?.launchUrl ?? game.launchUrl;
+  const date = info ? listingDate(info) : null;
+
+  return (
+    <article className="detail store-game">
+      {detail.backgroundUrl && <div className="detail-bg wide" style={{ backgroundImage: `url("${detail.backgroundUrl}")` }} />}
+      <div className="detail-head" data-nav-zone>
+        {detail.coverUrl ? <img className="cover cover-hero cover-natural" src={detail.coverUrl} alt="" /> : <div className="cover cover-hero cover-placeholder">{game.title}</div>}
+        <div className="detail-info">
+          <h1>{game.title}</h1>
+          <p className="muted">{[date, info?.genres.join(", ")].filter(Boolean).join(" · ")}</p>
+          <div className="inline wrap">
+            <span className="badge">{game.store}</span>
+            {local && <span className="badge badge-kid">Installed on this PC</span>}
+            {game.playtimeSeconds ? <span className="badge">{formatPlaytime(game.playtimeSeconds)} played</span> : null}
+            {info?.rating != null && <span className="badge">★ {info.rating}/100</span>}
+          </div>
+          {game.lastPlayedAt && <p className="muted small">Last played {new Date(game.lastPlayedAt).toLocaleDateString()}</p>}
+          {info && info.developers.length > 0 && <p className="muted small">By {info.developers.join(", ")}</p>}
+          {info?.summary && <p className="summary">{info.summary}</p>}
+          {!info && <p className="muted">No details found for this title yet. Use Edit to pick the right game.</p>}
+          <div className="inline wrap">
+            {launch && (
+              <button className="primary" onClick={() => launchStoreGame(game, local ?? undefined).catch((e) => setError(bridgeError(e)))}>
+                {local ? "▶ Play" : `Open in ${game.store}`}
+              </button>
+            )}
+            {game.libraryGameId && (
+              <Link className="button secondary" to={`/games/${game.libraryGameId}`}>
+                In LootDen
+              </Link>
+            )}
+            {game.storeUrl && (
+              <a className="button" href={game.storeUrl} target="_blank" rel="noreferrer">
+                Store page
+              </a>
+            )}
+            {info?.url && (
+              <a className="button ghost" href={info.url} target="_blank" rel="noreferrer">
+                View on {SOURCES[info.provider] ?? "source"}
+              </a>
+            )}
+            <button className="ghost" aria-expanded={editing} onClick={() => setEditing((v) => !v)}>
+              {editing ? "Done editing" : "Edit"}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {editing && <StoreGameEditor addon={addon} id={id} title={localTitle} detail={detail} onChange={setDetail} />}
+
+      {info && <GameMedia game={info} />}
+    </article>
+  );
+}
+
+/** A person's own title, metadata match and artwork for one store game. Only they see the changes. */
+function StoreGameEditor({ addon, id, title, detail, onChange }: { addon: string; id: string; title: string; detail: StoreGameDetail; onChange: (d: StoreGameDetail) => void }) {
+  const shownTitle = detail.custom.title ?? detail.game?.title ?? title;
+  const [name, setName] = useState(shownTitle);
+  const [query, setQuery] = useState(shownTitle);
+  const [matches, setMatches] = useState<GameListing[] | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const run = async (fn: () => Promise<void>) => {
+    setBusy(true);
+    setError("");
+    try {
+      await fn();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const update = (patch: Parameters<typeof api.updateStoreGame>[2]) => run(async () => onChange(await api.updateStoreGame(addon, id, patch, title)));
+
+  return (
+    <section className="panel store-edit" data-nav-zone>
+      <h2>Edit</h2>
+      <p className="muted small">Changes here are yours only, and show on every device you sign in on.</p>
+      {error && <p className="error">{error}</p>}
+
+      <h3>Title</h3>
+      <form
+        className="inline"
+        onSubmit={(e) => {
+          e.preventDefault();
+          void update({ title: name.trim() || null });
+        }}
+      >
+        <input value={name} onChange={(e) => setName(e.target.value)} aria-label="Title" style={{ flex: 1 }} />
+        <button disabled={busy || !name.trim() || name.trim() === shownTitle}>Save title</button>
+        {detail.custom.title && (
+          <button type="button" className="ghost" disabled={busy} onClick={() => (setName(detail.game?.title ?? title), update({ title: null }))}>
+            Use the store's title
+          </button>
+        )}
+      </form>
+
+      <h3>Details</h3>
+      <p className="muted small">
+        {detail.info ? `Showing ${detail.info.name} from ${SOURCES[detail.info.provider] ?? detail.info.provider}${detail.custom.match ? " (picked by you)" : ""}.` : "Nothing matched this title."} Wrong game? Search and pick the right one.
+      </p>
+      <form
+        className="inline"
+        onSubmit={(e) => {
+          e.preventDefault();
+          void run(async () => setMatches(await api.storeGameMatches(addon, id, query, title)));
+        }}
+      >
+        <input type="search" value={query} onChange={(e) => setQuery(e.target.value)} aria-label="Search for the game" style={{ flex: 1 }} />
+        <button disabled={busy || !query.trim()}>Search</button>
+        {detail.custom.match && (
+          <button type="button" className="ghost" disabled={busy} onClick={() => update({ match: null })}>
+            Match automatically
+          </button>
+        )}
+      </form>
+      {matches && (
+        <div className="match-list">
+          {matches.length === 0 && <p className="muted small">Nothing found. Try a shorter name.</p>}
+          {matches.map((m) => (
+            <button key={`${m.provider}:${m.providerId}`} className="match-option" disabled={busy} onClick={() => update({ match: { provider: m.provider, providerId: m.providerId } }).then(() => setMatches(null))}>
+              {m.coverUrl ? <img src={m.coverUrl} alt="" loading="lazy" /> : <span className="match-noimg" />}
+              <span>
+                <strong>{m.name}</strong>
+                <small className="muted">
+                  {[m.dateText, SOURCES[m.provider] ?? m.provider].filter(Boolean).join(" · ")}
+                </small>
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
+
+      <ArtworkPicker
+        resetLabel="Use the found image"
+        target={{
+          current: { cover: detail.coverUrl, background: detail.backgroundUrl },
+          custom: { cover: !!detail.custom.cover, background: !!detail.custom.background },
+          options: (kind, q) => api.storeArtworkOptions(addon, id, kind, q, title),
+          setUrl: async (kind, url) => onChange(await api.setStoreArtworkUrl(addon, id, kind, url, title)),
+          upload: async (kind, file) => onChange(await api.uploadStoreArtwork(addon, id, kind, file, title)),
+          reset: async (kind) => onChange(await api.resetStoreArtwork(addon, id, kind, title)),
+        }}
+      />
+    </section>
+  );
+}

@@ -12,7 +12,8 @@ In LootDen. Admins can switch an add-on off for everyone from the same card.
 | --- | --- | --- |
 | Server add-on | `packages/server/src/addons/<id>.ts` | Lists the games an account owns (`games()`), from the fields the person filled in |
 | Registry | `registry.ts` | Stores accounts (`addon_accounts`) and games (`store_games`) per person, syncs on connect, on Sync now and every 12 hours, matches titles to the library |
-| Routes | `../routes/addons.ts` | `GET /api/addons`, `PUT/DELETE /api/addons/:id/account`, `POST /api/addons/:id/sync`, `PUT /api/addons/:id` (admin on/off), `GET /api/store-games` |
+| Routes | `../routes/addons.ts` | `GET /api/addons`, `PUT/DELETE /api/addons/:id/account`, `POST /api/addons/:id/sync`, `PUT /api/addons/:id` (admin on/off), `GET /api/store-games`, and one game's page, cover, background and edits under `/api/store-games/:addon/:id` |
+| Pages and covers | `details.ts` | Matches each store game by title (Steam games by app id) to IGDB, RAWG or the Steam store for its cover and page; keeps each person's own title, match and artwork |
 | Desktop scanner (optional) | `packages/client/src/stores/` | Finds which of the store's games are installed on the PC, so they get a ▶ Play and the "Installed on this PC" filter |
 | Launch links | `STORE_LAUNCH_SCHEMES` in `packages/shared/src/addons.ts` | The desktop app only opens these schemes from a Play button |
 
@@ -32,7 +33,8 @@ In LootDen. Admins can switch an add-on off for everyone from the same card.
 
 1. Copy `json-list.ts` to `my-store.ts`. Set `id`, `name` (the store's name, shown on badges),
    `description`, `homepage` (where people get the key you ask for) and `fields`. Mark API keys
-   and tokens `secret: true`: they're never sent back to the browser.
+   and tokens `secret: true`: they're never sent back to the browser. (Every account's settings
+   are encrypted in the database either way.)
 2. Write `games(ctx)`. `ctx.config` has what the person entered, by field key. Fetch only
    through `ctx.fetch`: it times out after 30 seconds and keeps profiles that aren't admins off
    the server's own network, redirects included. Throw an `Error` with a message the person

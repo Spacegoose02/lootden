@@ -341,6 +341,37 @@ const MIGRATIONS: string[] = [
     PRIMARY KEY (user_id, addon, external_id)
   );
   `,
+  `
+  -- Other stores' games: which metadata entry each one matched (shared, it's public data), the
+  -- details fetched for it, and each person's own changes (title, artwork, a different match).
+  CREATE TABLE store_game_match (
+    addon TEXT NOT NULL,
+    external_id TEXT NOT NULL,
+    provider TEXT,
+    provider_id TEXT,
+    cover_url TEXT,
+    matched_at TEXT NOT NULL,
+    PRIMARY KEY (addon, external_id)
+  );
+  CREATE TABLE store_game_info (
+    provider TEXT NOT NULL,
+    provider_id TEXT NOT NULL,
+    info TEXT NOT NULL,
+    fetched_at TEXT NOT NULL,
+    PRIMARY KEY (provider, provider_id)
+  );
+  CREATE TABLE store_game_custom (
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    addon TEXT NOT NULL,
+    external_id TEXT NOT NULL,
+    title TEXT,
+    cover TEXT,
+    background TEXT,
+    provider TEXT,
+    provider_id TEXT,
+    PRIMARY KEY (user_id, addon, external_id)
+  );
+  `,
 ];
 
 export function openDatabase(file: string): Db {

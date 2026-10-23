@@ -83,6 +83,35 @@ function score(dir: Dir, from: DOMRect, r: DOMRect): number {
 
 const onScreen = (r: DOMRect) => r.bottom > 0 && r.top < window.innerHeight && r.right > 0 && r.left < window.innerWidth;
 
+/**
+ * Where the page's sticky bars (the top bar, a filter bar) end, for an item outside them. An item
+ * scrolled under them is hidden, so it's skipped as a target and scrolled out from under them.
+ */
+function coveredTop(el: Element): number {
+  let bottom = 0;
+  for (const bar of document.querySelectorAll<HTMLElement>(".topbar, main .filters")) {
+    if (bar.contains(el) || getComputedStyle(bar).position !== "sticky") continue;
+    const r = bar.getBoundingClientRect();
+    if (r.height > 0 && r.top < 1 + bottom + 80) bottom = Math.max(bottom, r.bottom);
+  }
+  return bottom;
+}
+
+/** Mostly under a sticky bar: there on the page, but not something you can see. */
+const hidden = (el: Element, r: DOMRect) => {
+  const top = coveredTop(el);
+  return top > 0 && r.top < top && r.bottom - Math.max(r.top, top) < r.height * 0.4;
+};
+
+/** Scrolls an item into view below the sticky bars, not under them. */
+function reveal(el: HTMLElement, instant: boolean): void {
+  const root = document.documentElement;
+  const before = root.style.scrollPaddingTop;
+  root.style.scrollPaddingTop = `${coveredTop(el) + 12}px`;
+  el.scrollIntoView({ block: "nearest", inline: "nearest", behavior: instant ? "auto" : "smooth" });
+  root.style.scrollPaddingTop = before;
+}
+
 export function moveFocus(dir: Dir, repeating = false): void {
   setNavMode("pad");
   setEditing(null);
@@ -101,6 +130,8 @@ export function moveFocus(dir: Dir, repeating = false): void {
     if (el === current) continue;
     const r = el.getBoundingClientRect();
     if (!ahead(dir, from, r)) continue;
+    // A card scrolled under the sticky filter bar is something you can't see: skip past it.
+    if (hidden(el, r) && !hidden(current, from)) continue;
     // Left and right stay in the row: off the end of the filters isn't a jump up to Sign out.
     if ((dir === "left" || dir === "right") && (r.bottom <= from.top || r.top >= from.bottom) && zoneOf(el) !== here) continue;
     rects.set(el, r);
@@ -121,7 +152,7 @@ export function moveFocus(dir: Dir, repeating = false): void {
     if (here) lastInZone.set(here, current);
     best.focus({ preventScroll: true });
     // Smooth scrolling lags behind a held d-pad, so a held direction jumps.
-    best.scrollIntoView({ block: "nearest", inline: "nearest", behavior: repeating ? "auto" : "smooth" });
+    reveal(best, repeating);
   }
 }
 
@@ -138,7 +169,21 @@ export function switchZone(): void {
   const target = lastInZone.get(next);
   const el = target?.isConnected && visible(target) ? target : [...next.querySelectorAll<HTMLElement>(FOCUSABLE)].find(visible);
   el?.focus({ preventScroll: true });
-  el?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  if (el) reveal(el, false);
+}
+
+/** LT and RT: the previous or next tab of the page's tab bar (Library's All games, Installed, Other stores...). */
+export function switchTab(by: number): void {
+  const bar = document.querySelector<HTMLElement>('main [role="tablist"]');
+  const tabs = bar ? [...bar.querySelectorAll<HTMLElement>('[role="tab"]')].filter(visible) : [];
+  if (tabs.length < 2) return;
+  setNavMode("pad");
+  setEditing(null);
+  const at = tabs.findIndex((t) => t.getAttribute("aria-selected") === "true");
+  const next = tabs[(Math.max(0, at) + by + tabs.length) % tabs.length]!;
+  next.click();
+  next.focus({ preventScroll: true });
+  reveal(next, false);
 }
 
 /** A or Enter on a select: change it with the d-pad until A, B or Enter again. */
@@ -241,7 +286,8 @@ export function installSpatialNavigation(onBack: () => void): () => void {
   window.addEventListener("mousemove", onPointer, true);
 
   // Gamepad polling: d-pad / left stick move, A (0) clicks, B (1) goes back, Y (3) jumps between
-  // the filters and the games, the right stick scrolls, and the shoulder buttons page up and down.
+  // the filters and the games, the right stick scrolls, the shoulder buttons page up and down,
+  // and the triggers (6, 7) switch tabs.
   let frame = 0;
   const held = new Map<string, number>();
   const repeat = (id: string, pressed: boolean, action: (repeating: boolean) => void) => {
@@ -300,6 +346,8 @@ export function installSpatialNavigation(onBack: () => void): () => void {
           else back();
         });
         repeat(`${pad.index}y`, b(3), switchZone);
+        repeat(`${pad.index}lt`, b(6), () => switchTab(-1));
+        repeat(`${pad.index}rt`, b(7), () => switchTab(1));
         repeat(`${pad.index}lb`, b(4), () => scrollBy(-window.innerHeight * 0.8));
         repeat(`${pad.index}rb`, b(5), () => scrollBy(window.innerHeight * 0.8));
         if (pad.mapping === "standard" && Math.abs(ry) > 0.25) scrollBy(ry * 18);

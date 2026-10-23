@@ -4,8 +4,37 @@ import { api, type ArtworkOption } from "../api";
 
 const LABEL = { cover: "Cover", background: "Background" } as const;
 
+type Kind = "cover" | "background";
+
+/** What the picker changes: a library game (admins) or a person's store game. */
+export interface ArtworkTarget {
+  current: Record<Kind, string | null>;
+  /** A custom image is set (and Reset shows). */
+  custom: Record<Kind, boolean>;
+  options(kind: Kind, query: string): Promise<ArtworkOption[]>;
+  setUrl(kind: Kind, url: string): Promise<void>;
+  upload(kind: Kind, file: File): Promise<void>;
+  reset(kind: Kind): Promise<void>;
+}
+
 /** Admin: replace a game's cover or background with an upload, a URL, or SteamGridDB art. */
 export function ArtworkEditor({ game, onChange }: { game: GameDetail; onChange: (g: GameDetail) => void }) {
+  return (
+    <ArtworkPicker
+      target={{
+        current: { cover: game.coverUrl, background: game.backgroundUrl },
+        custom: { cover: !!game.overrides.cover, background: !!game.overrides.background },
+        options: (kind, q) => api.artworkOptions(game.id, kind, q),
+        setUrl: async (kind, url) => onChange(await api.setArtworkUrl(game.id, kind, url)),
+        upload: async (kind, file) => onChange(await api.uploadArtwork(game.id, kind, file)),
+        reset: async (kind) => onChange(await api.resetArtwork(game.id, kind)),
+      }}
+    />
+  );
+}
+
+/** Cover or background: an upload, a URL, or art found on SteamGridDB and the matched metadata. */
+export function ArtworkPicker({ target, resetLabel = "Reset to metadata" }: { target: ArtworkTarget; resetLabel?: string }) {
   const [kind, setKind] = useState<"cover" | "background">("cover");
   const [options, setOptions] = useState<ArtworkOption[] | null>(null);
   const [query, setQuery] = useState("");
@@ -25,9 +54,9 @@ export function ArtworkEditor({ game, onChange }: { game: GameDetail; onChange: 
       setBusy(false);
     }
   };
-  const apply = (fn: () => Promise<GameDetail>) => run(async () => onChange(await fn()));
-  const override = game.overrides[kind];
-  const current = kind === "cover" ? game.coverUrl : game.backgroundUrl;
+  const apply = (fn: () => Promise<void>) => run(fn);
+  const override = target.custom[kind];
+  const current = target.current[kind];
 
   return (
     <div className="artwork">
@@ -58,16 +87,16 @@ export function ArtworkEditor({ game, onChange }: { game: GameDetail; onChange: 
           onChange={(e) => {
             const f = e.target.files?.[0];
             e.target.value = "";
-            if (f) void apply(() => api.uploadArtwork(game.id, kind, f));
+            if (f) void apply(() => target.upload(kind, f));
           }}
         />
-        <button disabled={busy} onClick={() => run(async () => setOptions(await api.artworkOptions(game.id, kind, query)))}>
+        <button disabled={busy} onClick={() => run(async () => setOptions(await target.options(kind, query)))}>
           Find artwork
         </button>
         <input placeholder="Search name (optional)" value={query} onChange={(e) => setQuery(e.target.value)} style={{ width: 180 }} />
         {override && (
-          <button className="ghost" disabled={busy} onClick={() => apply(() => api.resetArtwork(game.id, kind))}>
-            Reset to metadata
+          <button className="ghost" disabled={busy} onClick={() => apply(() => target.reset(kind))}>
+            {resetLabel}
           </button>
         )}
       </div>
@@ -75,7 +104,7 @@ export function ArtworkEditor({ game, onChange }: { game: GameDetail; onChange: 
         className="inline"
         onSubmit={(e) => {
           e.preventDefault();
-          if (url.trim()) void apply(() => api.setArtworkUrl(game.id, kind, url.trim())).then(() => setUrl(""));
+          if (url.trim()) void apply(() => target.setUrl(kind, url.trim())).then(() => setUrl(""));
         }}
       >
         <input placeholder="…or paste an image URL" value={url} onChange={(e) => setUrl(e.target.value)} style={{ flex: 1 }} />
@@ -85,7 +114,7 @@ export function ArtworkEditor({ game, onChange }: { game: GameDetail; onChange: 
         <div className={`art-options art-options-${kind}`}>
           {options.length === 0 && <p className="muted small">Nothing found. Add a SteamGridDB key in Settings, Sign-in &amp; services for many more choices.</p>}
           {options.map((o) => (
-            <button key={o.url} className="art-option" disabled={busy} title={o.source} onClick={() => apply(() => api.setArtworkUrl(game.id, kind, o.url)).then(() => setOptions(null))}>
+            <button key={o.url} className="art-option" disabled={busy} title={o.source} onClick={() => apply(() => target.setUrl(kind, o.url)).then(() => setOptions(null))}>
               <img src={o.thumb} alt="" loading="lazy" />
             </button>
           ))}

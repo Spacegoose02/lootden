@@ -2,6 +2,8 @@
 // the LootDen library. The server syncs each person's accounts; the desktop app finds which of
 // those games are installed on the PC and starts them through the store's own launcher.
 
+import type { GameInfo } from "./index.js";
+
 /** One setting an add-on asks for when someone connects their account. */
 export interface AddonField {
   key: string;
@@ -55,6 +57,32 @@ export interface StoreGame {
   lastPlayedAt: string | null;
   /** The same game is in the LootDen library too. */
   libraryGameId: string | null;
+  /**
+   * The server's own cover for it (a person's custom art, else one found by title in the
+   * metadata services): the card falls back to it when coverUrl is missing or broken.
+   */
+  artUrl?: string | null;
+}
+
+/** What a person changed on one of their store games. Null keeps what the store and metadata say. */
+export interface StoreGameCustom {
+  title: string | null;
+  /** An image URL, or "upload:<time>" for an uploaded image. */
+  cover: string | null;
+  background: string | null;
+  /** A different metadata entry than the one picked by title. */
+  match: { provider: string; providerId: string } | null;
+}
+
+/** A store game's page: the game, and its details from IGDB, RAWG or the Steam store. */
+export interface StoreGameDetail {
+  /** Null for a game only found on this PC (no account connected, or a store like Ubisoft Connect). */
+  game: StoreGame | null;
+  /** Null when nothing matched the title; the person can pick a match by hand. */
+  info: GameInfo | null;
+  coverUrl: string | null;
+  backgroundUrl: string | null;
+  custom: StoreGameCustom;
 }
 
 /** A store game installed on this PC, as the desktop app finds it. */

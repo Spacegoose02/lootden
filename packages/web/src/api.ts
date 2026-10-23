@@ -2,6 +2,7 @@ import { desktop } from "./desktop";
 import type {
   AddonView,
   StoreGame,
+  StoreGameDetail,
   ApiTokenInfo,
   AuthProviders,
   EmulatorInfo,
@@ -419,6 +420,10 @@ export interface VideoGroup {
   channels: Array<{ id: string; name: string }>;
 }
 
+/** A store game's address on the server. Games only found on this PC send their title along. */
+export const storeGamePath = (addon: string, id: string) => `/api/store-games/${encodeURIComponent(addon)}/${encodeURIComponent(id)}`;
+const titleQuery = (title: string) => (title ? `?title=${encodeURIComponent(title)}` : "");
+
 async function upload<T>(method: string, path: string, body: Blob, contentType: string): Promise<T> {
   const res = await fetch(path, { method, credentials: "same-origin", headers: { "Content-Type": contentType }, body });
   const data = await res.json().catch(() => ({}));
@@ -582,6 +587,20 @@ export const api = {
   disconnectAddon: (id: string) => call<AddonView[]>("DELETE", `/api/addons/${id}/account`),
   setAddonEnabled: (id: string, enabled: boolean) => call<AddonView[]>("PUT", `/api/addons/${id}`, { enabled }),
   storeGames: (addon?: string) => call<StoreGame[]>("GET", `/api/store-games${addon ? `?addon=${encodeURIComponent(addon)}` : ""}`),
+  /** Titles and covers this person set on store games, for ones only found on this PC. */
+  storeGamesCustom: () => call<Array<{ addon: string; externalId: string; title: string | null; coverUrl: string | null }>>("GET", "/api/store-games/custom"),
+  storeGame: (addon: string, id: string, title = "") => call<StoreGameDetail>("GET", `${storeGamePath(addon, id)}${titleQuery(title)}`),
+  updateStoreGame: (addon: string, id: string, patch: { title?: string | null; match?: { provider: string; providerId: string } | null }, title = "") =>
+    call<StoreGameDetail>("PUT", `${storeGamePath(addon, id)}${titleQuery(title)}`, patch),
+  storeGameMatches: (addon: string, id: string, q: string, title = "") => call<GameListing[]>("GET", `${storeGamePath(addon, id)}/matches?q=${encodeURIComponent(q)}${title ? `&title=${encodeURIComponent(title)}` : ""}`),
+  storeArtworkOptions: (addon: string, id: string, kind: string, q = "", title = "") =>
+    call<ArtworkOption[]>("GET", `${storeGamePath(addon, id)}/artwork/${kind}?q=${encodeURIComponent(q)}${title ? `&title=${encodeURIComponent(title)}` : ""}`),
+  setStoreArtworkUrl: (addon: string, id: string, kind: string, url: string, title = "") => call<StoreGameDetail>("PUT", `${storeGamePath(addon, id)}/artwork/${kind}${titleQuery(title)}`, { url }),
+  uploadStoreArtwork: (addon: string, id: string, kind: string, file: File, title = "") =>
+    upload<StoreGameDetail>("PUT", `${storeGamePath(addon, id)}/artwork/${kind}${titleQuery(title)}`, file, file.type || "image/jpeg"),
+  resetStoreArtwork: (addon: string, id: string, kind: string, title = "") => call<StoreGameDetail>("DELETE", `${storeGamePath(addon, id)}/artwork/${kind}${titleQuery(title)}`),
+  pairingCode: () => call<{ code: string; expiresAt: string }>("POST", "/api/auth/pair"),
+  redeemPairingCode: (code: string) => call<{ user: User }>("POST", "/api/auth/pair/redeem", { code }),
   saveSource: (id: string, c: Partial<SourceConfig>) => call<ReleaseSourceView>("PUT", `/api/sources/${id}`, c),
   testSource: (id: string) => call<{ message: string; sources: ReleaseSourceView[] }>("POST", `/api/sources/${id}/test`),
   sourceReleases: (limit = 40) => call<SourceRelease[]>("GET", `/api/sources/latest${qs({ limit: String(limit) })}`),

@@ -38,6 +38,7 @@ const heroicFiles = () => {
 
 export const gogScanner: StoreScanner = {
   addon: "gog",
+  name: "GOG",
   platforms: ["win32", "linux"],
   async scan() {
     const found = new Map<string, LocalStoreGame>();

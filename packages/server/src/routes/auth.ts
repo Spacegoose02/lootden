@@ -3,7 +3,8 @@ import type { AuthProviders } from "@lootden/shared";
 import { verifyPassword } from "../auth/crypto.js";
 import { isAppNonce } from "../auth/oidc.js";
 import { SESSION_COOKIE } from "../auth/service.js";
-import { HttpProblem, type AppContext } from "../context.js";
+import { PairingCodes } from "../auth/pairing.js";
+import { HttpProblem, requirePerson, type AppContext } from "../context.js";
 import { publicUser, type UserRecord } from "../users/repo.js";
 
 const FAIL_WINDOW_MS = 15 * 60_000;
@@ -25,6 +26,7 @@ export function authRoutes(app: FastifyInstance, ctx: AppContext) {
     oidc: { enabled: ctx.oidc.enabled, name: ctx.config.oidc.name, appHandoff: true },
     header: !!ctx.config.headerAuth.userHeader,
     setupRequired: ctx.users.count() === 0,
+    pairing: true,
   }));
 
   /** Creates the first admin. Only works while there are no accounts. */
@@ -59,6 +61,39 @@ export function authRoutes(app: FastifyInstance, ctx: AppContext) {
     failures.delete(key);
     if (client) {
       const { token } = ctx.auth.createApiToken(user.id, device || "LootDen client");
+      return { token, user: publicUser(user) };
+    }
+    startSession(req, reply, user);
+    return { user: publicUser(user) };
+  });
+
+  // ---- Pairing codes: sign a new device in from one that's signed in already ----------------
+
+  const pairing = new PairingCodes();
+
+  /** A signed-in person asks for a code (Profile, Link a device). */
+  app.post("/api/auth/pair", async (req) => {
+    const user = requirePerson(req);
+    return pairing.issue(user.id);
+  });
+
+  /** The new device trades the code for a session (browsers) or an API token ({client: true}). */
+  app.post<{ Body: { code?: string; client?: boolean; device?: string } }>("/api/auth/pair/redeem", async (req, reply) => {
+    const { code = "", client, device } = req.body ?? {};
+    const key = `${req.ip}|pairing`;
+    const at = Date.now();
+    const f = failures.get(key);
+    const entry = f && at - f.since < FAIL_WINDOW_MS ? f : { count: 0, since: at };
+    if (entry.count >= MAX_FAILS) throw new HttpProblem(429, "Too many wrong codes; wait 15 minutes");
+    const userId = pairing.redeem(String(code));
+    const user = userId === null ? null : ctx.users.byId(userId);
+    if (!user) {
+      entry.count++;
+      failures.set(key, entry);
+      throw new HttpProblem(401, "That code is wrong or has expired; get a new one on your other device");
+    }
+    if (client) {
+      const { token } = ctx.auth.createApiToken(user.id, String(device || "LootDen client").slice(0, 100));
       return { token, user: publicUser(user) };
     }
     startSession(req, reply, user);

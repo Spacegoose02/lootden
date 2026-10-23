@@ -1,11 +1,13 @@
 import { lookup } from "node:dns/promises";
 import type { AddonView, StoreGame } from "@lootden/shared";
+import { Vault } from "../auth/vault.js";
 import { json, now, type Db } from "../db/database.js";
 import type { Library } from "../catalog/library.js";
 import { titleKey } from "../metadata/calendar.js";
 import type { FetchLike } from "../metadata/http.js";
 import { cleanTitle } from "../metadata/titles.js";
 import { isPrivateAddress } from "../sources/client.js";
+import { customArtUrl, storeArtPath } from "./details.js";
 import { ADDONS } from "./index.js";
 import type { LibraryAddon, OwnedGame } from "./types.js";
 
@@ -46,7 +48,33 @@ export class AddonRegistry {
     private readonly fetchImpl: FetchLike = fetch,
     readonly addons: LibraryAddon[] = ADDONS,
     private readonly resolveHost: (host: string) => Promise<string[]> = async (h) => (await lookup(h, { all: true })).map((a) => a.address),
-  ) {}
+    private readonly vault: Vault = Vault.fromSecret(""),
+  ) {
+    this.encryptStored();
+  }
+
+  /** Accounts saved before their settings were encrypted get encrypted once. */
+  private encryptStored(): void {
+    const rows = this.db.prepare("SELECT user_id, addon, config FROM addon_accounts").all() as Array<{ user_id: number; addon: string; config: string }>;
+    for (const r of rows) {
+      if (!Vault.isEncrypted(r.config)) this.db.prepare("UPDATE addon_accounts SET config = ? WHERE user_id = ? AND addon = ?").run(this.vault.encrypt(r.config), r.user_id, r.addon);
+    }
+  }
+
+  /** An account's settings, keys and tokens included. Server side only: never send this to a browser. */
+  private config(row: AccountRow | undefined): Record<string, string> {
+    if (!row) return {};
+    try {
+      return json<Record<string, string>>(this.vault.decrypt(row.config), {});
+    } catch {
+      // Encrypted with another key (GM_SECRET_KEY changed, secret.key lost): the person connects again.
+      return {};
+    }
+  }
+
+  private sealed(config: Record<string, string>): string {
+    return this.vault.encrypt(JSON.stringify(config));
+  }
 
   // ---- Server-wide switches ---------------------------------------------------------
 
@@ -83,7 +111,7 @@ export class AddonRegistry {
     );
     return this.addons.map((a) => {
       const row = this.account(userId, a.id);
-      const config = json<Record<string, string>>(row?.config, {});
+      const config = this.config(row);
       const masked = Object.fromEntries(a.fields.map((f) => [f.key, f.oneTime ? "" : f.secret && config[f.key] ? MASK : (config[f.key] ?? "")]));
       return {
         id: a.id,
@@ -101,7 +129,7 @@ export class AddonRegistry {
   async connect(userId: number, id: string, input: Record<string, unknown>, opts: { allowPrivate?: boolean } = {}): Promise<number> {
     const a = this.addon(id);
     if (!this.enabled(id)) throw new Error(`${a.name} is switched off on this server`);
-    const cur = json<Record<string, string>>(this.account(userId, id)?.config, {});
+    const cur = this.config(this.account(userId, id));
     // Values the add-on saved itself (tokens) carry over; the fields are replaced.
     const config: Record<string, string> = { ...cur };
     for (const f of a.fields) {
@@ -114,7 +142,7 @@ export class AddonRegistry {
         `INSERT INTO addon_accounts (user_id, addon, config, connected_at) VALUES (?, ?, ?, ?)
          ON CONFLICT(user_id, addon) DO UPDATE SET config = excluded.config, error = NULL`,
       )
-      .run(userId, id, JSON.stringify(config), now());
+      .run(userId, id, this.sealed(config), now());
     return this.sync(userId, id, opts);
   }
 
@@ -138,11 +166,11 @@ export class AddonRegistry {
     const row = this.account(userId, id);
     if (!row) throw new Error(`Connect ${a.name} first`);
     let games: OwnedGame[];
-    const config = json<Record<string, string>>(row.config, {});
+    const config = this.config(row);
     // Saved straight away: a sign-in code is used up and a refreshed token replaces the old one, even if the sync then fails.
     const save = (patch: Record<string, string>) => {
       Object.assign(config, patch);
-      this.db.prepare("UPDATE addon_accounts SET config = ? WHERE user_id = ? AND addon = ?").run(JSON.stringify(config), userId, id);
+      this.db.prepare("UPDATE addon_accounts SET config = ? WHERE user_id = ? AND addon = ?").run(this.sealed(config), userId, id);
     };
     try {
       games = await a.games({ config: { ...config }, fetch: this.guardedFetch(allowPrivate), save });
@@ -200,20 +228,37 @@ export class AddonRegistry {
     ) as unknown as GameRow[];
     const library = new Map<string, string>();
     for (const g of this.library.list()) library.set(titleKey(cleanTitle(g.title).query), g.id);
+    // The person's own titles and covers (StoreGameDetails keeps them).
+    const custom = new Map(
+      (this.db.prepare("SELECT addon, external_id, title, cover FROM store_game_custom WHERE user_id = ?").all(userId) as Array<{ addon: string; external_id: string; title: string | null; cover: string | null }>).map((c) => [
+        `${c.addon}:${c.external_id}`,
+        c,
+      ]),
+    );
     return rows
       .filter((r) => names.has(r.addon) && this.enabled(r.addon))
-      .map((r) => ({
+      .map((r) => {
+        const c = custom.get(`${r.addon}:${r.external_id}`);
+        const title = c?.title ?? r.title;
+        return {
         addon: r.addon,
         store: names.get(r.addon)!,
         externalId: r.external_id,
-        title: r.title,
-        coverUrl: r.cover_url,
+        title,
+        coverUrl: c?.cover ? customArtUrl(r.addon, r.external_id, c.cover) : r.cover_url,
+        artUrl: c?.cover ? null : storeArtPath(r.addon, r.external_id),
         storeUrl: r.store_url,
         launchUrl: r.launch_url,
         playtimeSeconds: r.playtime_seconds,
         lastPlayedAt: r.last_played_at,
-        libraryGameId: library.get(titleKey(cleanTitle(r.title).query)) ?? null,
-      }));
+        libraryGameId: library.get(titleKey(cleanTitle(title).query)) ?? library.get(titleKey(cleanTitle(r.title).query)) ?? null,
+      };
+      });
+  }
+
+  /** One of this person's store games. */
+  game(userId: number, addon: string, externalId: string): StoreGame | null {
+    return this.games(userId, addon).find((g) => g.externalId === externalId) ?? null;
   }
 
   /**

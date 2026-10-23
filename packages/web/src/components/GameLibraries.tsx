@@ -17,7 +17,7 @@ export function GameLibraries({ admin }: { admin: boolean }) {
     <section className="panel game-libraries">
       <h2>Game libraries</h2>
       <p className="muted small">
-        Connect your accounts on other stores and their games show up under <Link to="/library?tab=stores">Library, Other stores</Link>, next to what's on this server. Only you see your accounts and games.
+        Connect your accounts on other stores and their games show up under <Link to="/library?tab=stores">Library, Other stores</Link>, next to what's on this server. Only you see your accounts and games. They're kept with your LootDen account, not on this device, so every device you sign in on gets them without entering anything again; keys and tokens are stored encrypted and never sent back to a browser.
       </p>
       {msg && <p className={msg.error ? "error" : "ok"}>{msg.text}</p>}
       {shown.length === 0 && <p className="muted">No library add-ons are switched on.</p>}

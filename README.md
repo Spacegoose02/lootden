@@ -149,7 +149,8 @@ on Linux). The `.deb` doesn't update itself; the other builds do.
 On a handheld (ROG Ally, Steam Deck, Legion Go) the app switches to **Handheld mode**: full
 screen, larger text and buttons, and it opens in front when started with the computer. Change
 it under Profile, This computer. A controller moves a selection box around the app: A selects, B goes back, Y jumps between
-the filters and the games, and on a menu such as Genre or Sort, A starts changing it with the
+the filters and the games, the triggers (LT, RT) switch tabs such as Library's All games and
+Other stores, and on a menu such as Genre or Sort, A starts changing it with the
 d-pad and A or B finishes; on the
 ROG Ally set Armoury Crate's Control Mode to Gamepad, as Auto treats LootDen as a desktop app
 and turns the controller into a mouse.

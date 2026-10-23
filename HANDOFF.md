@@ -14,7 +14,7 @@ installs games from it. Owner: Spacegoose02. Repository: `Spacegoose02/lootden` 
 | Package | What's in it |
 | --- | --- |
 | `packages/shared` | Types and rules both sides use: platforms, emulators, update/DLC detection |
-| `packages/server` | Fastify API and library scanner. `src/catalog` scans `/games`, `src/routes` is the API, `src/metadata` the IGDB/RAWG/Steam/PCGamingWiki/HowLongToBeat lookups, `src/connectors` the download tools |
+| `packages/server` | Fastify API and library scanner. `src/catalog` scans `/games`, `src/routes` is the API, `src/metadata` the IGDB/RAWG/Steam/PCGamingWiki/HowLongToBeat lookups, `src/connectors` the download tools, `src/addons` other stores' libraries |
 | `packages/client` | Download, unpack, install and play logic, shared by the desktop app and the `lootden` CLI. `prepare.ts` installs and uploads installer games |
 | `packages/web` | React UI. `gamepad.ts` is all controller and arrow-key navigation, `theme.ts` the themes |
 | `packages/desktop` | Electron app: `main.ts` (windows, tray, IPC, start with Windows, full screen), `preload.ts` (the bridge the web UI calls) |
@@ -26,7 +26,7 @@ installs games from it. Owner: Spacegoose02. Repository: `Spacegoose02/lootden` 
 
 ```sh
 npm ci
-npm test              # builds everything, then runs the node:test suites (about 125 tests)
+npm test              # builds everything, then runs the node:test suites (about 155 tests)
 npm run dev:server    # API on :8080 using GM_GAMES_DIR / GM_DATA_DIR
 npm run dev:web       # UI on :5173 with hot reload
 npm run build:desktop
@@ -58,7 +58,51 @@ app's connect screen. Replacing those files and rebuilding is all it takes. The 
 theme-coloured SVG raccoon is still the fallback in `packages/web/public/logo.svg`; deleting
 `brand/logo.png` brings it back, along with the Profile option to recolour it.
 
-## Recent work (0.13.2, not released yet)
+## Recent work (richer store integrations, not released yet)
+
+Owner's feedback on the add-ons: other stores' games had no pictures and no page, keys
+seemed to need entering per device, scanning was fixed per PC, and the controller got lost.
+
+- **Covers and pages for store games.** `src/addons/details.ts` (`StoreGameDetails`) matches
+  each store game once by title against IGDB, RAWG, then the keyless Steam store (a Steam game
+  straight by app id; `storeQuery` splits folder names like `FarCry6`), with SteamGridDB
+  covers when that key is set. Matches are shared (`store_game_match`), details are cached a
+  month (`store_game_info`). Routes in `routes/addons.ts`: `GET /api/store-games/:addon/:id`
+  (the page), `.../cover` and `.../background` (302 to the image, or an uploaded file),
+  `.../matches`, `.../artwork/:kind`. Games only on the PC (Ubisoft) send `?title=`.
+  `StoreGame.artUrl` is the server's cover, which cards use when the store has none or its
+  image is broken. The web page is `pages/StoreGame.tsx` (`/store/:addon/:id`); cards now open
+  it. Ubisoft games get real names from Windows' "Uplay Install" uninstall keys.
+- **Each person's own art and metadata.** Edit on a store game's page: rename it, pick a
+  different match, upload or link a cover and background, or pick SteamGridDB art
+  (`store_game_custom`, per person; `ArtworkPicker` in `components/ArtworkEditor.tsx` is shared
+  with the admin artwork editor). Image URLs typed by a person are only ever loaded by the
+  browser (the server redirects), never fetched by the server.
+- **Keys once, every device.** Store accounts were already per person on the server, not
+  per device; that's now said on the Game libraries card. Account settings are encrypted
+  at rest (`src/auth/vault.ts`, AES-256-GCM; key from `GM_SECRET_KEY` or `<data>/secret.key`,
+  created on first start). Old plain rows are encrypted at start-up. Lose the key and people
+  reconnect their stores.
+- **Pairing codes.** Profile, Devices and tokens, **Link another device** shows a code
+  (`POST /api/auth/pair`, 8 characters, 10 minutes, once, kept hashed in memory); the new
+  device's sign-in page has **Sign in with a code** (`POST /api/auth/pair/redeem`, `client:
+  true` returns an API token like `/api/auth/login`). Wrong codes count toward the same
+  10-per-15-minutes limit per IP.
+- **Per-PC scanning.** Profile, This computer, "Games from other stores on this PC": switch
+  launchers off and add folders to look in (`storeScan` in the desktop `settings.json`;
+  `gm:storeScan`, `gm:addStoreFolder`; new folders only come from the folder picker).
+  `packages/client/src/stores/folders.ts` recognises Steam libraries and GOG, Epic and Xbox
+  game folders.
+- **Controller.** Cards scrolled under the sticky filter bar are skipped and focus scrolls
+  items out from under it (`reveal` in `gamepad.ts`), store grids and the Library tabs are
+  zones for Y, LT/RT switch tabs, store cards are one focusable link plus their buttons, and
+  B closes the screenshot lightbox.
+
+Not done: signing in with Steam (OpenID) instead of a Steam ID, and a server-wide Steam API
+key so people only need their profile link. `Integrations` (IGDB and other admin keys in
+the settings table) aren't encrypted yet; the vault can do it.
+
+## Offline mode (0.13.2)
 
 Offline mode for the desktop app. Before, a PC away from the server (a handheld out of the
 house, the server switched off) only got the "Connect to your LootDen server" screen, and an
@@ -121,20 +165,7 @@ pick across every library with length and never-played filters.
 - 0.13.0: chunked uploads of installed games (`PUT /api/games/:id/prepared/parts/:upload`,
   then `.../finish`, 16 MB parts with retries; errors name the cause), controller navigation
   fixes, admins can delete games (`DELETE /api/games/:id`), new logo and mascot.
-=======
-## Recent work (0.13.0, not released yet)
-
-- Uploading an installed game from the desktop app now goes in 16 MB parts with retries
-  (`PUT /api/games/:id/prepared/parts/:upload`, then `.../finish`). Before, one multi-GB
-  request failed behind reverse proxies and tunnels. Errors now say what to fix (proxy upload
-  limit, read-only games mount, folder permissions). The old one-shot `PUT .../prepared`
-  stays for older apps.
-- Controller navigation: selects no longer trap the d-pad, the filter bar and the games
-  remember where you left them, Y switches between them.
-- Admins can delete games (`DELETE /api/games/:id`, `?permanent=true` to remove the files).
-- New logo and mascot.
-
-- Themes have their own **Settings, Themes** tab (`components/ThemePicker.tsx`) with a small
+- 0.13.0 also gave themes their own **Settings, Themes** tab (`components/ThemePicker.tsx`) with a small
   mock of the app in each theme's colours and a Dark/Light filter. Ten new themes (Rosé Pine,
   Kanagawa, Evergreen, Aurora, Tropical Sunset, Latte, Sakura, Paper, Red Visor, Famicom), 33
   in all. Everyone gets Settings in the menu now, but non-admins only see the Themes tab.
@@ -194,6 +225,10 @@ How it's protected:
   folder.
 - **Headers.** Every response has `nosniff`, `X-Frame-Options: SAMEORIGIN` and
   `strict-origin-when-cross-origin`.
+- **Store accounts.** Keys and tokens are encrypted in the database (`src/auth/vault.ts`)
+  and masked in every response; only `AddonRegistry` decrypts them, server side.
+- **Pairing codes** are single use, expire after 10 minutes, are stored only as hashes and
+  share the sign-in failure limit.
 - **Desktop app.** `contextIsolation`, `sandbox`, no `nodeIntegration`. Every IPC handler
   but `gm:frame` checks the sender is the configured server (`fromServer`).
 

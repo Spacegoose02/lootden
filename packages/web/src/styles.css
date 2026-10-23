@@ -3291,6 +3291,19 @@ html[data-lootden-frame] .lightbox {
 .store-card:hover {
   transform: none;
 }
+.store-card-link {
+  display: block;
+  text-decoration: none;
+  color: inherit;
+  border-radius: var(--radius);
+}
+.store-card-link:hover .cover,
+.store-card-link:focus-visible .cover {
+  filter: brightness(1.08);
+}
+.store-card-actions {
+  padding-top: 0;
+}
 .store-actions {
   display: flex;
   flex-wrap: wrap;
@@ -3314,4 +3327,51 @@ html[data-lootden-frame] .lightbox {
   display: inline-flex;
   align-items: center;
   gap: 0.25rem;
+}
+
+/* A store game's page: the Edit panel (title, metadata match, artwork). */
+.store-edit {
+  margin-top: 1.5rem;
+}
+.store-edit h3 {
+  margin: 1.1rem 0 0.4rem;
+}
+.match-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 0.5rem;
+  margin-top: 0.6rem;
+}
+.match-option {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  text-align: left;
+  padding: 0.4rem;
+  min-width: 0;
+}
+.match-option img,
+.match-option .match-noimg {
+  width: 44px;
+  height: 58px;
+  object-fit: cover;
+  border-radius: 6px;
+  flex: none;
+  background: var(--bg-2);
+}
+.match-option span {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.match-option strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.store-scan {
+  margin: 1.2rem 0;
+}
+.store-scan h4 {
+  margin: 1rem 0 0.3rem;
 }
