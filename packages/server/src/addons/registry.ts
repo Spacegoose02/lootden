@@ -78,9 +78,45 @@ export class AddonRegistry {
 
   // ---- Server-wide switches ---------------------------------------------------------
 
-  private switches(): Record<string, { enabled?: boolean }> {
+  private switches(): Record<string, { enabled?: boolean; shared?: string }> {
     const row = this.db.prepare("SELECT value FROM settings WHERE key = ?").get(KEY) as { value: string } | undefined;
-    return json<Record<string, { enabled?: boolean }>>(row?.value, {});
+    return json<Record<string, { enabled?: boolean; shared?: string }>>(row?.value, {});
+  }
+
+  private saveSwitches(next: Record<string, { enabled?: boolean; shared?: string }>): void {
+    this.db.prepare("INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(KEY, JSON.stringify(next));
+  }
+
+  /** Values an admin set for everyone (a Steam Web API key), encrypted like accounts. Server side only. */
+  private shared(id: string): Record<string, string> {
+    const sealed = this.switches()[id]?.shared;
+    if (!sealed) return {};
+    try {
+      return json<Record<string, string>>(this.vault.decrypt(sealed), {});
+    } catch {
+      return {};
+    }
+  }
+
+  /** Admins: fill in an add-on's shared fields for everyone. The masked value keeps the saved one, empty clears it. */
+  setShared(id: string, input: Record<string, unknown>): void {
+    const a = this.addon(id);
+    const cur = this.shared(id);
+    const next: Record<string, string> = {};
+    for (const f of a.fields.filter((x) => x.shared)) {
+      const v = typeof input[f.key] === "string" ? (input[f.key] as string).trim() : undefined;
+      const value = v === undefined || v === MASK ? (cur[f.key] ?? "") : v;
+      if (value) next[f.key] = value;
+    }
+    const all = this.switches();
+    this.saveSwitches({ ...all, [id]: { ...all[id], shared: Object.keys(next).length ? this.vault.encrypt(JSON.stringify(next)) : undefined } });
+  }
+
+  /** What an add-on is given: the person's values, with the shared ones filling the gaps. */
+  private effective(id: string, config: Record<string, string>): Record<string, string> {
+    const out = { ...config };
+    for (const [k, v] of Object.entries(this.shared(id))) if (!out[k]) out[k] = v;
+    return out;
   }
 
   enabled(id: string): boolean {
@@ -89,8 +125,8 @@ export class AddonRegistry {
 
   setEnabled(id: string, enabled: boolean): void {
     this.addon(id);
-    const next = { ...this.switches(), [id]: { enabled } };
-    this.db.prepare("INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(KEY, JSON.stringify(next));
+    const all = this.switches();
+    this.saveSwitches({ ...all, [id]: { ...all[id], enabled } });
   }
 
   private addon(id: string): LibraryAddon {
@@ -120,6 +156,8 @@ export class AddonRegistry {
         homepage: a.homepage ?? null,
         fields: a.fields,
         enabled: this.enabled(a.id),
+        sharedSet: Object.keys(this.shared(a.id)),
+        signIn: a.signIn ?? null,
         account: row ? { config: masked, connectedAt: row.connected_at, lastSyncAt: row.last_sync_at, error: row.error, games: counts.get(a.id) ?? 0 } : null,
       };
     });
@@ -135,7 +173,7 @@ export class AddonRegistry {
     for (const f of a.fields) {
       const v = typeof input[f.key] === "string" ? (input[f.key] as string).trim() : undefined;
       config[f.key] = v === undefined || (f.secret && v === MASK) || (f.oneTime && !v) ? (cur[f.key] ?? "") : v;
-      if (f.required && !config[f.key]) throw new Error(`${f.label} is needed`);
+      if (f.required && !config[f.key] && !(f.shared && this.shared(id)[f.key])) throw new Error(`${f.label} is needed`);
     }
     this.db
       .prepare(
@@ -144,6 +182,24 @@ export class AddonRegistry {
       )
       .run(userId, id, this.sealed(config), now());
     return this.sync(userId, id, opts);
+  }
+
+  /**
+   * Saves some of an account's fields without the checks Connect does (a sign-in on the
+   * store's site gives one field, the key may come later), then syncs if it can.
+   */
+  async saveFields(userId: number, id: string, patch: Record<string, string>, opts: { allowPrivate?: boolean } = {}): Promise<number | null> {
+    const a = this.addon(id);
+    if (!this.enabled(id)) throw new Error(`${a.name} is switched off on this server`);
+    const config = { ...this.config(this.account(userId, id)), ...patch };
+    this.db
+      .prepare(
+        `INSERT INTO addon_accounts (user_id, addon, config, connected_at) VALUES (?, ?, ?, ?)
+         ON CONFLICT(user_id, addon) DO UPDATE SET config = excluded.config, error = NULL`,
+      )
+      .run(userId, id, this.sealed(config), now());
+    const ready = a.fields.every((f) => !f.required || this.effective(id, config)[f.key]);
+    return ready ? this.sync(userId, id, opts) : null;
   }
 
   disconnect(userId: number, id: string): void {
@@ -173,7 +229,7 @@ export class AddonRegistry {
       this.db.prepare("UPDATE addon_accounts SET config = ? WHERE user_id = ? AND addon = ?").run(this.sealed(config), userId, id);
     };
     try {
-      games = await a.games({ config: { ...config }, fetch: this.guardedFetch(allowPrivate), save });
+      games = await a.games({ config: this.effective(id, config), fetch: this.guardedFetch(allowPrivate), save });
     } catch (err) {
       const message = (err as Error).message || String(err);
       this.db.prepare("UPDATE addon_accounts SET error = ?, last_sync_at = ? WHERE user_id = ? AND addon = ?").run(message, now(), userId, id);

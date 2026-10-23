@@ -42,6 +42,8 @@ export interface LibraryAddon {
   fields: AddonField[];
   /** Every game the account owns. Thrown errors are shown to the person as they are. */
   games(ctx: AddonContext): Promise<OwnedGame[]>;
+  /** Optional: connect by signing in on the store's site; the route that starts it (see steam-signin.ts). */
+  signIn?: { label: string; start: string };
   /** Optional: a link to start a game, for add-ons whose list doesn't carry one. */
   launchUrl?(externalId: string): string | null;
 }

@@ -49,6 +49,7 @@ import { SourceRegistry } from "./sources/registry.js";
 import { sourceRoutes } from "./routes/sources.js";
 import { AddonRegistry } from "./addons/registry.js";
 import { StoreGameDetails } from "./addons/details.js";
+import { SteamSignIn } from "./addons/steam-signin.js";
 import { Vault } from "./auth/vault.js";
 import type { LibraryAddon } from "./addons/types.js";
 import { addonRoutes } from "./routes/addons.js";
@@ -58,7 +59,8 @@ import { directRoutes } from "./routes/direct.js";
 export const VERSION = "0.14.1";
 
 /** Routes reachable without signing in. */
-const PUBLIC = [/^\/api\/health$/, /^\/api\/auth\//, /^\/api\/avatars\//];
+// The Steam sign-in callback finds its person by a one-time state value (it may land in a browser nobody is signed in to).
+const PUBLIC = [/^\/api\/health$/, /^\/api\/auth\//, /^\/api\/avatars\//, /^\/api\/addons\/steam\/signin\/callback$/];
 
 /** The request's path with %-escapes undone; the raw path when it doesn't decode. */
 function decodedPath(raw: string): string {
@@ -141,6 +143,7 @@ export function buildContext(config: ServerConfig, db: Db, log: Log, opts: Build
     sources: new SourceRegistry(db, wishlist, notifier, opts.fetchImpl),
     addons: new AddonRegistry(db, library, opts.fetchImpl, opts.addons, opts.resolveHost, Vault.open(config.dataDir, config.secretKey)),
     storeDetails: new StoreGameDetails(db, metadata, config.dataDir, log),
+    steamSignIn: new SteamSignIn(opts.fetchImpl),
     timeToBeat: timeToBeat(metadata.igdb, new HowLongToBeat(opts.fetchImpl), () => settings().hltb.enabled !== false),
   };
 }

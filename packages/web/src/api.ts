@@ -585,6 +585,8 @@ export const api = {
   connectAddon: (id: string, config: Record<string, string>) => call<{ games: number; addons: AddonView[] }>("PUT", `/api/addons/${id}/account`, { config }),
   syncAddon: (id: string) => call<{ games: number; addons: AddonView[] }>("POST", `/api/addons/${id}/sync`),
   disconnectAddon: (id: string) => call<AddonView[]>("DELETE", `/api/addons/${id}/account`),
+  setAddonShared: (id: string, config: Record<string, string>) => call<AddonView[]>("PUT", `/api/addons/${id}/shared`, { config }),
+  addonSignIn: (start: string) => call<{ url: string }>("POST", start),
   setAddonEnabled: (id: string, enabled: boolean) => call<AddonView[]>("PUT", `/api/addons/${id}`, { enabled }),
   storeGames: (addon?: string) => call<StoreGame[]>("GET", `/api/store-games${addon ? `?addon=${encodeURIComponent(addon)}` : ""}`),
   /** Titles and covers this person set on store games, for ones only found on this PC. */

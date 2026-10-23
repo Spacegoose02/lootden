@@ -13,12 +13,13 @@ interface OwnedGamesResponse {
 export const steam: LibraryAddon = {
   id: "steam",
   name: "Steam",
-  description: "Your Steam games and play time. Needs a free Steam Web API key, and your profile's Game details set to Public.",
+  description: "Your Steam games and play time. Sign in with Steam, or paste your profile link; your profile's Game details must be Public. Needs a free Steam Web API key unless an admin set one for everyone.",
   homepage: "https://steamcommunity.com/dev/apikey",
   fields: [
     { key: "steamId", label: "Steam profile", required: true, placeholder: "https://steamcommunity.com/id/yourname", help: "Your profile link, custom URL name or 17-digit Steam ID" },
-    { key: "apiKey", label: "Steam Web API key", required: true, secret: true, help: "From steamcommunity.com/dev/apikey (any domain name works)" },
+    { key: "apiKey", label: "Steam Web API key", required: true, secret: true, shared: true, help: "From steamcommunity.com/dev/apikey (any domain name works)" },
   ],
+  signIn: { label: "Sign in with Steam", start: "/api/addons/steam/signin" },
   async games({ config, fetch }) {
     const steamId = await resolveSteamId(config.steamId ?? "", fetch);
     const url = new URL("https://api.steampowered.com/IPlayerService/GetOwnedGames/v1/");
