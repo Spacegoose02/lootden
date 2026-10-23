@@ -27,11 +27,13 @@ export interface DesktopSettings {
   trayHintShown: boolean;
   /** Play time recorded while the server couldn't be reached, sent when the app is back online. */
   pendingPlays: Array<{ gameId: string; seconds: number; playedAt: string }>;
+  /** Other stores' games on this PC: launchers not to look in, and extra folders to look in (picked in Profile, This computer). */
+  storeScan: { disabled: string[]; folders: string[] };
 }
 
 export function defaultSettings(): DesktopSettings {
   const installDir = process.platform === "win32" ? "C:\\Games" : path.join(os.homedir(), "Games");
-  return { serverUrl: "", apiToken: "", installDir, libraryDirs: [installDir], keepArchives: false, fullscreen: false, handheld: "auto", toolsDir: "", closeToTray: true, autoUpdate: true, openAtLogin: false, trayHintShown: false, pendingPlays: [] };
+  return { serverUrl: "", apiToken: "", installDir, libraryDirs: [installDir], keepArchives: false, fullscreen: false, handheld: "auto", toolsDir: "", closeToTray: true, autoUpdate: true, openAtLogin: false, trayHintShown: false, pendingPlays: [], storeScan: { disabled: [], folders: [] } };
 }
 
 export class SettingsStore {
@@ -46,7 +48,8 @@ export class SettingsStore {
   }
 
   get(): DesktopSettings {
-    return { ...this.value, libraryDirs: [...this.value.libraryDirs], pendingPlays: [...this.value.pendingPlays] };
+    const scan = this.value.storeScan ?? { disabled: [], folders: [] };
+    return { ...this.value, libraryDirs: [...this.value.libraryDirs], pendingPlays: [...this.value.pendingPlays], storeScan: { disabled: [...(scan.disabled ?? [])], folders: [...(scan.folders ?? [])] } };
   }
 
   update(patch: Partial<DesktopSettings>): DesktopSettings {

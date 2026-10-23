@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { rm } from "node:fs/promises";
 import { after, before, describe, it } from "node:test";
 import { jsonList } from "../src/addons/json-list.js";
+import { Vault } from "../src/auth/vault.js";
 import type { LibraryAddon } from "../src/addons/types.js";
 import { makeApp, makeLibrary } from "./helpers.js";
 
@@ -182,7 +183,7 @@ describe("GOG add-on", () => {
         products: page === 1 ? [{ id: 1, title: "Dredge", image: "//images.gog-statics.com/abc", url: "/en/game/dredge" }, { id: 9, title: "Soundtrack", isGame: false }] : [{ id: 2, title: "Hades", image: "//images.gog-statics.com/def", url: "/en/game/hades" }],
       });
     }) as typeof fetch;
-    const { app, ctx, db } = await makeApp(root, {}, { fetchImpl, addons: [gog], resolveHost: async () => ["93.184.216.34"] });
+    const { app, ctx, db, config } = await makeApp(root, {}, { fetchImpl, addons: [gog], resolveHost: async () => ["93.184.216.34"] });
     const sam = await signIn(app, ctx, "sam");
 
     assert.match((await app.inject({ method: "PUT", url: "/api/addons/gog/account", headers: sam, payload: { config: {} } })).json().error, /Sign in to GOG/);
@@ -190,7 +191,9 @@ describe("GOG add-on", () => {
     const ok = (await app.inject({ method: "PUT", url: "/api/addons/gog/account", headers: sam, payload: { config: { code: "https://embed.gog.com/on_login_success?origin=client&code=abc123" } } })).json();
     assert.equal(ok.games, 2);
     assert.deepEqual(ok.addons[0].account.config, { code: "" }, "the used code isn't kept or shown");
-    const stored = JSON.parse((db.prepare("SELECT config FROM addon_accounts").get() as { config: string }).config);
+    const raw = (db.prepare("SELECT config FROM addon_accounts").get() as { config: string }).config;
+    assert.ok(raw.startsWith("enc:v1:") && !raw.includes("rt1"), "the token is encrypted in the database");
+    const stored = JSON.parse(Vault.open(config.dataDir).decrypt(raw));
     assert.deepEqual(stored, { code: "", refreshToken: "rt1" });
 
     // Sync and Save (with the code left empty) use the refresh token, and keep the new one.

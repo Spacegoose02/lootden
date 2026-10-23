@@ -176,6 +176,8 @@ export interface AuthProviders {
   header: boolean;
   /** True until the first admin account exists. */
   setupRequired: boolean;
+  /** A code from another signed-in device works here (missing on older servers). */
+  pairing?: boolean;
 }
 
 export type ActivityEvent = "installed" | "uninstalled" | "played";

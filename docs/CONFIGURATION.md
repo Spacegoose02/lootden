@@ -27,6 +27,7 @@ is a commented copy for Docker Compose.
 | --- | --- |
 | `LOOTDEN_ADMIN_USERNAME`, `LOOTDEN_ADMIN_PASSWORD` | Creates this admin at first start; ignored once any account exists. Without them, the first visit asks you to create one |
 | `LOOTDEN_API_TOKEN` | Optional admin token for scripts (`openssl rand -hex 32`). Empty disables it |
+| `LOOTDEN_SECRET_KEY` | Encrypts store accounts' API keys and sign-in tokens in the database. Empty: a random key is created in `<data>/secret.key` on first start; back that file up with the database |
 
 ### Sign-in
 

@@ -31,6 +31,7 @@ export function epicFromHeroic(text: string): LocalStoreGame[] {
 
 export const epicScanner: StoreScanner = {
   addon: "epic",
+  name: "Epic Games",
   platforms: ["win32", "linux"],
   async scan() {
     const found = new Map<string, LocalStoreGame>();

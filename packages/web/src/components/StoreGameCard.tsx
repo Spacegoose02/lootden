@@ -1,11 +1,14 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import type { LocalStoreGame, StoreGame } from "@lootden/shared";
-import { api, formatPlaytime } from "../api";
+import { api, formatPlaytime, storeGamePath } from "../api";
 import { bridgeError, desktop } from "../desktop";
 import { Cover } from "./Cover";
 
 export const storeKey = (g: { addon: string; externalId: string }) => `${g.addon}:${g.externalId}`;
+
+/** A store game's page. Games only found on this PC carry their title, as the server doesn't know them. */
+export const storeGameLink = (g: StoreGame) => `/store/${encodeURIComponent(g.addon)}/${encodeURIComponent(g.externalId)}${g.artUrl?.includes("?title=") ? `?title=${encodeURIComponent(g.title)}` : ""}`;
 
 /** Starts a store game: the PC's own launcher link (Heroic on Linux) when it has one, else the store's. */
 export async function launchStoreGame(g: StoreGame, local?: LocalStoreGame): Promise<void> {
@@ -22,6 +25,7 @@ export async function launchStoreGame(g: StoreGame, local?: LocalStoreGame): Pro
 export function useStoreGames(enabled = true) {
   const [games, setGames] = useState<StoreGame[] | null>(null);
   const [local, setLocal] = useState<LocalStoreGame[]>([]);
+  const [custom, setCustom] = useState<Map<string, { title: string | null; coverUrl: string | null }>>(new Map());
   const [error, setError] = useState("");
   useEffect(() => {
     if (!enabled) return;
@@ -30,6 +34,7 @@ export function useStoreGames(enabled = true) {
       setGames([]);
     });
     desktop?.storeGames?.().then(setLocal, () => setLocal([]));
+    api.storeGamesCustom().then((l) => setCustom(new Map(l.map((c) => [storeKey(c), c]))), () => {});
   }, [enabled]);
   const installed = new Map(local.map((l) => [storeKey(l), l]));
   const all = games
@@ -37,7 +42,12 @@ export function useStoreGames(enabled = true) {
         ...games,
         ...local
           .filter((l) => !games.some((g) => storeKey(g) === storeKey(l)))
-          .map((l): StoreGame => ({ addon: l.addon, store: l.store ?? l.addon, externalId: l.externalId, title: l.title, coverUrl: null, storeUrl: null, launchUrl: l.launchUrl ?? null, playtimeSeconds: null, lastPlayedAt: null, libraryGameId: null })),
+          .map((l): StoreGame => {
+            const c = custom.get(storeKey(l));
+            // The server finds a cover by the title the PC knows the game by.
+            const art = `${storeGamePath(l.addon, l.externalId)}/cover?title=${encodeURIComponent(l.title)}`;
+            return { addon: l.addon, store: l.store ?? l.addon, externalId: l.externalId, title: c?.title ?? l.title, coverUrl: c?.coverUrl ?? null, storeUrl: null, launchUrl: l.launchUrl ?? null, playtimeSeconds: null, lastPlayedAt: null, libraryGameId: null, artUrl: art };
+          }),
       ]
     : null;
   return { games: all, installed, error };
@@ -48,16 +58,21 @@ export function StoreGameCard({ game: g, local, onError }: { game: StoreGame; lo
   const launch = local?.launchUrl ?? g.launchUrl;
   return (
     <div className="card store-card">
-      <Cover game={{ id: storeKey(g), title: g.title, coverUrl: g.coverUrl }} />
-      {local && <span className="installed-dot" title="Installed on this PC" />}
-      <div className="card-body">
-        <div className="card-title" title={g.title}>
-          {g.title}
+      {/* The cover and title open the game's page, like a LootDen game's card. */}
+      <Link to={storeGameLink(g)} className="store-card-link" aria-label={g.title}>
+        <Cover game={{ id: storeKey(g), title: g.title, coverUrl: g.coverUrl ?? g.artUrl ?? null, backgroundUrl: g.coverUrl ? g.artUrl : null }} />
+        {local && <span className="installed-dot" title="Installed on this PC" />}
+        <div className="card-body">
+          <div className="card-title" title={g.title}>
+            {g.title}
+          </div>
+          <div className="card-meta">
+            <span className="badge">{g.store}</span>
+            {g.playtimeSeconds ? ` ${formatPlaytime(g.playtimeSeconds)}` : ""}
+          </div>
         </div>
-        <div className="card-meta">
-          <span className="badge">{g.store}</span>
-          {g.playtimeSeconds ? ` ${formatPlaytime(g.playtimeSeconds)}` : ""}
-        </div>
+      </Link>
+      <div className="card-body store-card-actions">
         <div className="store-actions">
           {launch && (
             <button className="small primary" onClick={() => launchStoreGame(g, local).catch((e) => onError?.(bridgeError(e)))} title={local ? "Start it through the store's launcher" : "Opens the store's launcher to install or play it"}>

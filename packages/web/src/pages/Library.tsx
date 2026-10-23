@@ -24,7 +24,7 @@ export function Library() {
   const go = (t: string) => setParams(t === "all" ? {} : { tab: t }, { replace: true });
   return (
     <>
-      <div className="segmented library-tabs" role="tablist" aria-label="Library view">
+      <div className="segmented library-tabs" role="tablist" aria-label="Library view" data-nav-zone>
         {(
           [
             ["all", "All games"],

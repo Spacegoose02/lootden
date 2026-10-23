@@ -8,6 +8,7 @@ import { Wishlist } from "./pages/Wishlist";
 import { Calendar } from "./pages/Calendar";
 import { Discover } from "./pages/Discover";
 import { DiscoverGame } from "./pages/DiscoverGame";
+import { StoreGame } from "./pages/StoreGame";
 import { Downloads } from "./pages/Downloads";
 import { Emulation, EmulationSystem } from "./pages/Emulation";
 import { EmulatorSetup } from "./pages/EmulatorSetup";
@@ -55,6 +56,7 @@ export function App() {
         <Route path="news" element={<News />} />
         <Route path="discover" element={<Discover />} />
         <Route path="discover/:provider/:id" element={<DiscoverGame />} />
+        <Route path="store/:addon/:id" element={<StoreGame />} />
         <Route path="calendar" element={<Calendar />} />
         <Route path="wishlist" element={<Wishlist />} />
         <Route path="emulation" element={<Emulation />} />

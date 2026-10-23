@@ -102,6 +102,9 @@ export interface DesktopBridge {
   /** Library add-ons: store games installed on this PC, and starting one through its launcher (apps from 0.14.0). */
   storeGames?(): Promise<LocalStoreGame[]>;
   launchStore?(url: string): Promise<void>;
+  /** This PC's store scanner settings, and adding a folder to it through the folder picker (newer apps only). */
+  storeScan?(patch?: { disabled?: string[]; folders?: string[] }): Promise<StoreScanSettings>;
+  addStoreFolder?(): Promise<StoreScanSettings>;
   /** Disc/installer games: install once on this PC and upload the result. Missing in older apps. */
   prepare?(gameId: string): Promise<GameDetailLike | null>;
   uploadFolder?(gameId: string): Promise<GameDetailLike | null>;
@@ -178,4 +181,10 @@ export function useDesktopGame(gameId: string) {
   }, [gameId]);
 
   return { installed, loose, progress, refresh, setProgress };
+}
+
+/** Which launchers the desktop app looks in for store games, and the folders picked on this PC. */
+export interface StoreScanSettings {
+  stores: Array<{ id: string; name: string; enabled: boolean }>;
+  folders: string[];
 }

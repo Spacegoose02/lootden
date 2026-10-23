@@ -7,6 +7,7 @@ import { useAuth } from "../auth";
 import { bridgeError, desktop, type InstalledGame } from "../desktop";
 import { THEMES, useTheme } from "../theme";
 import { GameLibraries } from "../components/GameLibraries";
+import { StoreScan } from "../components/StoreScan";
 
 export function Profile() {
   const { me, refresh } = useAuth();
@@ -16,6 +17,7 @@ export function Profile() {
   const [name, setName] = useState(user?.displayName ?? "");
   const [tokens, setTokens] = useState<ApiTokenInfo[]>([]);
   const [newToken, setNewToken] = useState<string | null>(null);
+  const [pairing, setPairing] = useState<{ code: string; expiresAt: string } | null>(null);
   const [states, setStates] = useState<UserGameState[]>([]);
   const [games, setGames] = useState<Map<string, GameSummary>>(new Map());
   const [pw, setPw] = useState({ current: "", next: "" });
@@ -138,6 +140,18 @@ export function Profile() {
                 </li>
               ))}
             </ul>
+            <div className="inline">
+              <button className="primary" onClick={() => act(async () => setPairing(await api.pairingCode()), "Code ready")}>
+                Link another device
+              </button>
+              <span className="muted small">A code to sign in on a handheld, TV or new PC without typing your password. Your store accounts come along.</span>
+            </div>
+            {pairing && (
+              <p className="notice pairing-code">
+                On the new device choose <strong>Sign in with a code</strong> and enter <code>{pairing.code}</code>. It works once, until{" "}
+                {new Date(pairing.expiresAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}.
+              </p>
+            )}
             <button
               className="secondary"
               onClick={() =>
@@ -219,6 +233,7 @@ function ThisComputer() {
         ))}
       </ul>
       {installed.length === 0 && <p className="muted">No games installed on this computer yet.</p>}
+      <StoreScan />
       <AppOptions />
     </section>
   );

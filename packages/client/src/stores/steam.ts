@@ -49,6 +49,7 @@ export async function steamInstalled(library: string): Promise<LocalStoreGame[]>
 
 export const steamScanner: StoreScanner = {
   addon: "steam",
+  name: "Steam",
   platforms: ["win32", "linux"],
   async scan() {
     const seen = new Map<string, LocalStoreGame>();

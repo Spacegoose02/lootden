@@ -8,7 +8,8 @@ import { epicFromHeroic, epicFromManifest } from "../src/stores/epic.js";
 import { gogFromHeroic, gogFromRegistry } from "../src/stores/gog.js";
 import { steamInstalled, steamLibraries } from "../src/stores/steam.js";
 import { parseRegQuery } from "../src/stores/windows.js";
-import { ubisoftFromRegistry } from "../src/stores/ubisoft.js";
+import { ubisoftFromRegistry, ubisoftNames } from "../src/stores/ubisoft.js";
+import { scanFolder } from "../src/stores/folders.js";
 import { gamingRootFolders, xboxFromConfig } from "../src/stores/xbox.js";
 import { parseVdf } from "../src/stores/vdf.js";
 
@@ -45,9 +46,9 @@ describe("store scanners", () => {
   });
 
   it("runs the scanners for this platform and ignores ones that fail", async () => {
-    const ok: StoreScanner = { addon: "a", platforms: ["linux", "win32"], scan: async () => [{ addon: "a", externalId: "1", title: "One", installDir: "/x" }] };
-    const broken: StoreScanner = { addon: "b", platforms: ["linux", "win32"], scan: async () => { throw new Error("no launcher"); } };
-    const elsewhere: StoreScanner = { addon: "c", platforms: ["darwin"], scan: async () => [{ addon: "c", externalId: "2", title: "Two", installDir: "/y" }] };
+    const ok: StoreScanner = { addon: "a", name: "A", platforms: ["linux", "win32"], scan: async () => [{ addon: "a", externalId: "1", title: "One", installDir: "/x" }] };
+    const broken: StoreScanner = { addon: "b", name: "B", platforms: ["linux", "win32"], scan: async () => { throw new Error("no launcher"); } };
+    const elsewhere: StoreScanner = { addon: "c", name: "C", platforms: ["darwin"], scan: async () => [{ addon: "c", externalId: "2", title: "Two", installDir: "/y" }] };
     assert.deepEqual((await scanStoreGames([ok, broken, elsewhere], "linux")).map((g) => g.title), ["One"]);
   });
 
@@ -105,5 +106,41 @@ describe("store scanners", () => {
     ]);
     const m = epicFromManifest(JSON.stringify({ AppName: "Sugar", DisplayName: "Hades", InstallLocation: "C:\\Hades", CatalogNamespace: "min", CatalogItemId: "abc" }));
     assert.equal(m!.launchUrl, "com.epicgames.launcher://apps/min%3Aabc%3ASugar?action=launch&silent=true");
+  });
+
+  it("names Ubisoft games from the installed-programs list instead of their folders", () => {
+    const installs = parseRegQuery("HKEY_LOCAL_MACHINE\\SOFTWARE\\WOW6432Node\\Ubisoft\\Launcher\\Installs\\5266\r\n    InstallDir    REG_SZ    D:/Ubisoft/FarCry6/\r\n");
+    const names = ubisoftNames(parseRegQuery("HKEY_LOCAL_MACHINE\\SOFTWARE\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Uplay Install 5266\r\n    DisplayName    REG_SZ    Far Cry 6\r\n"));
+    assert.equal(ubisoftFromRegistry(installs, names)[0]!.title, "Far Cry 6");
+    assert.equal(ubisoftFromRegistry(installs)[0]!.title, "FarCry6", "the folder when Windows doesn't list it");
+  });
+
+  it("finds store games in a folder picked on this PC", async () => {
+    const picked = path.join(work, "Picked");
+    await mkdir(path.join(picked, "steamapps"), { recursive: true });
+    await writeFile(path.join(picked, "steamapps", "appmanifest_620.acf"), acf("620", "Portal 2"));
+    await mkdir(path.join(picked, "Witcher 3"), { recursive: true });
+    await writeFile(path.join(picked, "Witcher 3", "goggame-1207664663.info"), JSON.stringify({ gameId: "1207664663", name: "The Witcher 3: Wild Hunt" }));
+    await mkdir(path.join(picked, "Hades", ".egstore"), { recursive: true });
+    await writeFile(path.join(picked, "Hades", ".egstore", "X.mancpn"), JSON.stringify({ AppName: "Sugar", CatalogNamespace: "min", CatalogItemId: "abc" }));
+    await mkdir(path.join(picked, "Halo", "Content"), { recursive: true });
+    await writeFile(path.join(picked, "Halo", "Content", "MicrosoftGame.config"), '<Game><Identity Name="Halo"/><TitleId>1A2B</TitleId><ShellVisuals DefaultDisplayName="Halo Infinite"/></Game>');
+    await mkdir(path.join(picked, "Just a folder"), { recursive: true });
+
+    const found = (await scanFolder(picked)).map((g) => [g.addon, g.externalId, g.title]).sort();
+    assert.deepEqual(found, [
+      ["epic", "Sugar", "Hades"],
+      ["gog", "1207664663", "The Witcher 3: Wild Hunt"],
+      ["steam", "620", "Portal 2"],
+      ["xbox", String(0x1a2b), "Halo Infinite"],
+    ]);
+
+    // Per PC: stores switched off are skipped, picked folders are added, and nothing is listed twice.
+    const steamHere: StoreScanner = { addon: "steam", name: "Steam", platforms: ["linux", "win32"], scan: async () => [{ addon: "steam", externalId: "620", title: "Portal 2", installDir: "/s" }] };
+    const all = await scanStoreGames([steamHere], "linux", { folders: [picked] });
+    assert.equal(all.filter((g) => g.externalId === "620").length, 1);
+    assert.equal(all.find((g) => g.externalId === "620")!.installDir, "/s", "the launcher's own listing wins");
+    const noSteam = await scanStoreGames([steamHere], "linux", { folders: [picked], disabled: ["steam", "xbox"] });
+    assert.deepEqual(noSteam.map((g) => g.addon).sort(), ["epic", "gog"]);
   });
 });

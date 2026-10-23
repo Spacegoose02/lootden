@@ -37,6 +37,7 @@ export function xboxFromConfig(xml: string, dir: string): LocalStoreGame | null 
 
 export const xboxScanner: StoreScanner = {
   addon: "xbox",
+  name: "Xbox",
   platforms: ["win32"],
   async scan() {
     const out: LocalStoreGame[] = [];

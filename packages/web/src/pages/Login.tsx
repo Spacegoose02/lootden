@@ -12,6 +12,9 @@ export function Login() {
   const [params] = useSearchParams();
   const [error, setError] = useState(params.get("error") ?? "");
   const [busy, setBusy] = useState(false);
+  // Signing in with a code from a device that's signed in already (Profile, Link another device).
+  const [withCode, setWithCode] = useState(false);
+  const [code, setCode] = useState("");
   const { refresh } = useAuth();
   const navigate = useNavigate();
 
@@ -25,6 +28,7 @@ export function Login() {
     setError("");
     try {
       if (providers?.setupRequired) await api.setup(username, password);
+      else if (withCode) await api.redeemPairingCode(code);
       else await api.login(username, password);
       await refresh();
       navigate("/");
@@ -43,17 +47,45 @@ export function Login() {
         <h1>{setup ? "Create the admin account" : "LootDen"}</h1>
         {setup && <p className="muted">This is the first start. The account you create here manages the library and other profiles.</p>}
         {error && <p className="error">{error}</p>}
-        <label>
-          Username
-          <input autoFocus autoComplete="username" value={username} onChange={(e) => setUsername(e.target.value)} required />
-        </label>
-        <label>
-          Password
-          <input type="password" autoComplete={setup ? "new-password" : "current-password"} value={password} onChange={(e) => setPassword(e.target.value)} required minLength={setup ? 8 : undefined} />
-        </label>
+        {withCode ? (
+          <>
+            <p className="muted small">On a device where you're signed in, open Profile and choose Link another device.</p>
+            <label>
+              Code
+              <input
+                autoFocus
+                autoComplete="one-time-code"
+                autoCapitalize="characters"
+                spellCheck={false}
+                placeholder="ABCD-2345"
+                value={code}
+                onChange={(e) => setCode(e.target.value.toUpperCase())}
+                required
+                minLength={8}
+                maxLength={9}
+              />
+            </label>
+          </>
+        ) : (
+          <>
+            <label>
+              Username
+              <input autoFocus autoComplete="username" value={username} onChange={(e) => setUsername(e.target.value)} required />
+            </label>
+            <label>
+              Password
+              <input type="password" autoComplete={setup ? "new-password" : "current-password"} value={password} onChange={(e) => setPassword(e.target.value)} required minLength={setup ? 8 : undefined} />
+            </label>
+          </>
+        )}
         <button className="primary" disabled={busy}>
           {setup ? "Create admin" : "Sign in"}
         </button>
+        {!setup && providers?.pairing && (
+          <button type="button" className="ghost" onClick={() => (setWithCode((v) => !v), setError(""))}>
+            {withCode ? "Sign in with a password" : "Sign in with a code"}
+          </button>
+        )}
         {!setup && providers?.oidc.enabled && (
           <a className="button secondary" href={`/api/auth/oidc/login?returnTo=${encodeURIComponent(params.get("returnTo") ?? "/")}`}>
             Sign in with {providers.oidc.name}

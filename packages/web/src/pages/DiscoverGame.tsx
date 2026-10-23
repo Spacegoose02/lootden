@@ -4,6 +4,7 @@ import type { GameInfo } from "@lootden/shared";
 import { api } from "../api";
 import { useAuth } from "../auth";
 import { FindDownloads } from "../components/FindDownloads";
+import { GameMedia } from "../components/GameMedia";
 import { listingDate } from "../components/Listing";
 
 const SOURCES: Record<string, string> = { igdb: "IGDB", rawg: "RAWG", steam: "Steam" };
@@ -14,7 +15,6 @@ export function DiscoverGame() {
   const { me } = useAuth();
   const [game, setGame] = useState<GameInfo | null>(null);
   const [error, setError] = useState("");
-  const [shot, setShot] = useState<string | null>(null);
   const releases = useRef<HTMLElement>(null);
   const canSearch = me?.role === "admin" && !!game && !game.libraryId;
 
@@ -74,47 +74,12 @@ export function DiscoverGame() {
         </div>
       </div>
 
-      {game.trailer && (
-        <section className="row">
-          <h2>Trailer</h2>
-          <div className="video-frame trailer">
-            {"youtubeId" in game.trailer ? (
-              <iframe
-                src={`https://www.youtube-nocookie.com/embed/${game.trailer.youtubeId}?rel=0`}
-                title={`${game.name} trailer`}
-                allow="encrypted-media; picture-in-picture; fullscreen"
-                allowFullScreen
-              />
-            ) : (
-              <video src={game.trailer.url} poster={game.trailer.poster ?? undefined} controls preload="none" />
-            )}
-          </div>
-        </section>
-      )}
-
-      {game.screenshots.length > 0 && (
-        <section className="row">
-          <h2>Screenshots</h2>
-          <div className="screenshots">
-            {game.screenshots.map((s) => (
-              <button key={s} className="screenshot" onClick={() => setShot(s)}>
-                <img src={s} alt="" loading="lazy" />
-              </button>
-            ))}
-          </div>
-        </section>
-      )}
+      <GameMedia game={game} />
 
       {canSearch && (
         <section className="row" ref={releases}>
           <FindDownloads game={game} />
         </section>
-      )}
-
-      {shot && (
-        <div className="lightbox" onClick={() => setShot(null)}>
-          <img className="lightbox-image" src={shot} alt="" />
-        </div>
       )}
     </article>
   );

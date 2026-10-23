@@ -27,6 +27,7 @@ import type { TimeToBeat } from "./metadata/time-to-beat.js";
 import type { SourceRegistry } from "./sources/registry.js";
 import type { DirectDownloads } from "./direct/manager.js";
 import type { AddonRegistry } from "./addons/registry.js";
+import type { StoreGameDetails } from "./addons/details.js";
 
 /** Everything route modules need, built once in buildApp. */
 export interface AppContext {
@@ -59,6 +60,7 @@ export interface AppContext {
   sources: SourceRegistry;
   /** Library add-ons: people's Steam, GOG, Epic... accounts and the games they own there. */
   addons: AddonRegistry;
+  storeDetails: StoreGameDetails;
   timeToBeat: (providerId: string | null, title: string) => Promise<TimeToBeat | null>;
 }
 
