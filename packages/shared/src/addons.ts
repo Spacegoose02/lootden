@@ -18,6 +18,8 @@ export interface AddonField {
   link?: { url: string; label: string };
   /** Saved once used (a sign-in code): the field stays empty afterwards. */
   oneTime?: boolean;
+  /** An admin can fill it in once for everyone (a Steam Web API key); a person's own value wins. */
+  shared?: boolean;
 }
 
 /** An add-on as a person sees it on their profile. */
@@ -30,6 +32,10 @@ export interface AddonView {
   fields: AddonField[];
   /** An admin switched it off for this server. */
   enabled: boolean;
+  /** Fields an admin filled in for everyone, so people can leave them empty. */
+  sharedSet: string[];
+  /** Connect by signing in on the store's site ("Sign in with Steam"): POST here for the address to open. */
+  signIn: { label: string; start: string } | null;
   /** This person's account, once connected. Secret values come back masked. */
   account: {
     config: Record<string, string>;

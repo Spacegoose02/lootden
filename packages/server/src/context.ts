@@ -28,6 +28,7 @@ import type { SourceRegistry } from "./sources/registry.js";
 import type { DirectDownloads } from "./direct/manager.js";
 import type { AddonRegistry } from "./addons/registry.js";
 import type { StoreGameDetails } from "./addons/details.js";
+import type { SteamSignIn } from "./addons/steam-signin.js";
 
 /** Everything route modules need, built once in buildApp. */
 export interface AppContext {
@@ -61,6 +62,7 @@ export interface AppContext {
   /** Library add-ons: people's Steam, GOG, Epic... accounts and the games they own there. */
   addons: AddonRegistry;
   storeDetails: StoreGameDetails;
+  steamSignIn: SteamSignIn;
   timeToBeat: (providerId: string | null, title: string) => Promise<TimeToBeat | null>;
 }
 

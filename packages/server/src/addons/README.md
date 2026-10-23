@@ -21,7 +21,7 @@ In LootDen. Admins can switch an add-on off for everyone from the same card.
 
 | Add-on | What it reads |
 | --- | --- |
-| `steam` | Owned games and play time from the Steam Web API (Steam ID + API key); the desktop app reads Steam's library folders for installed games (`packages/client/src/stores/steam.ts`) |
+| `steam` | Owned games and play time from the Steam Web API (Sign in with Steam or a Steam ID, plus an API key: the person's or the admin's shared one); the desktop app reads Steam's library folders for installed games (`packages/client/src/stores/steam.ts`) |
 | `gog` | Owned games through GOG's sign-in (the Galaxy client's public credentials, as Heroic and Playnite use). The person pastes the code once; the refresh token is kept with `ctx.save()`. Desktop: Galaxy's registry keys on Windows, Heroic's `gog_store/installed.json` |
 | `epic` | Owned games through Epic's sign-in (the Epic launcher's public credentials, as Legendary and Heroic use), titles and covers from Epic's catalogue; skips Unreal assets and DLC. Desktop: the launcher's `Manifests/*.item` on Windows, Heroic's Legendary `installed.json` |
 | `xbox` | Games the account has played (console and PC) from Xbox Live's title history, through an OpenXBL key (xbl.io); apps are skipped, PC games get an `msxbox://` Play link. Desktop (Windows): the Xbox app's game folders from each drive's `.GamingRoot`, `MicrosoftGame.config` for the title id |
@@ -40,7 +40,8 @@ In LootDen. Admins can switch an add-on off for everyone from the same card.
    the server's own network, redirects included. Throw an `Error` with a message the person
    can act on ("Wrong API key", "Make your game details public"); it's shown on their card.
    Store what you need next time (a refreshed token) with `ctx.save({ key: value })`; keys
-   that aren't fields stay on the server. A field with `oneTime: true` (a sign-in code) is
+   that aren't fields stay on the server. A field with `shared: true` can be filled in once by an
+   admin for everyone (Steam's API key); the person's own value wins. A field with `oneTime: true` (a sign-in code) is
    never shown again, and `link` puts a link (a store's sign-in page) under it.
 3. Return each game's store id as `externalId` (it must stay the same between syncs), the
    title, and when you have them `coverUrl`, `storeUrl`, `launchUrl`, `playtimeSeconds` and

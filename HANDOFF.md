@@ -26,7 +26,7 @@ installs games from it. Owner: Spacegoose02. Repository: `Spacegoose02/lootden` 
 
 ```sh
 npm ci
-npm test              # builds everything, then runs the node:test suites (about 155 tests)
+npm test              # builds everything, then runs the node:test suites (about 157 tests)
 npm run dev:server    # API on :8080 using GM_GAMES_DIR / GM_DATA_DIR
 npm run dev:web       # UI on :5173 with hot reload
 npm run build:desktop
@@ -98,9 +98,14 @@ seemed to need entering per device, scanning was fixed per PC, and the controlle
   zones for Y, LT/RT switch tabs, store cards are one focusable link plus their buttons, and
   B closes the screenshot lightbox.
 
-Not done: signing in with Steam (OpenID) instead of a Steam ID, and a server-wide Steam API
-key so people only need their profile link. `Integrations` (IGDB and other admin keys in
-the settings table) aren't encrypted yet; the vault can do it.
+Since then: **Sign in with Steam** (`src/addons/steam-signin.ts`, Steam's OpenID 2.0, checked
+with Steam's `check_authentication`) fills in the Steam ID. The callback
+(`/api/addons/steam/signin/callback`, public) finds the person by a one-time state value, as
+the desktop app finishes it in the system browser; the profile page polls until the account
+shows up. And a **server-wide Steam Web API key**: fields marked `shared` (Steam's `apiKey`)
+can be set once by an admin on the add-on's card (`PUT /api/addons/:id/shared`, encrypted
+like accounts, never sent back); a person's own value wins. `Integrations` (IGDB and other admin keys in the settings table) aren't encrypted yet; the
+vault can do it.
 
 ## Offline mode (0.13.2)
 
