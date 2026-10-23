@@ -58,7 +58,7 @@ app's connect screen. Replacing those files and rebuilding is all it takes. The 
 theme-coloured SVG raccoon is still the fallback in `packages/web/public/logo.svg`; deleting
 `brand/logo.png` brings it back, along with the Profile option to recolour it.
 
-## Recent work (richer store integrations, not released yet)
+## Richer store integrations (0.15.0)
 
 Owner's feedback on the add-ons: other stores' games had no pictures and no page, keys
 seemed to need entering per device, scanning was fixed per PC, and the controller got lost.
