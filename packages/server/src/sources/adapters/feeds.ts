@@ -5,6 +5,7 @@ import { isoDate, parseFeed } from "./util.js";
 export const rssFeed: ReleaseSource = {
   id: "rss",
   name: "RSS or Atom feed",
+  nameable: true,
   description: "Any RSS or Atom feed of game releases at an address you choose.",
   defaultBaseUrl: "",
   limits: { perMinute: 6, perHour: 60 },

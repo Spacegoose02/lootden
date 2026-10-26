@@ -16,7 +16,7 @@ before(async () => {
 after(() => rm(root, { recursive: true, force: true }));
 
 const publicDns = async () => ["93.184.216.34"];
-const config = (patch: Partial<SourceConfig> = {}): SourceConfig => ({ enabled: true, baseUrl: "https://feed.example/list.json", apiKey: "", perMinute: 60, perHour: 1000, extraHosts: [], onMyNetwork: false, ...patch });
+const config = (patch: Partial<SourceConfig> = {}): SourceConfig => ({ enabled: true, baseUrl: "https://feed.example/list.json", apiKey: "", perMinute: 60, perHour: 1000, extraHosts: [], onMyNetwork: false, displayName: "", ...patch });
 
 describe("release sources", () => {
   it("only calls allowed public hosts, also after redirects", async () => {
@@ -110,6 +110,18 @@ describe("release sources", () => {
     assert.deepEqual(latest.map((r: { title: string }) => r.title).sort(), ["Celeste", "Something Else"]);
     assert.equal(latest[0].sourceName, "JSON feed (example)");
     assert.equal((await app.inject({ url: "/api/sources/for?title=celeste", headers })).json().length, 1);
+
+    // A name of your own shows wherever the source does; blank goes back to the default.
+    const named = (await app.inject({ method: "PUT", url: "/api/sources/json-feed", headers, payload: { displayName: "  NAS releases  " } })).json();
+    assert.equal(named.name, "NAS releases");
+    assert.equal(named.defaultName, "JSON feed (example)");
+    assert.equal(named.nameable, true);
+    assert.ok((await app.inject({ url: "/api/sources/latest", headers })).json().every((r: { sourceName: string }) => r.sourceName === "NAS releases"));
+    const gog = (await app.inject({ method: "PUT", url: "/api/sources/gog-new", headers, payload: { displayName: "Mine" } })).json();
+    assert.equal(gog.name, "GOG new releases", "only feed sources take a name");
+    assert.equal(gog.nameable, false);
+    await app.inject({ method: "PUT", url: "/api/sources/json-feed", headers, payload: { displayName: "" } });
+    assert.equal((await app.inject({ url: "/api/sources/latest", headers })).json()[0].sourceName, "JSON feed (example)");
 
     // Switched off: nothing on Discover.
     await app.inject({ method: "PUT", url: "/api/sources/json-feed", headers, payload: { enabled: false } });

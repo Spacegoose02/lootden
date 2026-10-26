@@ -813,7 +813,7 @@ function SourceCard({ source, say, onChange, onAll }: { source: ReleaseSourceVie
   return (
     <Card
       title={source.name}
-      description={source.description}
+      description={source.name !== source.defaultName ? `${source.defaultName}. ${source.description}` : source.description}
       status={!c.enabled ? <Pill tone="muted">Off</Pill> : st.error ? <Pill tone="bad">Failing</Pill> : <Pill tone="good">On · {st.items} listed</Pill>}
       actions={
         <>
@@ -822,10 +822,11 @@ function SourceCard({ source, say, onChange, onAll }: { source: ReleaseSourceVie
             disabled={busy || !c.baseUrl}
             onClick={() =>
               run(async () => {
-                onChange(await api.saveSource(source.id, payload()));
+                const v = await api.saveSource(source.id, payload());
+                onChange(v);
                 const r = await api.testSource(source.id);
                 onAll(r.sources);
-                return `${source.name}: ${r.message}`;
+                return `${v.name}: ${r.message}`;
               })
             }
           >
@@ -836,8 +837,9 @@ function SourceCard({ source, say, onChange, onAll }: { source: ReleaseSourceVie
             disabled={busy}
             onClick={() =>
               run(async () => {
-                onChange(await api.saveSource(source.id, payload()));
-                return `${source.name} saved`;
+                const v = await api.saveSource(source.id, payload());
+                onChange(v);
+                return `${v.name} saved`;
               })
             }
           >
@@ -848,6 +850,11 @@ function SourceCard({ source, say, onChange, onAll }: { source: ReleaseSourceVie
     >
       <Toggle checked={c.enabled} onChange={(v) => set({ enabled: v })} label="Use this source" />
       <div className="field-grid">
+        {source.nameable && (
+          <Field label="Name (optional)" hint="Shown on Discover and in alerts">
+            <input placeholder={source.defaultName} maxLength={80} value={c.displayName} onChange={(e) => set({ displayName: e.target.value })} />
+          </Field>
+        )}
         <Field label="Address" hint={source.defaultBaseUrl ? `Default: ${source.defaultBaseUrl}` : "The feed or API address"}>
           <input placeholder={source.defaultBaseUrl || "https://example.com/releases.json"} value={c.baseUrl} onChange={(e) => set({ baseUrl: e.target.value })} />
         </Field>

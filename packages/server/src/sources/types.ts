@@ -40,6 +40,8 @@ export interface SourceConfig {
   extraHosts: string[];
   /** The source runs on your own network (a 192.168.x.x or .lan address); off for internet sources. */
   onMyNetwork: boolean;
+  /** What to call the source instead of its adapter name; "" uses the adapter name. */
+  displayName: string;
 }
 
 /** Handed to an adapter on every call. */
@@ -62,6 +64,8 @@ export interface ReleaseSource {
   defaultBaseUrl: string;
   /** Whether Settings should show an API key field. */
   needsKey?: boolean;
+  /** Whether Settings lets the admin name the source (for generic feeds pointed at any address). */
+  nameable?: boolean;
   /** Defaults for the rate limits; keep them polite. */
   limits?: { perMinute: number; perHour: number };
   /** The newest releases, newest first. */

@@ -75,6 +75,7 @@ async function read(ctx: SourceContext, first: string): Promise<ReleaseInfo[]> {
 export const jsonFeed: ReleaseSource = {
   id: "json-feed",
   name: "JSON feed (example)",
+  nameable: true,
   description: "Any JSON Feed, or a list of {title, date, url} items, at an address you choose. Also the template for writing your own source.",
   defaultBaseUrl: "",
   needsKey: true,
