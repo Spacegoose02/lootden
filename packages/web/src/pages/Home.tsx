@@ -117,7 +117,7 @@ export function Home() {
         </div>
         <div className="row-track">
           {storeRecent.map((g) => (
-            <StoreGameCard key={storeKey(g)} game={g} local={store.installed.get(storeKey(g))} />
+            <StoreGameCard key={storeKey(g)} game={g} local={store.installed.get(storeKey(g))} scanned={store.scanned} />
           ))}
         </div>
       </section>,

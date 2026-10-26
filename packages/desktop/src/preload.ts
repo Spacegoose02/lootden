@@ -30,6 +30,7 @@ const bridge = {
   biosFromServer: () => ipcRenderer.invoke("gm:biosFromServer"),
   openTools: () => ipcRenderer.invoke("gm:openTools"),
   openFolder: (gameId: string) => ipcRenderer.invoke("gm:openFolder", gameId),
+  localGame: (gameId: string) => ipcRenderer.invoke("gm:localGame", gameId),
   storeGames: () => ipcRenderer.invoke("gm:storeGames"),
   launchStore: (url: string) => ipcRenderer.invoke("gm:launchStore", url),
   storeScan: (patch?: object) => ipcRenderer.invoke("gm:storeScan", patch),

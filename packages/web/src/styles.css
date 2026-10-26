@@ -532,14 +532,12 @@ main {
 
 /* ---------- Library ------------------------------------------------------- */
 
+/* Stays where it is at the top of the page rather than floating over the games as they scroll. */
 .filters {
   display: flex;
   flex-wrap: wrap;
   gap: 0.6rem;
   align-items: center;
-  position: sticky;
-  top: 70px;
-  z-index: 5;
 }
 .filters input[type="search"] {
   flex: 1 1 220px;
@@ -895,9 +893,6 @@ main {
   }
   .grid {
     grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
-  }
-  .filters {
-    position: static;
   }
 }
 

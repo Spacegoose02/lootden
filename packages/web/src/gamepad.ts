@@ -130,7 +130,7 @@ export function moveFocus(dir: Dir, repeating = false): void {
     if (el === current) continue;
     const r = el.getBoundingClientRect();
     if (!ahead(dir, from, r)) continue;
-    // A card scrolled under the sticky filter bar is something you can't see: skip past it.
+    // A card scrolled under the sticky top bar is something you can't see: skip past it.
     if (hidden(el, r) && !hidden(current, from)) continue;
     // Left and right stay in the row: off the end of the filters isn't a jump up to Sign out.
     if ((dir === "left" || dir === "right") && (r.bottom <= from.top || r.top >= from.bottom) && zoneOf(el) !== here) continue;

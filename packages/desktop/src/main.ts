@@ -162,8 +162,9 @@ async function sevenZip() {
 
 /** Uploads the game's saves if it has a save location and the folder exists; null otherwise. */
 async function syncSaves(api: GameServerClient, gameId: string, installDir: string) {
-  const detail = await api.getGame(gameId);
-  if (!detail.savePath) return null;
+  // A game removed from the server has nowhere to back up to.
+  const detail = await api.getGame(gameId).catch(() => null);
+  if (!detail?.savePath) return null;
   const dir = await expandSavePath(detail.savePath, installDir);
   if (!existsSync(dir)) return { error: `No saves found at ${dir}` };
   const backup = await backupSaves(api, await sevenZip(), gameId, dir, os.hostname());
@@ -238,6 +239,33 @@ async function cacheCovers(gameIds: string[]): Promise<void> {
     if (file) await rm(path.join(coversDir(), file), { force: true });
     await writeFile(path.join(coversDir(), `${id}.${ext}`), new Uint8Array(await res.arrayBuffer()));
   }
+}
+
+/** Ids that are safe as a file name in the cache folders. */
+const cacheable = (id: string) => /^[\w.-]{1,100}$/.test(id) && !id.startsWith(".");
+const infoDir = () => path.join(app.getPath("userData"), "GameInfo");
+
+/**
+ * Keeps each installed game's page from the server (summary, genres, year...), refreshed
+ * weekly, so a game later removed from the server still has its details on this PC. A game
+ * the server no longer has keeps the last copy.
+ */
+async function cacheDetails(gameIds: string[]): Promise<void> {
+  const api = await client().catch(() => null);
+  if (!api) return;
+  await mkdir(infoDir(), { recursive: true });
+  for (const id of gameIds.filter(cacheable)) {
+    const file = path.join(infoDir(), `${id}.json`);
+    const age = await stat(file).then((s) => Date.now() - s.mtimeMs, () => Infinity);
+    if (age < 7 * 86400_000) continue;
+    const detail = await api.getGame(id).catch(() => null);
+    if (detail) await writeFile(file, JSON.stringify(detail));
+  }
+}
+
+async function cachedDetails(gameId: string): Promise<unknown> {
+  if (!cacheable(gameId)) return null;
+  return readFile(path.join(infoDir(), `${gameId}.json`), "utf8").then((t) => JSON.parse(t), () => null);
 }
 
 async function cachedCover(gameId: string, files: string[]): Promise<string | null> {
@@ -560,7 +588,19 @@ function registerIpc(): void {
     fromServer(e);
     const games = await listInstalled(await searchDirs());
     void cacheCovers(games.map((g) => g.gameId)).catch(() => {});
+    void cacheDetails(games.map((g) => g.gameId)).catch(() => {});
     return games;
+  });
+
+  /**
+   * One game installed on this PC, with its last known details and cover, for its page when
+   * the server no longer has it (or can't be reached). Null when it isn't installed here.
+   */
+  ipcMain.handle("gm:localGame", async (e, gameId: string) => {
+    fromServer(e);
+    const game = (await listInstalled(await searchDirs())).find((g) => g.gameId === gameId);
+    if (!game) return null;
+    return { game, detail: await cachedDetails(gameId), cover: await cachedCover(gameId, await readdir(coversDir()).catch(() => [] as string[])) };
   });
 
   /**
@@ -613,6 +653,7 @@ function registerIpc(): void {
           send({ gameId, ...(ev.type === "start" ? { type: "start", gameDir: ev.gameDir, totalBytes: ev.game.sizeBytes } : ev) });
         },
       });
+      void cacheDetails([gameId]).catch(() => {});
       return { gameDir };
     } catch (err) {
       send({ gameId, type: controller.signal.aborted ? "cancelled" : "error", message: (err as Error).message });
@@ -1024,7 +1065,8 @@ function registerIpc(): void {
     });
     if (response !== 0) return false;
     await uninstallGame(game.dir);
-    await (await client()).reportActivity({ gameId, device: os.hostname(), event: "uninstalled" });
+    // Offline, or a game the server no longer has: the files are gone either way.
+    await (await clientOrOffline()).reportActivity({ gameId, device: os.hostname(), event: "uninstalled" }).catch(() => false);
     return true;
   });
 

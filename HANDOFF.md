@@ -107,6 +107,22 @@ can be set once by an admin on the add-on's card (`PUT /api/addons/:id/shared`, 
 like accounts, never sent back); a person's own value wins. `Integrations` (IGDB and other admin keys in the settings table) aren't encrypted yet; the
 vault can do it.
 
+## After 0.16.0: store and offline fixes
+
+- **Install or Play on store games.** In the desktop app, once this PC's launchers have been
+  scanned (`useStoreGames().scanned`), a store game that isn't installed says **Install**
+  (`storeInstallUrl`: `steam://install/<id>`, Epic's `?action=install`, the others open the game
+  in their launcher); installed ones say ▶ Play. A browser can't tell, so it keeps Play.
+- **Filter bars no longer float** over the games when scrolling (`.filters` isn't sticky).
+- **Games removed from the server still play.** The desktop app keeps each installed game's
+  details from the server in `<userData>/GameInfo/<id>.json` (weekly, and right after an
+  install; a 404 keeps the last copy). When `/api/games/:id` fails and the game is installed
+  here, the game page shows `components/LocalGame.tsx` (`gm:localGame`: the manifest, cached
+  details and cover) with Play, Run installer, Open folder and Uninstall, a "removed from the
+  server" notice, and a link to the new version when the server has a game with the same
+  title or file. Save backups and the uninstall report skip quietly for such games.
+- **EA app games** are found on Windows (see the add-ons README).
+
 ## Also in 0.16.0
 
 - **Laser Grid and Nuclear themes** (35 themes in all).
@@ -173,8 +189,7 @@ store comes as its own PR on top of it. Start with
   list of games), `xbox` (OpenXBL key; played games from the title history; desktop reads the
   Xbox app's `.GamingRoot` folders), `itch` (itch.io API key) and a desktop-only Ubisoft
   Connect scanner. Games installed on the PC show under Other stores even without a
-  connected account. Not done: the EA app (no reliable way found yet to read its installs
-  or start them by link).
+  connected account. The EA app is desktop-only too (`stores/ea.ts`, see the add-ons README).
 
 ### One library (with the add-ons)
 

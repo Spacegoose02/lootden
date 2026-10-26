@@ -181,7 +181,7 @@ function AllGames() {
           <GameCollection games={shown} prefs={prefs} isInstalled={(g) => installedIds.has(g.id)} aspect={shelf} />
         </>
       )}
-      {source !== "lootden" && store.games && <StoreSection games={store.games} installed={store.installed} search={search} store={oneStore} limit={oneStore ? undefined : 48} />}
+      {source !== "lootden" && store.games && <StoreSection games={store.games} installed={store.installed} scanned={store.scanned} search={search} store={oneStore} limit={oneStore ? undefined : 48} />}
     </>
   );
 }

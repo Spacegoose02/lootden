@@ -10,9 +10,22 @@ export const storeKey = (g: { addon: string; externalId: string }) => `${g.addon
 /** A store game's page. Games only found on this PC carry their title, as the server doesn't know them. */
 export const storeGameLink = (g: StoreGame) => `/store/${encodeURIComponent(g.addon)}/${encodeURIComponent(g.externalId)}${g.artUrl?.includes("?title=") ? `?title=${encodeURIComponent(g.title)}` : ""}`;
 
-/** Starts a store game: the PC's own launcher link (Heroic on Linux) when it has one, else the store's. */
-export async function launchStoreGame(g: StoreGame, local?: LocalStoreGame): Promise<void> {
-  const url = local?.launchUrl ?? g.launchUrl;
+/**
+ * The launcher link that installs a store game not on this PC. Steam and Epic have their own
+ * install links; the other launchers open the game's page there, which has Install.
+ */
+export function storeInstallUrl(g: StoreGame): string | null {
+  if (g.addon === "steam" && /^\d+$/.test(g.externalId)) return `steam://install/${g.externalId}`;
+  if (g.addon === "epic" && g.launchUrl?.startsWith("com.epicgames.launcher:")) return g.launchUrl.replace(/\?.*$/, "?action=install");
+  return g.launchUrl;
+}
+
+/**
+ * Starts a store game: the PC's own launcher link (Heroic on Linux) when it has one, else the
+ * store's. With install, a game this PC doesn't have opens the launcher's install instead.
+ */
+export async function launchStoreGame(g: StoreGame, local?: LocalStoreGame, install = false): Promise<void> {
+  const url = local?.launchUrl ?? (install ? storeInstallUrl(g) : g.launchUrl);
   if (!url) return;
   if (desktop?.launchStore) await desktop.launchStore(url);
   else window.location.href = url;
@@ -25,6 +38,8 @@ export async function launchStoreGame(g: StoreGame, local?: LocalStoreGame): Pro
 export function useStoreGames(enabled = true) {
   const [games, setGames] = useState<StoreGame[] | null>(null);
   const [local, setLocal] = useState<LocalStoreGame[]>([]);
+  /** This PC's launchers have been looked at, so a game missing from them isn't installed here. */
+  const [scanned, setScanned] = useState(false);
   const [custom, setCustom] = useState<Map<string, { title: string | null; coverUrl: string | null }>>(new Map());
   const [error, setError] = useState("");
   useEffect(() => {
@@ -33,7 +48,13 @@ export function useStoreGames(enabled = true) {
       setError(e.message);
       setGames([]);
     });
-    desktop?.storeGames?.().then(setLocal, () => setLocal([]));
+    desktop?.storeGames?.().then(
+      (l) => {
+        setLocal(l);
+        setScanned(true);
+      },
+      () => setLocal([]),
+    );
     api.storeGamesCustom().then((l) => setCustom(new Map(l.map((c) => [storeKey(c), c]))), () => {});
   }, [enabled]);
   const installed = new Map(local.map((l) => [storeKey(l), l]));
@@ -50,12 +71,17 @@ export function useStoreGames(enabled = true) {
           }),
       ]
     : null;
-  return { games: all, installed, error };
+  return { games: all, installed, scanned, error };
 }
 
-/** A game from another store: cover, store badge, and Play / In LootDen / Store. */
-export function StoreGameCard({ game: g, local, onError }: { game: StoreGame; local?: LocalStoreGame; onError?: (message: string) => void }) {
-  const launch = local?.launchUrl ?? g.launchUrl;
+/**
+ * A game from another store: cover, store badge, and Play / Install / In LootDen / Store. In
+ * the desktop app (scanned) a game this PC's launchers don't have says Install; in a browser,
+ * where nothing can tell, the button just opens the launcher.
+ */
+export function StoreGameCard({ game: g, local, scanned, onError }: { game: StoreGame; local?: LocalStoreGame; scanned?: boolean; onError?: (message: string) => void }) {
+  const install = !local && !!scanned;
+  const launch = local?.launchUrl ?? (install ? storeInstallUrl(g) : g.launchUrl);
   return (
     <div className="card store-card">
       {/* The cover and title open the game's page, like a LootDen game's card. */}
@@ -75,8 +101,12 @@ export function StoreGameCard({ game: g, local, onError }: { game: StoreGame; lo
       <div className="card-body store-card-actions">
         <div className="store-actions">
           {launch && (
-            <button className="small primary" onClick={() => launchStoreGame(g, local).catch((e) => onError?.(bridgeError(e)))} title={local ? "Start it through the store's launcher" : "Opens the store's launcher to install or play it"}>
-              {local ? "▶ Play" : "Play"}
+            <button
+              className={`small ${install ? "secondary" : "primary"}`}
+              onClick={() => launchStoreGame(g, local, install).catch((e) => onError?.(bridgeError(e)))}
+              title={local ? "Start it through the store's launcher" : install ? `Not on this PC: install it through ${g.store}` : "Opens the store's launcher to install or play it"}
+            >
+              {local ? "▶ Play" : install ? "Install" : "Play"}
             </button>
           )}
           {g.libraryGameId && (

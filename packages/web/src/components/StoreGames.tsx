@@ -13,7 +13,7 @@ type Sort = (typeof SORTS)[number][0];
 
 /** Library, Other stores: games from the accounts connected under Profile, Game libraries, and store games on this PC. */
 export function StoreGames() {
-  const { games: all, installed, error: loadError } = useStoreGames();
+  const { games: all, installed, scanned, error: loadError } = useStoreGames();
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
   const [store, setStore] = useState("");
@@ -75,7 +75,7 @@ export function StoreGames() {
       </p>
       <div className="grid store-grid" data-nav-zone>
         {shown.map((g) => (
-          <StoreGameCard key={storeKey(g)} game={g} local={installed.get(storeKey(g))} onError={setError} />
+          <StoreGameCard key={storeKey(g)} game={g} local={installed.get(storeKey(g))} scanned={scanned} onError={setError} />
         ))}
       </div>
     </>
@@ -86,7 +86,7 @@ export function StoreGames() {
  * All games: store games under the LootDen ones (or alone, when one store is picked), so one
  * library and one search cover everything.
  */
-export function StoreSection({ games, installed, search, store, limit }: { games: StoreGame[]; installed: Map<string, LocalStoreGame>; search: string; store: string; limit?: number }) {
+export function StoreSection({ games, installed, scanned, search, store, limit }: { games: StoreGame[]; installed: Map<string, LocalStoreGame>; scanned?: boolean; search: string; store: string; limit?: number }) {
   const [error, setError] = useState("");
   const q = search.trim().toLowerCase();
   const matches = games.filter((g) => (!q || g.title.toLowerCase().includes(q)) && (!store || g.addon === store));
@@ -99,7 +99,7 @@ export function StoreSection({ games, installed, search, store, limit }: { games
       {error && <p className="error">{error}</p>}
       <div className="grid store-grid" data-nav-zone>
         {shown.map((g) => (
-          <StoreGameCard key={storeKey(g)} game={g} local={installed.get(storeKey(g))} onError={setError} />
+          <StoreGameCard key={storeKey(g)} game={g} local={installed.get(storeKey(g))} scanned={scanned} onError={setError} />
         ))}
       </div>
       {shown.length < matches.length && (
