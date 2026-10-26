@@ -5,13 +5,15 @@ import { desktop } from "./desktop";
 /**
  * Themes are sets of CSS variables (see the token list in styles.css). Each one only
  * needs a few colours; the rest are derived. The picker shows them in two groups,
- * like the reference board: Modern and Retro.
+ * like the reference board: Modern, Glow (Laser Grid, Nuclear and Neon) and Retro.
  */
 interface ThemeDef {
   id: string;
   name: string;
   note: string;
-  group: "Modern" | "Retro";
+  group: "Modern" | "Glow" | "Retro";
+  /** Laser, Nuclear and Neon variants share extra styling in styles.css, keyed by data-family. */
+  family?: "laser" | "nuclear" | "neon";
   scheme: "dark" | "light";
   bg: string;
   bg2: string;
@@ -67,16 +69,63 @@ const DEFS: ThemeDef[] = [
     glow: "0 0 24px rgba(77, 255, 180, 0.28)" },
   { id: "tropical", name: "Tropical Sunset", note: "Coral and mango on a dark lagoon", group: "Modern", scheme: "dark", radius: 18, bg: "#0b1f24", bg2: "#10292f", panel: "#15333a", border: "#245059", text: "#fff3ea", muted: "#a9c9c8", accent: "#ff6f59", accent2: "#ffc145", accentText: "#2a0b05",
     pageBg: "radial-gradient(1000px 500px at 100% -10%, #5a2a2a 0%, transparent 55%)" },
-  { id: "laser-grid", name: "Laser Grid", note: "Neon cyan outlines on a black grid", group: "Modern", scheme: "dark", radius: 4, outline: true, grid: "rgba(0, 229, 255, 0.07)",
-    bg: "#03070b", bg2: "#060d14", panel: "#08121b", border: "#0e3a47", text: "#d9fbff", muted: "#6fb3c2", accent: "#00e5ff", accent2: "#2b8cff", accentText: "#001318",
-    glow: "0 0 14px rgba(0, 229, 255, 0.45)" },
-  { id: "nuclear", name: "Nuclear", note: "Toxic green and hazard yellow glow", group: "Modern", scheme: "dark", radius: 8, bg: "#070a04", bg2: "#0c1207", panel: "#111a0a", border: "#2c4214", text: "#eaffd6", muted: "#9fbf7a", accent: "#76ff2e", accent2: "#ffe11a", accentText: "#0a1402",
-    pageBg: "radial-gradient(900px 520px at 15% -10%, rgba(118, 255, 46, 0.18) 0%, transparent 60%), radial-gradient(800px 460px at 105% 5%, rgba(255, 225, 26, 0.12) 0%, transparent 55%)",
-    glow: "0 0 22px rgba(118, 255, 46, 0.4)" },
   { id: "latte", name: "Latte", note: "Soft pastels on warm cream", group: "Modern", scheme: "light", bg: "#eff1f5", bg2: "#e6e9ef", panel: "#ffffff", border: "#ccd0da", text: "#4c4f69", muted: "#6c6f85", accent: "#8839ef", accent2: "#d20f39", accentText: "#ffffff" },
   { id: "sakura", name: "Sakura", note: "Cherry blossom pink, light and airy", group: "Modern", scheme: "light", radius: 20, bg: "#fdf2f5", bg2: "#fff8fa", panel: "#ffffff", border: "#f2d3dc", text: "#3d2530", muted: "#8a6572", accent: "#d63d6f", accent2: "#5c8f4e", accentText: "#ffffff",
     pageBg: "linear-gradient(180deg, #fbe1ea 0%, transparent 380px)" },
   { id: "paper", name: "Paper", note: "Ink on warm sepia pages", group: "Modern", scheme: "light", radius: 6, bg: "#f4ecd8", bg2: "#efe4cb", panel: "#fbf6ea", border: "#d9c9a3", text: "#3b2f1e", muted: "#7a6a4f", accent: "#a2471d", accent2: "#2f5d62", accentText: "#ffffff" },
+
+  // ---- Glow: Laser Grid outlines, Nuclear reactor glow, Neon signs (see the extras in styles.css) ----
+  { id: "laser-grid", name: "Laser Grid", note: "Neon cyan outlines on a black grid", group: "Glow", family: "laser", scheme: "dark", radius: 4, outline: true, grid: "rgba(0, 229, 255, 0.07)",
+    bg: "#03070b", bg2: "#060d14", panel: "#08121b", border: "#0e3a47", text: "#d9fbff", muted: "#6fb3c2", accent: "#00e5ff", accent2: "#2b8cff", accentText: "#001318",
+    glow: "0 0 14px rgba(0, 229, 255, 0.45)" },
+  { id: "laser-grid-magenta", name: "Laser Grid Magenta", note: "Hot magenta outlines on a black grid", group: "Glow", family: "laser", scheme: "dark", radius: 4, outline: true, grid: "rgba(255, 43, 214, 0.07)",
+    bg: "#0b0309", bg2: "#140611", panel: "#1b0817", border: "#4a0e3d", text: "#ffe0f6", muted: "#c77fb4", accent: "#ff2bd6", accent2: "#a64dff", accentText: "#1a0015",
+    glow: "0 0 14px rgba(255, 43, 214, 0.45)" },
+  { id: "laser-grid-amber", name: "Laser Grid Amber", note: "Amber outlines on a black grid", group: "Glow", family: "laser", scheme: "dark", radius: 4, outline: true, grid: "rgba(255, 178, 26, 0.07)",
+    bg: "#0b0703", bg2: "#140d06", panel: "#1b1208", border: "#4a300e", text: "#fff1d9", muted: "#c9a06f", accent: "#ffb21a", accent2: "#ff6a1a", accentText: "#1a0d00",
+    glow: "0 0 14px rgba(255, 178, 26, 0.45)" },
+  { id: "laser-grid-green", name: "Laser Grid Green", note: "Phosphor green outlines on a black grid", group: "Glow", family: "laser", scheme: "dark", radius: 4, outline: true, grid: "rgba(43, 255, 106, 0.07)",
+    bg: "#030b05", bg2: "#06140a", panel: "#081b0d", border: "#0e4a1d", text: "#dcffe4", muted: "#7fc290", accent: "#2bff6a", accent2: "#00d9a3", accentText: "#00180a",
+    glow: "0 0 14px rgba(43, 255, 106, 0.45)" },
+  { id: "laser-grid-violet", name: "Laser Grid Violet", note: "Ultraviolet outlines on a black grid", group: "Glow", family: "laser", scheme: "dark", radius: 4, outline: true, grid: "rgba(169, 112, 255, 0.07)",
+    bg: "#06030b", bg2: "#0c0614", panel: "#11081b", border: "#2c0e4a", text: "#ece0ff", muted: "#a58fd1", accent: "#a970ff", accent2: "#ff4fd8", accentText: "#0e001a",
+    glow: "0 0 14px rgba(169, 112, 255, 0.45)" },
+  { id: "laser-grid-red", name: "Laser Grid Red", note: "Red laser outlines on a black grid", group: "Glow", family: "laser", scheme: "dark", radius: 4, outline: true, grid: "rgba(255, 59, 59, 0.07)",
+    bg: "#0b0303", bg2: "#140606", panel: "#1b0808", border: "#4a0e0e", text: "#ffe0e0", muted: "#cf8585", accent: "#ff3b3b", accent2: "#ff9a2b", accentText: "#1a0000",
+    glow: "0 0 14px rgba(255, 59, 59, 0.45)" },
+  { id: "nuclear", name: "Nuclear", note: "Toxic green and hazard yellow glow", group: "Glow", family: "nuclear", scheme: "dark", radius: 8, bg: "#070a04", bg2: "#0c1207", panel: "#111a0a", border: "#2c4214", text: "#eaffd6", muted: "#9fbf7a", accent: "#76ff2e", accent2: "#ffe11a", accentText: "#0a1402",
+    pageBg: "radial-gradient(900px 520px at 15% -10%, rgba(118, 255, 46, 0.18) 0%, transparent 60%), radial-gradient(800px 460px at 105% 5%, rgba(255, 225, 26, 0.12) 0%, transparent 55%)",
+    glow: "0 0 22px rgba(118, 255, 46, 0.4)" },
+  { id: "nuclear-cherenkov", name: "Cherenkov", note: "Reactor-pool blue glow under water", group: "Glow", family: "nuclear", scheme: "dark", radius: 8, bg: "#03070d", bg2: "#060d18", panel: "#0a1424", border: "#173357", text: "#dcecff", muted: "#8aa8cf", accent: "#3ab4ff", accent2: "#7df9ff", accentText: "#00101f",
+    pageBg: "radial-gradient(900px 520px at 15% -10%, rgba(58, 180, 255, 0.18) 0%, transparent 60%), radial-gradient(800px 460px at 105% 5%, rgba(125, 249, 255, 0.12) 0%, transparent 55%)",
+    glow: "0 0 22px rgba(58, 180, 255, 0.4)" },
+  { id: "nuclear-meltdown", name: "Meltdown", note: "Molten orange core and warning red", group: "Glow", family: "nuclear", scheme: "dark", radius: 8, bg: "#0d0603", bg2: "#170b05", panel: "#211007", border: "#4d2410", text: "#ffe9d9", muted: "#cf9a7a", accent: "#ff7a1a", accent2: "#ff3b2b", accentText: "#1a0800",
+    pageBg: "radial-gradient(900px 520px at 15% -10%, rgba(255, 122, 26, 0.18) 0%, transparent 60%), radial-gradient(800px 460px at 105% 5%, rgba(255, 59, 43, 0.12) 0%, transparent 55%)",
+    glow: "0 0 22px rgba(255, 122, 26, 0.4)" },
+  { id: "nuclear-radium", name: "Radium", note: "Glow-in-the-dark dial green on black", group: "Glow", family: "nuclear", scheme: "dark", radius: 8, bg: "#040a08", bg2: "#08120f", panel: "#0c1a15", border: "#1f4236", text: "#e0fff3", muted: "#8fc2ad", accent: "#3dffb0", accent2: "#d4ff5c", accentText: "#00170d",
+    pageBg: "radial-gradient(900px 520px at 15% -10%, rgba(61, 255, 176, 0.18) 0%, transparent 60%), radial-gradient(800px 460px at 105% 5%, rgba(212, 255, 92, 0.12) 0%, transparent 55%)",
+    glow: "0 0 22px rgba(61, 255, 176, 0.4)" },
+  { id: "nuclear-isotope", name: "Isotope", note: "Plutonium violet with a hazard yellow edge", group: "Glow", family: "nuclear", scheme: "dark", radius: 8, bg: "#08040d", bg2: "#0f0818", panel: "#160c22", border: "#35205a", text: "#f1e6ff", muted: "#ae98cf", accent: "#c06bff", accent2: "#ffe11a", accentText: "#12001f",
+    pageBg: "radial-gradient(900px 520px at 15% -10%, rgba(192, 107, 255, 0.18) 0%, transparent 60%), radial-gradient(800px 460px at 105% 5%, rgba(255, 225, 26, 0.12) 0%, transparent 55%)",
+    glow: "0 0 22px rgba(192, 107, 255, 0.4)" },
+  { id: "neon-nights", name: "Neon Nights", note: "Pink and blue sign tubes on a dark wall", group: "Glow", family: "neon", scheme: "dark", radius: 12, bg: "#0a0710", bg2: "#120c1c", panel: "#181126", border: "#36264f", text: "#fbefff", muted: "#b8a6d1", accent: "#ff4fc3", accent2: "#4fb8ff", accentText: "#1a0012",
+    pageBg: "radial-gradient(1000px 480px at 0% -10%, rgba(255, 79, 195, 0.16) 0%, transparent 60%), radial-gradient(900px 460px at 100% 0%, rgba(79, 184, 255, 0.12) 0%, transparent 55%)",
+    glow: "0 0 18px rgba(255, 79, 195, 0.5), 0 0 2px rgba(255, 79, 195, 0.9)" },
+  { id: "neon-diner", name: "Neon Diner", note: "Cherry red and teal roadside sign", group: "Glow", family: "neon", scheme: "dark", radius: 12, bg: "#0b0809", bg2: "#141011", panel: "#1c1517", border: "#3d2a2e", text: "#fff0ee", muted: "#c4a4a4", accent: "#ff3d55", accent2: "#2ee6c9", accentText: "#1a0005",
+    pageBg: "radial-gradient(1000px 480px at 0% -10%, rgba(255, 61, 85, 0.16) 0%, transparent 60%), radial-gradient(900px 460px at 100% 0%, rgba(46, 230, 201, 0.12) 0%, transparent 55%)",
+    glow: "0 0 18px rgba(255, 61, 85, 0.5), 0 0 2px rgba(255, 61, 85, 0.9)" },
+  { id: "neon-lime", name: "Neon Lime", note: "Electric lime and orange on charcoal", group: "Glow", family: "neon", scheme: "dark", radius: 12, bg: "#08090a", bg2: "#0f1112", panel: "#15181a", border: "#2c3236", text: "#f2fbe8", muted: "#a7b39b", accent: "#b8ff2e", accent2: "#ff8a1f", accentText: "#0f1a00",
+    pageBg: "radial-gradient(1000px 480px at 0% -10%, rgba(184, 255, 46, 0.16) 0%, transparent 60%), radial-gradient(900px 460px at 100% 0%, rgba(255, 138, 31, 0.12) 0%, transparent 55%)",
+    glow: "0 0 18px rgba(184, 255, 46, 0.5), 0 0 2px rgba(184, 255, 46, 0.9)" },
+  { id: "neon-ultraviolet", name: "Neon Ultraviolet", note: "Blacklight violet with a cyan flicker", group: "Glow", family: "neon", scheme: "dark", radius: 12, bg: "#07051a", bg2: "#0d0a26", panel: "#130f33", border: "#2e2766", text: "#f0edff", muted: "#aaa2dd", accent: "#9d6bff", accent2: "#3ff7ff", accentText: "#0c0026",
+    pageBg: "radial-gradient(1000px 480px at 0% -10%, rgba(157, 107, 255, 0.16) 0%, transparent 60%), radial-gradient(900px 460px at 100% 0%, rgba(63, 247, 255, 0.12) 0%, transparent 55%)",
+    glow: "0 0 18px rgba(157, 107, 255, 0.5), 0 0 2px rgba(157, 107, 255, 0.9)" },
+  { id: "neon-sunset", name: "Neon Sunset", note: "Orange and pink tubes at dusk", group: "Glow", family: "neon", scheme: "dark", radius: 12, bg: "#0e0710", bg2: "#170c1a", panel: "#1f1124", border: "#432647", text: "#fff0ea", muted: "#cfa6b4", accent: "#ff8a3d", accent2: "#ff4f9a", accentText: "#1a0900",
+    pageBg: "radial-gradient(1000px 480px at 0% -10%, rgba(255, 138, 61, 0.16) 0%, transparent 60%), radial-gradient(900px 460px at 100% 0%, rgba(255, 79, 154, 0.12) 0%, transparent 55%)",
+    glow: "0 0 18px rgba(255, 138, 61, 0.5), 0 0 2px rgba(255, 138, 61, 0.9)" },
+  { id: "neon-ice", name: "Neon Ice", note: "Cold white-blue tubes on navy", group: "Glow", family: "neon", scheme: "dark", radius: 12, bg: "#040912", bg2: "#08111f", panel: "#0d182b", border: "#1f3557", text: "#eef7ff", muted: "#9ab2cf", accent: "#7fd8ff", accent2: "#c8a6ff", accentText: "#00121f",
+    pageBg: "radial-gradient(1000px 480px at 0% -10%, rgba(127, 216, 255, 0.16) 0%, transparent 60%), radial-gradient(900px 460px at 100% 0%, rgba(200, 166, 255, 0.12) 0%, transparent 55%)",
+    glow: "0 0 18px rgba(127, 216, 255, 0.5), 0 0 2px rgba(127, 216, 255, 0.9)" },
 
   // ---- Retro ----
   { id: "doom", name: "Inferno", note: "Hell-red with molten gold, 90s shooter", group: "Retro", scheme: "dark", radius: 4, bg: "#160606", bg2: "#200909", panel: "#2a0c0c", border: "#4a1616", text: "#f6e3d3", muted: "#c29a8a", accent: "#f4b63f", accent2: "#e53b2c", accentText: "#1a0503" },
@@ -157,6 +206,8 @@ function apply(id: string) {
   for (const [k, v] of Object.entries(tokens(t))) root.style.setProperty(k, v);
   root.style.colorScheme = t.scheme;
   root.dataset.theme = t.id;
+  if (t.family) root.dataset.family = t.family;
+  else delete root.dataset.family;
   root.dataset.scheme = t.scheme;
   // The desktop app's minimize, maximize and close buttons sit on the top bar, in its colours.
   void desktop?.titleBarColors?.(t.bg, t.text).catch(() => {});

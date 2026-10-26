@@ -3403,26 +3403,40 @@ html[data-lootden-frame] .lightbox {
 }
 
 /* ---------- Theme extras ---------------------------------------------------
-   Laser Grid draws its main buttons and meters as neon outlines rather than fills;
-   Nuclear adds a faint glow to headings. The colours themselves live in theme.ts. */
+   The Glow themes come in families that share a look (data-family on <html>); the colours
+   themselves live in theme.ts. Laser Grid draws its main buttons and meters as outlines
+   rather than fills; Nuclear adds a faint glow to headings; Neon lights headings and the
+   main button like sign tubes. Body text never glows, so it stays crisp on a handheld. */
 
-:root[data-theme="laser-grid"] .primary {
+:root[data-family="laser"] .primary {
   background: color-mix(in srgb, var(--accent) 10%, transparent);
   color: var(--accent);
   border: 1px solid var(--accent);
   text-shadow: 0 0 8px color-mix(in srgb, var(--accent) 70%, transparent);
 }
-:root[data-theme="laser-grid"] .primary:hover {
+:root[data-family="laser"] .primary:hover {
   background: color-mix(in srgb, var(--accent) 18%, transparent);
 }
-:root[data-theme="laser-grid"] .meter div {
+:root[data-family="laser"] .meter div {
   background: color-mix(in srgb, var(--accent) 14%, transparent);
   border-right: 2px solid var(--accent);
   box-shadow: inset 0 0 12px color-mix(in srgb, var(--accent) 45%, transparent);
 }
-:root[data-theme="nuclear"] h1,
-:root[data-theme="nuclear"] h2 {
+:root[data-family="nuclear"] h1,
+:root[data-family="nuclear"] h2 {
   text-shadow: 0 0 14px color-mix(in srgb, var(--accent) 45%, transparent);
+}
+:root[data-family="neon"] h1,
+:root[data-family="neon"] h2 {
+  color: color-mix(in srgb, var(--accent) 35%, white);
+  text-shadow:
+    0 0 4px color-mix(in srgb, var(--accent) 80%, transparent),
+    0 0 16px color-mix(in srgb, var(--accent) 50%, transparent);
+}
+:root[data-family="neon"] .primary {
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--accent) 60%, white),
+    0 0 16px color-mix(in srgb, var(--accent) 55%, transparent);
 }
 
 /* ---------- Poster size (Profile, Appearance) --------------------------------
