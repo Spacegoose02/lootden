@@ -27,6 +27,10 @@ interface ThemeDef {
   /** Extra page background layers (gradients) behind everything. */
   glow?: string;
   pageBg?: string;
+  /** Bars and the main button are drawn as glowing outlines instead of solid fills. */
+  outline?: boolean;
+  /** Colour of a fine square grid drawn over the page (and the picker tile). */
+  grid?: string;
 }
 
 const MONO = '"JetBrains Mono", "Cascadia Mono", Consolas, ui-monospace, monospace';
@@ -63,6 +67,12 @@ const DEFS: ThemeDef[] = [
     glow: "0 0 24px rgba(77, 255, 180, 0.28)" },
   { id: "tropical", name: "Tropical Sunset", note: "Coral and mango on a dark lagoon", group: "Modern", scheme: "dark", radius: 18, bg: "#0b1f24", bg2: "#10292f", panel: "#15333a", border: "#245059", text: "#fff3ea", muted: "#a9c9c8", accent: "#ff6f59", accent2: "#ffc145", accentText: "#2a0b05",
     pageBg: "radial-gradient(1000px 500px at 100% -10%, #5a2a2a 0%, transparent 55%)" },
+  { id: "laser-grid", name: "Laser Grid", note: "Neon cyan outlines on a black grid", group: "Modern", scheme: "dark", radius: 4, outline: true, grid: "rgba(0, 229, 255, 0.07)",
+    bg: "#03070b", bg2: "#060d14", panel: "#08121b", border: "#0e3a47", text: "#d9fbff", muted: "#6fb3c2", accent: "#00e5ff", accent2: "#2b8cff", accentText: "#001318",
+    glow: "0 0 14px rgba(0, 229, 255, 0.45)" },
+  { id: "nuclear", name: "Nuclear", note: "Toxic green and hazard yellow glow", group: "Modern", scheme: "dark", radius: 8, bg: "#070a04", bg2: "#0c1207", panel: "#111a0a", border: "#2c4214", text: "#eaffd6", muted: "#9fbf7a", accent: "#76ff2e", accent2: "#ffe11a", accentText: "#0a1402",
+    pageBg: "radial-gradient(900px 520px at 15% -10%, rgba(118, 255, 46, 0.18) 0%, transparent 60%), radial-gradient(800px 460px at 105% 5%, rgba(255, 225, 26, 0.12) 0%, transparent 55%)",
+    glow: "0 0 22px rgba(118, 255, 46, 0.4)" },
   { id: "latte", name: "Latte", note: "Soft pastels on warm cream", group: "Modern", scheme: "light", bg: "#eff1f5", bg2: "#e6e9ef", panel: "#ffffff", border: "#ccd0da", text: "#4c4f69", muted: "#6c6f85", accent: "#8839ef", accent2: "#d20f39", accentText: "#ffffff" },
   { id: "sakura", name: "Sakura", note: "Cherry blossom pink, light and airy", group: "Modern", scheme: "light", radius: 20, bg: "#fdf2f5", bg2: "#fff8fa", panel: "#ffffff", border: "#f2d3dc", text: "#3d2530", muted: "#8a6572", accent: "#d63d6f", accent2: "#5c8f4e", accentText: "#ffffff",
     pageBg: "linear-gradient(180deg, #fbe1ea 0%, transparent 380px)" },
@@ -106,12 +116,20 @@ export const THEMES = DEFS.map((t) => ({
     accentText: t.accentText ?? (t.scheme === "dark" ? "#0b0b10" : "#ffffff"),
     radius: t.radius ?? 14,
     font: t.font,
+    outline: t.outline ?? false,
+    grid: t.grid,
   },
 }));
 export type ThemeId = string;
 
+/** A fine square grid as two background layers, for themes that ask for one. */
+export function gridLayers(color: string, size = 32): string {
+  return `linear-gradient(${color} 1px, transparent 1px) 0 0 / ${size}px ${size}px, linear-gradient(90deg, ${color} 1px, transparent 1px) 0 0 / ${size}px ${size}px`;
+}
+
 function tokens(t: ThemeDef): Record<string, string> {
   const dark = t.scheme === "dark";
+  const layers = [t.grid && gridLayers(t.grid), t.pageBg].filter(Boolean).join(", ");
   return {
     "--bg": t.bg,
     "--bg-2": t.bg2,
@@ -128,7 +146,7 @@ function tokens(t: ThemeDef): Record<string, string> {
     "--bad": dark ? "#ff5c7a" : "#b3123a",
     "--radius": `${t.radius ?? 14}px`,
     "--glow": t.glow ?? (dark ? `0 0 22px color-mix(in srgb, ${t.accent} 30%, transparent)` : "0 6px 20px rgba(0, 0, 0, 0.08)"),
-    "--page-bg": t.pageBg ? (t.pageBg.includes("gradient") ? `${t.pageBg}, ${t.bg}` : t.pageBg) : t.bg,
+    "--page-bg": layers ? (layers.includes("gradient") ? `${layers}, ${t.bg}` : layers) : t.bg,
     "--font": t.font ?? '"Inter", "Segoe UI", system-ui, -apple-system, sans-serif',
   };
 }

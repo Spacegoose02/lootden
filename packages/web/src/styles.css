@@ -3383,3 +3383,26 @@ html[data-lootden-frame] .lightbox {
 .addon-shared h4 {
   margin: 0 0 0.2rem;
 }
+
+/* ---------- Theme extras ---------------------------------------------------
+   Laser Grid draws its main buttons and meters as neon outlines rather than fills;
+   Nuclear adds a faint glow to headings. The colours themselves live in theme.ts. */
+
+:root[data-theme="laser-grid"] .primary {
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  color: var(--accent);
+  border: 1px solid var(--accent);
+  text-shadow: 0 0 8px color-mix(in srgb, var(--accent) 70%, transparent);
+}
+:root[data-theme="laser-grid"] .primary:hover {
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+}
+:root[data-theme="laser-grid"] .meter div {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  border-right: 2px solid var(--accent);
+  box-shadow: inset 0 0 12px color-mix(in srgb, var(--accent) 45%, transparent);
+}
+:root[data-theme="nuclear"] h1,
+:root[data-theme="nuclear"] h2 {
+  text-shadow: 0 0 14px color-mix(in srgb, var(--accent) 45%, transparent);
+}
