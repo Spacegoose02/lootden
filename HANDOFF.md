@@ -107,6 +107,18 @@ can be set once by an admin on the add-on's card (`PUT /api/addons/:id/shared`, 
 like accounts, never sent back); a person's own value wins. `Integrations` (IGDB and other admin keys in the settings table) aren't encrypted yet; the
 vault can do it.
 
+## Glow themes, feed names, Home posters (0.17.0)
+
+- **Glow theme group** (50 themes in all): Laser Grid in six colours, Nuclear plus Cherenkov,
+  Meltdown, Radium and Isotope, and six Neon themes. `ThemeDef.family` (`laser` | `nuclear` |
+  `neon`) sets `data-family` on `<html>`, and the extras in `styles.css` are keyed on it. Only
+  headings and the main button glow; text stays at 4.5:1 contrast. Laser Grid and Nuclear kept
+  their ids, so saved choices still work.
+- **Custom names for RSS/Atom and JSON feed sources** (Settings), used on Discover, in wishlist
+  alerts and in source errors; blank falls back to the default name.
+- **Home Installed row posters**: games no other row carries are looked up directly instead of
+  showing a coverless stub, and art that's nearly the card's shape fills the card.
+
 ## Controller navigation (0.16.2)
 
 - **D-pad up goes row by row** instead of jumping past rows (`gamepad.ts`).
@@ -130,7 +142,7 @@ vault can do it.
 
 ## Also in 0.16.0
 
-- **Laser Grid and Nuclear themes** (35 themes in all).
+- **Laser Grid and Nuclear themes** (35 themes at the time).
 - **xREL and AnkerGames sources removed**; downloads are deleted once imported by default.
 - **Retro metadata sources**: ScreenScraper, TheGamesDB and LaunchBox for console games, with
   an admin-set source priority (see `docs/CONFIGURATION.md`).
