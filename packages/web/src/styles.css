@@ -1570,6 +1570,12 @@ button.small,
   height: 100%;
   object-fit: contain;
 }
+.cover-fill img {
+  object-fit: cover;
+}
+.cover-fill .cover-blur {
+  display: none;
+}
 .cover-blur {
   position: absolute;
   inset: -12%;

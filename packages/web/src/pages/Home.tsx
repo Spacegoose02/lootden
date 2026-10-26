@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
-import type { GameListing } from "@lootden/shared";
+import type { GameListing, GameSummary } from "@lootden/shared";
 import { api, type HomeData, type NewsItem, type Video } from "../api";
 import { useAuth } from "../auth";
 import { Badges } from "../components/Badges";
@@ -30,6 +30,8 @@ export function Home() {
   const [slide, setSlide] = useState(0);
   /** The games on this PC, in the desktop app; the Installed row shows these instead of every device's. */
   const [local, setLocal] = useState<InstalledGame[] | null>(null);
+  /** Installed games that none of the home rows carry, looked up one by one so they get their real cover and details. */
+  const [extra, setExtra] = useState<ReadonlyMap<string, GameSummary>>(new Map());
   const [poster] = usePosterSize();
   // Games played lately on connected stores (Steam, Xbox...), next to the LootDen ones.
   const store = useStoreGames();
@@ -45,6 +47,22 @@ export function Home() {
       api.calendar(60).then((r) => setUpcoming(r.items.filter((i) => i.releaseDate).slice(0, 20)), () => {});
     }
   }, [kid]);
+  useEffect(() => {
+    if (!data || !local) return;
+    const listed = new Set(data.sections.flatMap((s) => s.games.map((g) => g.id)));
+    const missing = local.map((l) => l.gameId).filter((id) => !listed.has(id));
+    if (!missing.length) return;
+    let live = true;
+    void Promise.allSettled(missing.map((id) => api.game(id))).then((rs) => {
+      if (!live) return;
+      const found = new Map<string, GameSummary>();
+      for (const r of rs) if (r.status === "fulfilled") found.set(r.value.id, r.value);
+      setExtra(found);
+    });
+    return () => {
+      live = false;
+    };
+  }, [data, local]);
   useEffect(() => {
     if (!data?.featured.length) return;
     const t = setInterval(() => setSlide((s) => (s + 1) % data.featured.length), 8000);
@@ -84,7 +102,7 @@ export function Home() {
     const known = new Map(data.sections.concat(everyone ?? []).flatMap((s) => s.games).map((g) => [g.id, g]));
     const order = new Map(installed.map((g, i) => [g.id, i]));
     installed = local
-      .map((l) => known.get(l.gameId) ?? stub(l))
+      .map((l) => known.get(l.gameId) ?? extra.get(l.gameId) ?? stub(l))
       .sort((a, b) => (order.get(a.id) ?? Infinity) - (order.get(b.id) ?? Infinity) || a.title.localeCompare(b.title));
   }
   // Library rows first, with the extras slotted between them so the page alternates.
