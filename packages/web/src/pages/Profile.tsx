@@ -5,13 +5,14 @@ import type { ApiTokenInfo, GameSummary, UserGameState } from "@lootden/shared";
 import { api, avatarUrl, formatPlaytime } from "../api";
 import { useAuth } from "../auth";
 import { bridgeError, desktop, type InstalledGame } from "../desktop";
-import { THEMES, useTheme } from "../theme";
+import { POSTER_SIZES, THEMES, usePosterSize, useTheme } from "../theme";
 import { GameLibraries } from "../components/GameLibraries";
 import { StoreScan } from "../components/StoreScan";
 
 export function Profile() {
   const { me, refresh } = useAuth();
   const { theme, touch, setTouch } = useTheme();
+  const [poster, setPoster] = usePosterSize();
   const current = THEMES.find((t) => t.id === theme) ?? THEMES[0]!;
   const user = me?.user;
   const [name, setName] = useState(user?.displayName ?? "");
@@ -63,6 +64,16 @@ export function Profile() {
           <input type="checkbox" checked={touch === "on"} onChange={(e) => setTouch(e.target.checked ? "on" : "off")} />
           Touch and handheld mode (bigger targets for ROG Ally and tablets)
         </label>
+        <div className="inline">
+          <span>Poster and cover size</span>
+          <div className="segmented" role="tablist" aria-label="Poster size">
+            {POSTER_SIZES.map(([id, label]) => (
+              <button key={id} role="tab" aria-selected={poster === id} className={poster === id ? "active" : ""} onClick={() => setPoster(id)}>
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
       </section>
 
       {desktop && <ThisComputer />}

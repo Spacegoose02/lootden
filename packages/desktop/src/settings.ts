@@ -29,6 +29,8 @@ export interface DesktopSettings {
   pendingPlays: Array<{ gameId: string; seconds: number; playedAt: string }>;
   /** Other stores' games on this PC: launchers not to look in, and extra folders to look in (picked in Profile, This computer). */
   storeScan: { disabled: string[]; folders: string[] };
+  /** The web UI's theme colours (#hex), so the offline page looks like the app. Missing until the app has been online. */
+  offlineTheme?: Record<string, string>;
 }
 
 export function defaultSettings(): DesktopSettings {

@@ -5,10 +5,13 @@ import { api, type HomeData, type NewsItem, type Video } from "../api";
 import { useAuth } from "../auth";
 import { Badges } from "../components/Badges";
 import { Cover } from "../components/Cover";
-import { GameRow } from "../components/GameCard";
+import { GameCard, GameRow } from "../components/GameCard";
+import { stub } from "../components/InstalledGames";
 import { ListingRow } from "../components/Listing";
 import { VideoRow } from "../components/Videos";
 import { StoreGameCard, storeKey, useStoreGames } from "../components/StoreGameCard";
+import { desktop, type InstalledGame } from "../desktop";
+import { usePosterSize } from "../theme";
 
 const NOTES: Record<string, string> = {
   setup:
@@ -25,12 +28,16 @@ export function Home() {
   const [upcoming, setUpcoming] = useState<GameListing[]>([]);
   const [error, setError] = useState("");
   const [slide, setSlide] = useState(0);
+  /** The games on this PC, in the desktop app; the Installed row shows these instead of every device's. */
+  const [local, setLocal] = useState<InstalledGame[] | null>(null);
+  const [poster] = usePosterSize();
   // Games played lately on connected stores (Steam, Xbox...), next to the LootDen ones.
   const store = useStoreGames();
   const storeRecent = (store.games ?? []).filter((g) => g.lastPlayedAt).sort((a, b) => Date.parse(b.lastPlayedAt!) - Date.parse(a.lastPlayedAt!)).slice(0, 20);
 
   useEffect(() => {
     api.home().then(setData, (e: Error) => setError(e.message));
+    if (desktop) void desktop.installed().then(setLocal, () => setLocal([]));
     // The extras are optional: a failing feed or missing key just leaves its row out.
     api.news().then((r) => setNews(r.items.slice(0, 4)), () => {});
     if (!kid) {
@@ -70,8 +77,35 @@ export function Home() {
   };
   const row = (s: HomeData["sections"][number] | null) => (s ? <GameRow key={s.id} title={s.title} games={s.games} note={NOTES[s.id]} /> : null);
 
+  // Installed games straight under Featured: on this PC in the app, on any of this person's devices in a browser.
+  const everyone = take("installed");
+  let installed = everyone?.games ?? [];
+  if (desktop && local) {
+    const known = new Map(data.sections.concat(everyone ?? []).flatMap((s) => s.games).map((g) => [g.id, g]));
+    const order = new Map(installed.map((g, i) => [g.id, i]));
+    installed = local
+      .map((l) => known.get(l.gameId) ?? stub(l))
+      .sort((a, b) => (order.get(a.id) ?? Infinity) - (order.get(b.id) ?? Infinity) || a.title.localeCompare(b.title));
+  }
   // Library rows first, with the extras slotted between them so the page alternates.
-  const blocks: ReactNode[] = [row(take("continue"))];
+  const blocks: ReactNode[] = [];
+  if (installed.length)
+    blocks.push(
+      <section className="row row-installed" key="installed">
+        <div className="row-head">
+          <h2>{desktop ? "Installed on this PC" : "Installed"}</h2>
+          <Link to="/library?tab=installed" className="muted small">
+            All installed
+          </Link>
+        </div>
+        <div className="row-track">
+          {installed.map((g) => (
+            <GameCard key={g.id} game={g} />
+          ))}
+        </div>
+      </section>,
+    );
+  blocks.push(row(take("continue")));
   if (storeRecent.length)
     blocks.push(
       <section className="row" key="stores">
@@ -102,8 +136,8 @@ export function Home() {
 
   return (
     <>
-      {hero && (
-        <section className="hero">
+      {hero && poster !== "off" && (
+        <section className={`hero hero-${poster}`}>
           <div className={`hero-bg${hero.backgroundUrl ? " wide" : ""}`} style={hero.backgroundUrl || hero.coverUrl ? { backgroundImage: `url(${hero.backgroundUrl ?? hero.coverUrl})` } : undefined} />
           {/* Every featured game is laid out in the same spot and only the current one shows, so the
               banner is always as tall as the tallest one and the page doesn't jump when it changes. */}

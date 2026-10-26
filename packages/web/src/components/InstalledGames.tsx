@@ -30,7 +30,7 @@ const SORTS = [
 type Sort = (typeof SORTS)[number][0];
 
 /** Enough of a summary to show a game the server doesn't list any more. */
-function stub(local: InstalledGame): GameSummary {
+export function stub(local: InstalledGame): GameSummary {
   return {
     id: local.gameId,
     title: local.title,

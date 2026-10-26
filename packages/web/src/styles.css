@@ -3406,3 +3406,206 @@ html[data-lootden-frame] .lightbox {
 :root[data-theme="nuclear"] h2 {
   text-shadow: 0 0 14px color-mix(in srgb, var(--accent) 45%, transparent);
 }
+
+/* ---------- Poster size (Profile, Appearance) --------------------------------
+   The Featured banner's poster and a game page's poster. Normal keeps them to about a third of
+   the screen's height, which matters on a 1280x800 handheld; Large is the old size. */
+
+:root {
+  --poster-w: clamp(130px, 15vw, 200px);
+  --poster-h: 36vh;
+}
+:root[data-poster="large"] {
+  --poster-w: clamp(160px, 22vw, 260px);
+  --poster-h: 62vh;
+}
+:root[data-poster="small"],
+:root[data-poster="off"] {
+  --poster-w: clamp(90px, 10vw, 130px);
+  --poster-h: 24vh;
+}
+:root[data-touch="on"]:not([data-poster="large"]),
+:root[data-handheld="on"]:not([data-poster="large"]) {
+  --poster-h: 30vh;
+}
+.cover-hero {
+  width: min(var(--poster-w), calc(var(--poster-h) * 0.75));
+}
+.cover-hero.cover-natural {
+  width: auto;
+  max-width: var(--poster-w);
+  max-height: var(--poster-h);
+}
+.hero-small {
+  min-height: 0;
+}
+.hero-small .hero-content {
+  align-items: center;
+  gap: 1.25rem;
+  padding: 1rem 1.5rem;
+}
+.hero-small .hero-content h1 {
+  font-size: clamp(1.3rem, 2.6vw, 1.9rem);
+}
+.hero-small .hero-blurb {
+  display: none;
+}
+
+/* ---------- Futuristic polish ------------------------------------------------
+   HUD-style touches drawn from the theme's own accent colours, so every theme keeps its look:
+   a lit tick on row titles, corner brackets and a scan line on the Featured banner, and a glow
+   around the selected card. Stronger on handhelds (ROG Ally, Steam Deck), where the app is
+   driven with a controller from across the room. */
+
+.row > h2,
+.row-head h2 {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  letter-spacing: 0.01em;
+}
+.row > h2::before,
+.row-head h2::before {
+  content: "";
+  width: 4px;
+  height: 1.1em;
+  border-radius: 2px;
+  background: linear-gradient(180deg, var(--accent), var(--accent-2));
+  box-shadow: 0 0 10px color-mix(in srgb, var(--accent) 55%, transparent);
+  flex-shrink: 0;
+}
+.row-installed .row-head h2::after {
+  content: "Ready";
+  font-size: 0.68rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  padding: 0.15em 0.6em;
+  border-radius: 999px;
+  color: var(--good);
+  border: 1px solid color-mix(in srgb, var(--good) 60%, transparent);
+  background: color-mix(in srgb, var(--good) 12%, transparent);
+}
+.hero {
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--accent-2) 18%, transparent),
+    0 18px 50px rgba(0, 0, 0, 0.35);
+}
+/* Corner brackets, like a targeting reticle. */
+.hero::after {
+  content: "";
+  position: absolute;
+  inset: 10px;
+  pointer-events: none;
+  border-radius: calc(var(--radius) + 2px);
+  --b: color-mix(in srgb, var(--accent-2) 70%, transparent);
+  background:
+    linear-gradient(var(--b), var(--b)) top left / 22px 2px,
+    linear-gradient(var(--b), var(--b)) top left / 2px 22px,
+    linear-gradient(var(--b), var(--b)) top right / 22px 2px,
+    linear-gradient(var(--b), var(--b)) top right / 2px 22px,
+    linear-gradient(var(--b), var(--b)) bottom left / 22px 2px,
+    linear-gradient(var(--b), var(--b)) bottom left / 2px 22px,
+    linear-gradient(var(--b), var(--b)) bottom right / 22px 2px,
+    linear-gradient(var(--b), var(--b)) bottom right / 2px 22px;
+  background-repeat: no-repeat;
+}
+/* A faint line sweeping down the banner. */
+.hero::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  background: linear-gradient(180deg, transparent 0%, color-mix(in srgb, var(--accent-2) 10%, transparent) 50%, transparent 100%) 0 0 / 100% 120px no-repeat;
+  animation: hero-scan 7s linear infinite;
+}
+@keyframes hero-scan {
+  from {
+    background-position: 0 -120px;
+  }
+  to {
+    background-position: 0 calc(100% + 120px);
+  }
+}
+.hero-dots {
+  z-index: 2;
+}
+.dot.active {
+  box-shadow: 0 0 10px var(--accent);
+}
+.card .cover {
+  transition: box-shadow 0.15s;
+}
+.card:focus-visible .cover,
+:root[data-nav="pad"] .card:focus .cover {
+  box-shadow:
+    0 0 0 2px var(--accent-2),
+    0 0 22px color-mix(in srgb, var(--accent-2) 45%, transparent);
+}
+
+/* Handhelds: tighter chrome so the games get the screen, and a glassier top bar. */
+:root[data-handheld="on"] main,
+:root[data-touch="on"] main {
+  padding-top: 1rem;
+}
+:root[data-handheld="on"] .topbar,
+:root[data-touch="on"] .topbar {
+  background: color-mix(in srgb, var(--bg) 70%, transparent);
+  box-shadow: 0 1px 0 color-mix(in srgb, var(--accent-2) 25%, transparent);
+}
+:root[data-handheld="on"] .row,
+:root[data-touch="on"] .row {
+  margin-bottom: 1.25rem;
+}
+:root[data-handheld="on"] .hero,
+:root[data-touch="on"] .hero {
+  margin-bottom: 1.5rem;
+}
+:root[data-handheld="on"] .hero-blurb {
+  display: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .hero::before {
+    animation: none;
+    display: none;
+  }
+}
+
+/* Touch mode's 48px buttons shouldn't turn the banner's page dots into big pills. */
+:root[data-touch="on"] .hero-dots .dot {
+  min-height: 0;
+  padding: 0;
+}
+.hero-small .hero-content {
+  padding: 1.25rem 2.25rem;
+}
+
+/* The same setting sizes the covers in rows and grids. In handheld mode Normal is a step
+   smaller than before, so a 7-8" screen shows more than four games across. Phones keep their own sizes. */
+@media (min-width: 721px) {
+  :root[data-poster="small"] .row-track,
+  :root[data-poster="off"] .row-track {
+    grid-auto-columns: clamp(110px, 11vw, 150px);
+  }
+  :root[data-poster="small"] .grid,
+  :root[data-poster="off"] .grid {
+    grid-template-columns: repeat(auto-fill, minmax(125px, 1fr));
+  }
+  :root[data-poster="large"] .row-track {
+    grid-auto-columns: clamp(170px, 19vw, 240px);
+  }
+  :root[data-poster="large"] .grid {
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  }
+  :root[data-touch="on"][data-poster="normal"] .row-track {
+    grid-auto-columns: clamp(150px, 15vw, 196px);
+  }
+  :root[data-touch="on"][data-poster="normal"] .grid {
+    grid-template-columns: repeat(auto-fill, minmax(165px, 1fr));
+  }
+  :root[data-touch="on"][data-poster="small"] .row-track,
+  :root[data-touch="on"][data-poster="off"] .row-track {
+    grid-auto-columns: clamp(125px, 12.5vw, 165px);
+  }
+}

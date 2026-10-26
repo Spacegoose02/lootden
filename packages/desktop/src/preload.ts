@@ -42,6 +42,7 @@ const bridge = {
   appUpdate: (action?: "status" | "check" | "install") => ipcRenderer.invoke("gm:appUpdate", action),
   quit: () => ipcRenderer.invoke("gm:quit"),
   titleBarColors: (color: string, symbolColor: string) => ipcRenderer.invoke("gm:titleBarColors", color, symbolColor),
+  offlineTheme: (colors: Record<string, string>) => ipcRenderer.invoke("gm:offlineTheme", colors),
   onProgress: (cb: (p: unknown) => void) => {
     const listener = (_e: unknown, p: unknown) => cb(p);
     ipcRenderer.on("gm:progress", listener);
