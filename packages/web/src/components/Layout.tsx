@@ -6,6 +6,7 @@ import { AlertsBell } from "./AlertsBell";
 import { BrandLogo } from "./BrandLogo";
 import { AppUpdateBanner } from "./AppOptions";
 import { desktop } from "../desktop";
+import { SECTION_EVENT } from "../gamepad";
 
 interface NavItem {
   to: string;
@@ -51,6 +52,18 @@ function MainNav({ items, onSignOut }: { items: NavItem[]; onSignOut: () => void
 
   // A new page closes the menu.
   useEffect(() => setOpen(false), [location.pathname]);
+  // LB and RB on a controller: the previous or next section, wrapping round, More's included.
+  const navigate = useNavigate();
+  useEffect(() => {
+    const onSection = (e: Event) => {
+      const by = (e as CustomEvent<number>).detail;
+      const at = items.findIndex((i) => (i.end ? location.pathname === i.to : location.pathname.startsWith(i.to)));
+      const next = items[at < 0 ? (by > 0 ? 0 : items.length - 1) : (at + by + items.length) % items.length];
+      if (next) navigate(next.to);
+    };
+    window.addEventListener(SECTION_EVENT, onSection);
+    return () => window.removeEventListener(SECTION_EVENT, onSection);
+  }, [items, location.pathname, navigate]);
   useEffect(() => {
     if (!open) return;
     const close = (e: MouseEvent | KeyboardEvent) => {

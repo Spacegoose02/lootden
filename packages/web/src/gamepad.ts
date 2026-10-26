@@ -97,6 +97,9 @@ function coveredTop(el: Element): number {
   return bottom;
 }
 
+/** Inside one of the bars that stay put while the page scrolls (the top bar with the menu). */
+const inStickyBar = (el: Element) => !!el.closest(".topbar");
+
 /** Mostly under a sticky bar: there on the page, but not something you can see. */
 const hidden = (el: Element, r: DOMRect) => {
   const top = coveredTop(el);
@@ -123,29 +126,35 @@ export function moveFocus(dir: Dir, repeating = false): void {
   }
   const from = current.getBoundingClientRect();
   const here = zoneOf(current);
+  // From the page itself, the page comes first: up through a long library goes row by row,
+  // scrolling the rows above back out from under the top bar, and only reaches the menu at the top.
+  const fromPage = !inStickyBar(current);
   let best: HTMLElement | null = null;
   let bestScore = Infinity;
+  let bestOnPage = false;
   const rects = new Map<HTMLElement, DOMRect>();
   for (const el of items) {
     if (el === current) continue;
     const r = el.getBoundingClientRect();
     if (!ahead(dir, from, r)) continue;
-    // A card scrolled under the sticky top bar is something you can't see: skip past it.
-    if (hidden(el, r) && !hidden(current, from)) continue;
+    const onPage = fromPage && !inStickyBar(el);
+    // From the top bar, a card scrolled under it is something you can't see: skip past it.
+    if (!onPage && hidden(el, r) && !hidden(current, from)) continue;
     // Left and right stay in the row: off the end of the filters isn't a jump up to Sign out.
     if ((dir === "left" || dir === "right") && (r.bottom <= from.top || r.top >= from.bottom) && zoneOf(el) !== here) continue;
     rects.set(el, r);
     const sc = score(dir, from, r);
-    if (sc < bestScore) {
+    if ((onPage && !bestOnPage) || (onPage === bestOnPage && sc < bestScore)) {
       bestScore = sc;
       best = el;
+      bestOnPage = onPage;
     }
   }
   const zone = best && zoneOf(best);
   if (best && zone && zone !== here) {
     // Into another area: where you were in it last, else (for the games) the first one on screen.
     const remembered = lastInZone.get(zone);
-    const first = zone.matches(".collection, [data-nav-zone]") ? items.find((el) => zoneOf(el) === zone && rects.has(el) && onScreen(rects.get(el)!)) : undefined;
+    const first = zone.matches(".collection, [data-nav-zone]") ? items.find((el) => zoneOf(el) === zone && rects.has(el) && onScreen(rects.get(el)!) && !hidden(el, rects.get(el)!)) : undefined;
     best = remembered && remembered.isConnected && rects.has(remembered) && onScreen(rects.get(remembered)!) ? remembered : (first ?? best);
   }
   if (best) {
@@ -184,6 +193,17 @@ export function switchTab(by: number): void {
   next.click();
   next.focus({ preventScroll: true });
   reveal(next, false);
+}
+
+/**
+ * LB and RB: the previous or next section of the top menu (Home, Library, Downloads...). The menu
+ * knows its sections, including the ones folded into More, so it does the navigating.
+ */
+export const SECTION_EVENT = "lootden:section";
+export function switchSection(by: number): void {
+  setNavMode("pad");
+  setEditing(null);
+  window.dispatchEvent(new CustomEvent<number>(SECTION_EVENT, { detail: by }));
 }
 
 /** A or Enter on a select: change it with the d-pad until A, B or Enter again. */
@@ -286,8 +306,8 @@ export function installSpatialNavigation(onBack: () => void): () => void {
   window.addEventListener("mousemove", onPointer, true);
 
   // Gamepad polling: d-pad / left stick move, A (0) clicks, B (1) goes back, Y (3) jumps between
-  // the filters and the games, the right stick scrolls, the shoulder buttons page up and down,
-  // and the triggers (6, 7) switch tabs.
+  // the filters and the games, the right stick scrolls, the bumpers (4, 5) switch sections of the
+  // top menu, and the triggers (6, 7) switch the page's tabs.
   let frame = 0;
   const held = new Map<string, number>();
   const repeat = (id: string, pressed: boolean, action: (repeating: boolean) => void) => {
@@ -348,8 +368,8 @@ export function installSpatialNavigation(onBack: () => void): () => void {
         repeat(`${pad.index}y`, b(3), switchZone);
         repeat(`${pad.index}lt`, b(6), () => switchTab(-1));
         repeat(`${pad.index}rt`, b(7), () => switchTab(1));
-        repeat(`${pad.index}lb`, b(4), () => scrollBy(-window.innerHeight * 0.8));
-        repeat(`${pad.index}rb`, b(5), () => scrollBy(window.innerHeight * 0.8));
+        repeat(`${pad.index}lb`, b(4), () => switchSection(-1));
+        repeat(`${pad.index}rb`, b(5), () => switchSection(1));
         if (pad.mapping === "standard" && Math.abs(ry) > 0.25) scrollBy(ry * 18);
       }
     frame = requestAnimationFrame(poll);
