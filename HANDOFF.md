@@ -107,7 +107,7 @@ can be set once by an admin on the add-on's card (`PUT /api/addons/:id/shared`, 
 like accounts, never sent back); a person's own value wins. `Integrations` (IGDB and other admin keys in the settings table) aren't encrypted yet; the
 vault can do it.
 
-## After 0.16.0: store and offline fixes
+## Store and offline fixes (0.16.1)
 
 - **Install or Play on store games.** In the desktop app, once this PC's launchers have been
   scanned (`useStoreGames().scanned`), a store game that isn't installed says **Install**
