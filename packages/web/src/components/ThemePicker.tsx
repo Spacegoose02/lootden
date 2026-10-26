@@ -25,7 +25,7 @@ export function ThemePicker() {
           ))}
         </div>
       </div>
-      {(["Modern", "Retro"] as const).map((group) => {
+      {(["Modern", "Glow", "Retro"] as const).map((group) => {
         const list = shown.filter((t) => t.group === group);
         if (!list.length) return null;
         return (
