@@ -50,6 +50,10 @@ is a commented copy for Docker Compose.
 | `LOOTDEN_IGDB_CLIENT_ID`, `LOOTDEN_IGDB_CLIENT_SECRET` | | Twitch app keys for IGDB (free at dev.twitch.tv). Without them, Steam and PCGamingWiki are used |
 | `LOOTDEN_RAWG_API_KEY` | | Optional RAWG metadata (free at rawg.io/apidocs) |
 | `LOOTDEN_STEAMGRIDDB_API_KEY` | | Optional covers and backgrounds (free at steamgriddb.com) |
+| `LOOTDEN_SCREENSCRAPER_DEV_ID`, `LOOTDEN_SCREENSCRAPER_DEV_PASSWORD` | | Optional ScreenScraper.fr developer login (ask on the screenscraper.fr forum). Matches ROMs by checksum |
+| `LOOTDEN_SCREENSCRAPER_USER`, `LOOTDEN_SCREENSCRAPER_PASSWORD` | | Optional: your own screenscraper.fr account, for a bigger daily quota |
+| `LOOTDEN_THEGAMESDB_API_KEY` | | Optional TheGamesDB key (request it in the API key thread on forums.thegamesdb.net) |
+| `LOOTDEN_LAUNCHBOX` | `false` | `true` downloads the LaunchBox Games Database (about 100 MB, refreshed monthly) and searches it locally. No key |
 | `LOOTDEN_METADATA_AUTO` | `true` | Match new games automatically |
 | `LOOTDEN_WATCH` | `true` | Watch the games folder for changes |
 | `LOOTDEN_SCAN_INTERVAL_MINUTES` | `30` | Backup rescan interval; `0` turns it off |
@@ -76,7 +80,7 @@ is a commented copy for Docker Compose.
 | **Wanted & rules** | Automatic searches for watched wishlist games, auto-grab, release rules (must / must not contain, preferred words, size, seeders, blocked indexers) |
 | **Release sources** | Feeds of new games: on/off, address, key, request limits, extra allowed hosts, "On my network" for sources on your LAN |
 | **Scanning & alerts** | ClamAV and VirusTotal; which alerts to show; an Apprise server to send them on |
-| **Sign-in & services** | Public address, OIDC, IGDB / RAWG / SteamGridDB keys, itch.io and NexusMods keys |
+| **Sign-in & services** | Public address, OIDC, IGDB / RAWG / SteamGridDB / ScreenScraper / TheGamesDB keys, LaunchBox switch, metadata source priority, itch.io and NexusMods keys |
 | **News & apps** | News feeds, YouTube rows, desktop app builds for the Get the app page |
 
 Keys and passwords entered there are stored in the database and never sent back to the

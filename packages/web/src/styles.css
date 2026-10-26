@@ -1033,6 +1033,29 @@ textarea {
 .apps .list li {
   gap: 1rem;
 }
+.source-orders {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 1rem;
+  margin: 0.6rem 0;
+}
+.source-order ol {
+  list-style: none;
+  margin: 0.4rem 0 0;
+  padding: 0;
+}
+.source-order li {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.3rem 0;
+  border-bottom: 1px solid var(--border);
+}
+.source-order .order-buttons {
+  margin-left: auto;
+  display: flex;
+  gap: 0.25rem;
+}
 
 /* ---------- Save sync --------------------------------------------------- */
 

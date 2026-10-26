@@ -292,7 +292,7 @@ export class Library {
       // A full game named as an update was skipped by the scanner's setup check.
       needsSetup: kind !== "game" ? null : (g.needsSetup ?? (g.kind !== "game" && g.platform === PC_PLATFORM ? setupKindOf(files) : null)),
       files,
-      metadata,
+      metadata: metadata && throughServer(g.id, metadata),
       overrides: {
         title: row?.title_override ?? null,
         kidSafe: row?.kid_safe_override == null ? null : row.kid_safe_override === 1,
@@ -481,6 +481,17 @@ export class Library {
 }
 
 /** Server URL of a game image; the version changes whenever the source does, so browsers refetch. */
+/** ScreenScraper images only load with credentials, so the browser gets them through the server. */
+function throughServer(id: string, m: GameMetadata): GameMetadata {
+  const ss = (u: string | null) => !!u && /^https?:\/\/([^/]+\.)?screenscraper\.fr\//.test(u);
+  if (!ss(m.coverUrl) && !m.screenshots.some(ss)) return m;
+  return {
+    ...m,
+    coverUrl: ss(m.coverUrl) ? `/api/games/${id}/cover` : m.coverUrl,
+    screenshots: m.screenshots.map((u, i) => (ss(u) ? `/api/games/${id}/screenshots/${i}` : u)),
+  };
+}
+
 function imageUrl(id: string, kind: "cover" | "background", source: string | null): string | null {
   if (!source) return null;
   const v = createHash("sha1").update(source).digest("hex").slice(0, 8);
