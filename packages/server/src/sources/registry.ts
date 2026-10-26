@@ -14,7 +14,11 @@ const MASK = "********";
 
 export interface SourceView {
   id: string;
+  /** The admin's name for the source when they set one, else the adapter's. */
   name: string;
+  /** The adapter's own name, shown when the admin's name is blank. */
+  defaultName: string;
+  nameable: boolean;
   description: string;
   needsKey: boolean;
   defaultBaseUrl: string;
@@ -59,7 +63,13 @@ export class SourceRegistry {
       perHour: s.perHour ?? a.limits?.perHour ?? 60,
       extraHosts: s.extraHosts ?? [],
       onMyNetwork: s.onMyNetwork ?? false,
+      displayName: a.nameable ? (s.displayName ?? "") : "",
     };
+  }
+
+  /** What to call a source: the admin's name for it, or the adapter's. */
+  label(a: ReleaseSource, c: SourceConfig = this.config(a)): string {
+    return c.displayName || a.name;
   }
 
   private adapter(id: string): ReleaseSource {
@@ -80,9 +90,10 @@ export class SourceRegistry {
       perHour: Math.max(1, Math.min(5000, Math.round(Number(patch.perHour ?? cur.perHour)) || 1)),
       extraHosts: (patch.extraHosts ?? cur.extraHosts).map((h) => h.trim().toLowerCase()).filter((h) => /^[a-z0-9.-]+$/.test(h)),
       onMyNetwork: patch.onMyNetwork ?? cur.onMyNetwork,
+      displayName: a.nameable ? String(patch.displayName ?? cur.displayName).trim().slice(0, 80) : "",
     };
     if (next.baseUrl && !/^https?:\/\/[^/]+/i.test(next.baseUrl)) throw new Error("The address must start with http:// or https://");
-    if (next.enabled && !next.baseUrl) throw new Error(`${a.name} needs an address first`);
+    if (next.enabled && !next.baseUrl) throw new Error(`${this.label(a, next)} needs an address first`);
     const all = this.stored();
     all[id] = next;
     this.db.prepare("INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(KEY, JSON.stringify(all));
@@ -91,10 +102,10 @@ export class SourceRegistry {
 
   private client(a: ReleaseSource, c: SourceConfig): SourceClient {
     const hosts = [new URL(c.baseUrl).hostname, ...c.extraHosts];
-    const sig = JSON.stringify([hosts, c.perMinute, c.perHour, c.onMyNetwork]);
+    const sig = JSON.stringify([hosts, c.perMinute, c.perHour, c.onMyNetwork, c.displayName]);
     const hit = this.clients.get(a.id);
     if (hit?.sig === sig) return hit.client;
-    const client = new SourceClient(a.name, { hosts, perMinute: c.perMinute, perHour: c.perHour, allowPrivate: c.onMyNetwork }, this.fetchImpl, this.resolveHost);
+    const client = new SourceClient(this.label(a, c), { hosts, perMinute: c.perMinute, perHour: c.perHour, allowPrivate: c.onMyNetwork }, this.fetchImpl, this.resolveHost);
     this.clients.set(a.id, { sig, client });
     return client;
   }
@@ -105,7 +116,9 @@ export class SourceRegistry {
     const items = (this.db.prepare("SELECT COUNT(*) AS n FROM source_items WHERE source = ?").get(a.id) as { n: number }).n;
     return {
       id: a.id,
-      name: a.name,
+      name: this.label(a, c),
+      defaultName: a.name,
+      nameable: !!a.nameable,
       description: a.description,
       needsKey: !!a.needsKey,
       defaultBaseUrl: a.defaultBaseUrl,
@@ -122,7 +135,7 @@ export class SourceRegistry {
   async refresh(id: string): Promise<number> {
     const a = this.adapter(id);
     const c = this.config(a);
-    if (!c.baseUrl) throw new Error(`${a.name} needs an address first`);
+    if (!c.baseUrl) throw new Error(`${this.label(a, c)} needs an address first`);
     try {
       const items = (await a.latest({ config: c, client: this.client(a, c) })).slice(0, 200);
       const fresh = this.store(a, items);
@@ -163,7 +176,7 @@ export class SourceRegistry {
     const wanted = new Map(this.wishlist.list().filter((w) => !w.libraryId).map((w) => [key(w.title), w]));
     for (const r of fresh) {
       const w = wanted.get(key(r.title));
-      if (w) await this.notifier.send("sources", `${w.title} showed up in ${a.name}`, [r.title, r.date].filter(Boolean).join(" · "), "/wishlist");
+      if (w) await this.notifier.send("sources", `${w.title} showed up in ${this.label(a)}`, [r.title, r.date].filter(Boolean).join(" · "), "/wishlist");
     }
   }
 
@@ -180,10 +193,11 @@ export class SourceRegistry {
 
   private row(r: Record<string, unknown>): StoredRelease {
     const source = String(r.source);
+    const a = this.adapters.find((x) => x.id === source);
     return {
       id: String(r.id),
       source,
-      sourceName: this.adapters.find((a) => a.id === source)?.name ?? source,
+      sourceName: a ? this.label(a) : source,
       title: String(r.title),
       date: (r.date as string | null) ?? null,
       platform: (r.platform as string | null) ?? null,
@@ -225,7 +239,7 @@ export class SourceRegistry {
       const c = this.config(a);
       if (!c.enabled || !a.search) continue;
       const items = await a.search({ config: c, client: this.client(a, c) }, query).catch(() => []);
-      out.push(...items.map((r) => ({ ...r, source: a.id, sourceName: a.name, seenAt: now() })));
+      out.push(...items.map((r) => ({ ...r, source: a.id, sourceName: this.label(a, c), seenAt: now() })));
     }
     return out;
   }

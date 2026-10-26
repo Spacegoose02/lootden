@@ -150,11 +150,17 @@ export interface SourceConfig {
   perHour: number;
   extraHosts: string[];
   onMyNetwork: boolean;
+  /** The admin's name for the source; "" uses the default name. */
+  displayName: string;
 }
 
 export interface ReleaseSourceView {
   id: string;
+  /** The admin's name for the source when set, else defaultName. */
   name: string;
+  defaultName: string;
+  /** Whether the source can be given its own name (RSS/Atom and JSON feeds). */
+  nameable: boolean;
   description: string;
   needsKey: boolean;
   defaultBaseUrl: string;
