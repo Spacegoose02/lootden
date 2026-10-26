@@ -27,6 +27,7 @@ In LootDen. Admins can switch an add-on off for everyone from the same card.
 | `xbox` | Games the account has played (console and PC) from Xbox Live's title history, through an OpenXBL key (xbl.io); apps are skipped, PC games get an `msxbox://` Play link. Desktop (Windows): the Xbox app's game folders from each drive's `.GamingRoot`, `MicrosoftGame.config` for the title id |
 | `itch` | Games bought or claimed on itch.io (API key from the account settings); soundtracks and tools skipped; Play opens the itch app |
 | Ubisoft Connect (desktop only) | No account side: `packages/client/src/stores/ubisoft.ts` reads the launcher's registry keys, and the games show on this PC only |
+| EA app (desktop only) | No account side: `packages/client/src/stores/ea.ts` finds install folders through Windows' installed programs (EAInstaller `Cleanup.exe` uninstallers) and the EA app's install folders, then reads each game's `__Installer/installerdata.xml` for its offer id and name. Play is an `origin2://` link, which the EA app answers |
 | `json-list` | A JSON list of games at any address; for stores without an add-on, and the template for new ones |
 
 ## Adding one

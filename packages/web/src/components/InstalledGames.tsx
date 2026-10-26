@@ -292,7 +292,7 @@ export function InstalledGames() {
                       {e.game.title}
                     </Link>
                     <div className="card-meta">{facts(e)}</div>
-                    {e.gone && <div className="muted small">No longer on the server</div>}
+                    {e.gone && <div className="muted small">Removed from the server · still plays here</div>}
                     <div className="play-card-actions">{actions(e)}</div>
                   </div>
                 </article>

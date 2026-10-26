@@ -10,6 +10,7 @@ import { steamInstalled, steamLibraries } from "../src/stores/steam.js";
 import { parseRegQuery } from "../src/stores/windows.js";
 import { ubisoftFromRegistry, ubisoftNames } from "../src/stores/ubisoft.js";
 import { scanFolder } from "../src/stores/folders.js";
+import { eaFromInstallerData, eaInstallDirs, eaLibraryDirs } from "../src/stores/ea.js";
 import { gamingRootFolders, xboxFromConfig } from "../src/stores/xbox.js";
 import { parseVdf } from "../src/stores/vdf.js";
 
@@ -115,6 +116,39 @@ describe("store scanners", () => {
     assert.equal(ubisoftFromRegistry(installs)[0]!.title, "FarCry6", "the folder when Windows doesn't list it");
   });
 
+  it("finds EA app games from their installer data and Windows' installed programs", () => {
+    const xml = `<?xml version="1.0"?><DiPManifest version="4.0"><contentIDs><contentID>1035052</contentID><contentID>Origin.OFR.50.0002694</contentID></contentIDs>
+      <gameTitles><gameTitle locale="de_DE">Schlacht</gameTitle><gameTitle locale="en_US">Battlefield™ 2042 &amp; More</gameTitle></gameTitles></DiPManifest>`;
+    assert.deepEqual(eaFromInstallerData(xml, "C:\\Program Files\\EA Games\\Battlefield 2042"), {
+      addon: "ea",
+      store: "EA app",
+      externalId: "Origin.OFR.50.0002694",
+      title: "Battlefield 2042 & More",
+      installDir: "C:\\Program Files\\EA Games\\Battlefield 2042",
+      launchUrl: "origin2://game/launch?offerIds=Origin.OFR.50.0002694&autoDownload=1",
+    });
+    const older = eaFromInstallerData("<game><metadata><localeInfo locale=\"en_US\"><title>Mass Effect</title></localeInfo></metadata><contentIDs><contentID>71150</contentID></contentIDs></game>", "D:\\ME");
+    assert.equal(older!.title, "Mass Effect");
+    assert.equal(older!.externalId, "71150");
+    assert.equal(eaFromInstallerData("<DiPManifest/>", "x"), null);
+
+    const reg = parseRegQuery(
+      [
+        "HKEY_LOCAL_MACHINE\\SOFTWARE\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{1234}",
+        "    DisplayName    REG_SZ    Battlefield 2042",
+        '    InstallLocation    REG_SZ    "D:\\EA\\Battlefield 2042\\"',
+        '    UninstallString    REG_SZ    "C:\\Program Files\\Common Files\\EAInstaller\\Battlefield 2042\\Cleanup.exe" uninstall_game -autologging',
+        "HKEY_LOCAL_MACHINE\\SOFTWARE\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Other",
+        "    DisplayName    REG_SZ    Not a game",
+        "    InstallLocation    REG_SZ    C:\\Other",
+        "    UninstallString    REG_SZ    C:\\Other\\uninstall.exe",
+        "",
+      ].join("\r\n"),
+    );
+    assert.deepEqual(eaInstallDirs(reg), [{ dir: "D:\\EA\\Battlefield 2042", name: "Battlefield 2042" }]);
+    assert.deepEqual(eaLibraryDirs("user.locale=en_US\r\nuser.downloadinplacedir=E:\\EA Games\\\r\n"), ["E:\\EA Games"]);
+  });
+
   it("finds store games in a folder picked on this PC", async () => {
     const picked = path.join(work, "Picked");
     await mkdir(path.join(picked, "steamapps"), { recursive: true });
@@ -125,10 +159,13 @@ describe("store scanners", () => {
     await writeFile(path.join(picked, "Hades", ".egstore", "X.mancpn"), JSON.stringify({ AppName: "Sugar", CatalogNamespace: "min", CatalogItemId: "abc" }));
     await mkdir(path.join(picked, "Halo", "Content"), { recursive: true });
     await writeFile(path.join(picked, "Halo", "Content", "MicrosoftGame.config"), '<Game><Identity Name="Halo"/><TitleId>1A2B</TitleId><ShellVisuals DefaultDisplayName="Halo Infinite"/></Game>');
+    await mkdir(path.join(picked, "Sims 4", "__Installer"), { recursive: true });
+    await writeFile(path.join(picked, "Sims 4", "__Installer", "installerdata.xml"), '<DiPManifest><contentIDs><contentID>Origin.OFR.50.0000500</contentID></contentIDs><gameTitles><gameTitle locale="en_US">The Sims™ 4</gameTitle></gameTitles></DiPManifest>');
     await mkdir(path.join(picked, "Just a folder"), { recursive: true });
 
     const found = (await scanFolder(picked)).map((g) => [g.addon, g.externalId, g.title]).sort();
     assert.deepEqual(found, [
+      ["ea", "Origin.OFR.50.0000500", "The Sims 4"],
       ["epic", "Sugar", "Hades"],
       ["gog", "1207664663", "The Witcher 3: Wild Hunt"],
       ["steam", "620", "Portal 2"],
@@ -140,7 +177,7 @@ describe("store scanners", () => {
     const all = await scanStoreGames([steamHere], "linux", { folders: [picked] });
     assert.equal(all.filter((g) => g.externalId === "620").length, 1);
     assert.equal(all.find((g) => g.externalId === "620")!.installDir, "/s", "the launcher's own listing wins");
-    const noSteam = await scanStoreGames([steamHere], "linux", { folders: [picked], disabled: ["steam", "xbox"] });
+    const noSteam = await scanStoreGames([steamHere], "linux", { folders: [picked], disabled: ["steam", "xbox", "ea"] });
     assert.deepEqual(noSteam.map((g) => g.addon).sort(), ["epic", "gog"]);
   });
 });

@@ -1,6 +1,7 @@
 import { readdir, readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import type { LocalStoreGame } from "@lootden/shared";
+import { eaGame } from "./ea.js";
 import { steamInstalled } from "./steam.js";
 import { xboxFromConfig } from "./xbox.js";
 
@@ -39,8 +40,8 @@ async function xboxGame(dir: string): Promise<LocalStoreGame | null> {
 
 /**
  * Store games in a folder someone picked on this PC (a second drive's library, a folder the
- * launchers don't list): a Steam library (anything with steamapps in it), and GOG, Epic and Xbox
- * app game folders, recognised by the files each store leaves in them. The folder itself and
+ * launchers don't list): a Steam library (anything with steamapps in it), and GOG, Epic, Xbox app
+ * and EA app game folders, recognised by the files each store leaves in them. The folder itself and
  * the folders right inside it are looked at.
  */
 export async function scanFolder(dir: string): Promise<LocalStoreGame[]> {
@@ -49,7 +50,7 @@ export async function scanFolder(dir: string): Promise<LocalStoreGame[]> {
   if (steamLib) out.push(...(await steamInstalled(steamLib)));
   for (const d of [dir, ...(await children(dir))]) {
     if (path.basename(d).toLowerCase() === "steamapps") continue;
-    const g = (await gogGame(d)) ?? (await epicGame(d)) ?? (await xboxGame(d));
+    const g = (await gogGame(d)) ?? (await epicGame(d)) ?? (await xboxGame(d)) ?? (await eaGame(d));
     if (g) out.push(g);
   }
   return out;

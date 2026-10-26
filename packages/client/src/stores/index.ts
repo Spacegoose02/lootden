@@ -1,4 +1,5 @@
 import type { LocalStoreGame } from "@lootden/shared";
+import { eaScanner } from "./ea.js";
 import { epicScanner } from "./epic.js";
 import { scanFolder } from "./folders.js";
 import { gogScanner } from "./gog.js";
@@ -20,7 +21,7 @@ export interface StoreScanner {
   scan(): Promise<LocalStoreGame[]>;
 }
 
-export const STORE_SCANNERS: StoreScanner[] = [steamScanner, gogScanner, epicScanner, xboxScanner, ubisoftScanner];
+export const STORE_SCANNERS: StoreScanner[] = [steamScanner, gogScanner, epicScanner, xboxScanner, ubisoftScanner, eaScanner];
 
 /** What this PC's scanners look at; kept per PC in the desktop app's settings, as drives and launchers differ. */
 export interface StoreScanOptions {

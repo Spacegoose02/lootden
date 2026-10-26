@@ -6,7 +6,7 @@ import { bridgeError, desktop } from "../desktop";
 import { ArtworkPicker } from "../components/ArtworkEditor";
 import { GameMedia } from "../components/GameMedia";
 import { listingDate } from "../components/Listing";
-import { launchStoreGame } from "../components/StoreGameCard";
+import { launchStoreGame, storeInstallUrl } from "../components/StoreGameCard";
 
 const SOURCES: Record<string, string> = { igdb: "IGDB", rawg: "RAWG", steam: "Steam" };
 
@@ -18,6 +18,8 @@ export function StoreGame() {
   const localTitle = params.get("title") ?? "";
   const [detail, setDetail] = useState<StoreGameDetail | null>(null);
   const [local, setLocal] = useState<LocalStoreGame | null>(null);
+  /** This PC's launchers were looked at, so no local copy means it isn't installed here. */
+  const [scanned, setScanned] = useState(false);
   const [error, setError] = useState("");
   const [editing, setEditing] = useState(false);
 
@@ -25,7 +27,11 @@ export function StoreGame() {
     setDetail(null);
     setError("");
     api.storeGame(addon, id, localTitle).then(setDetail, (e: Error) => setError(e.message));
-    desktop?.storeGames?.().then((l) => setLocal(l.find((g) => g.addon === addon && g.externalId === id) ?? null), () => {});
+    setScanned(false);
+    desktop?.storeGames?.().then((l) => {
+      setLocal(l.find((g) => g.addon === addon && g.externalId === id) ?? null);
+      setScanned(true);
+    }, () => {});
   }, [addon, id, localTitle]);
 
   if (error) return <p className="error">{error}</p>;
@@ -44,7 +50,8 @@ export function StoreGame() {
     lastPlayedAt: null,
     libraryGameId: null,
   };
-  const launch = local?.launchUrl ?? game.launchUrl;
+  const install = !local && scanned;
+  const launch = local?.launchUrl ?? (install ? storeInstallUrl(game) : game.launchUrl);
   const date = info ? listingDate(info) : null;
 
   return (
@@ -67,8 +74,8 @@ export function StoreGame() {
           {!info && <p className="muted">No details found for this title yet. Use Edit to pick the right game.</p>}
           <div className="inline wrap">
             {launch && (
-              <button className="primary" onClick={() => launchStoreGame(game, local ?? undefined).catch((e) => setError(bridgeError(e)))}>
-                {local ? "▶ Play" : `Open in ${game.store}`}
+              <button className="primary" onClick={() => launchStoreGame(game, local ?? undefined, install).catch((e) => setError(bridgeError(e)))}>
+                {local ? "▶ Play" : install ? `Install with ${game.store}` : `Open in ${game.store}`}
               </button>
             )}
             {game.libraryGameId && (

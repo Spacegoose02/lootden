@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { browserRomFile, platformFor, type GameDetail as Game } from "@lootden/shared";
-import { api, formatBytes, type Candidate } from "../api";
+import { api, formatBytes, type ApiError, type Candidate } from "../api";
 import { useAuth } from "../auth";
 import { Badges } from "../components/Badges";
 import { Cover } from "../components/Cover";
@@ -12,7 +12,8 @@ import { SavesPanel } from "../components/SavesPanel";
 import { UpdatesPanel } from "../components/UpdatesPanel";
 import { PreparePanel } from "../components/PreparePanel";
 import { JournalPanel, ModsPanel, VersionBanner } from "../components/GameExtras";
-import { bridgeError, desktop } from "../desktop";
+import { bridgeError, desktop, type LocalGameCopy } from "../desktop";
+import { LocalGame } from "../components/LocalGame";
 import { launchStoreGame, storeKey, useStoreGames } from "../components/StoreGameCard";
 import { KindBadge, UpdateActions, useInstalled, versionLabel } from "../components/UpdateActions";
 import type { GameSummary } from "@lootden/shared";
@@ -26,11 +27,21 @@ export function GameDetail() {
   const [params] = useSearchParams();
   const [installed, refreshInstalled] = useInstalled();
 
+  /** This PC's copy, when the server doesn't have the game any more (or can't be reached). */
+  const [local, setLocal] = useState<{ copy: LocalGameCopy; removed: boolean } | null>(null);
+
   useEffect(() => {
     setGame(null);
-    api.game(id).then(setGame, (e: Error) => setError(e.message));
+    setError("");
+    setLocal(null);
+    api.game(id).then(setGame, async (e: ApiError) => {
+      const copy = await desktop?.localGame?.(id).catch(() => null);
+      if (copy) setLocal({ copy, removed: e.status === 404 });
+      else setError(e.message);
+    });
   }, [id]);
 
+  if (local) return <LocalGame copy={local.copy} removed={local.removed} />;
   if (error) return <p className="error">{error}</p>;
   if (!game) return <p className="muted">Loading…</p>;
   const m = game.metadata;
@@ -374,7 +385,7 @@ function PackageAdmin({ game, onChange }: { game: Game; onChange: (g: Game) => v
 
 /** "You also have this on Steam": the same game on this person's other stores, with Play through that store. */
 function AlsoOnStores({ gameId }: { gameId: string }) {
-  const { games, installed } = useStoreGames();
+  const { games, installed, scanned } = useStoreGames();
   const [error, setError] = useState("");
   const same = (games ?? []).filter((g) => g.libraryGameId === gameId);
   if (!same.length) return null;
@@ -385,8 +396,8 @@ function AlsoOnStores({ gameId }: { gameId: string }) {
         <span key={storeKey(g)} className="also-on-store">
           <span className="badge">{g.store}</span>
           {(installed.get(storeKey(g))?.launchUrl ?? g.launchUrl) && (
-            <button className="small ghost" onClick={() => launchStoreGame(g, installed.get(storeKey(g))).catch((e) => setError(bridgeError(e)))}>
-              Play there
+            <button className="small ghost" onClick={() => launchStoreGame(g, installed.get(storeKey(g)), scanned).catch((e) => setError(bridgeError(e)))}>
+              {scanned && !installed.has(storeKey(g)) ? "Install there" : "Play there"}
             </button>
           )}
         </span>

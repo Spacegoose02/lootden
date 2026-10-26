@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { LocalStoreGame } from "@lootden/shared";
+import type { GameDetail, LocalStoreGame } from "@lootden/shared";
 
 export interface Drive {
   path: string;
@@ -86,6 +86,14 @@ export interface AppSettings {
   loginItemSupported: boolean;
 }
 
+/** An installed game as this PC knows it: its manifest, the server's details last time it had them, and its cached cover. */
+export interface LocalGameCopy {
+  game: InstalledGame;
+  detail: GameDetail | null;
+  /** A data: URL. */
+  cover: string | null;
+}
+
 /** Bridge the desktop app injects (packages/desktop/src/preload.ts). Absent in a normal browser. */
 export interface DesktopBridge {
   version: number;
@@ -99,6 +107,8 @@ export interface DesktopBridge {
   play(gameId: string): Promise<{ executable: string } | null>;
   uninstall(gameId: string): Promise<boolean>;
   openFolder(gameId: string): Promise<void>;
+  /** A game installed on this PC with its last known details and cover, for when the server no longer has it. Newer apps only. */
+  localGame?(gameId: string): Promise<LocalGameCopy | null>;
   /** Library add-ons: store games installed on this PC, and starting one through its launcher (apps from 0.14.0). */
   storeGames?(): Promise<LocalStoreGame[]>;
   launchStore?(url: string): Promise<void>;
