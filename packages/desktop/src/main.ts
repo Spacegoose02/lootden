@@ -89,6 +89,8 @@ function fromServer(e: IpcMainInvokeEvent): void {
 }
 
 const OFFLINE_PAGE = path.join(__dirname, "..", "setup", "offline.html");
+/** The theme colours the offline page uses (see offlineTheme in the web UI's theme.ts). */
+const OFFLINE_THEME_KEYS = ["bg", "bg2", "panel", "border", "text", "muted", "accent", "accent2", "accentText"] as const;
 
 /** Whether the call comes from the app's own page, not just any file:// page (one on a network share, say). */
 const isAppPage = (e: IpcMainInvokeEvent, page: string) => isFile(e.senderFrame?.url ?? "", page);
@@ -110,7 +112,8 @@ async function serverUp(at = origin()): Promise<boolean> {
 
 /** The server can't be reached: show the games on this PC, which play without it. */
 function showOffline(): void {
-  if (customFrame) win?.setTitleBarOverlay({ color: "#0d0820", symbolColor: "#f3eeff", height: TITLEBAR_HEIGHT });
+  const theme = settings.get().offlineTheme;
+  if (customFrame) win?.setTitleBarOverlay({ color: theme?.bg ?? "#0d0820", symbolColor: theme?.text ?? "#f3eeff", height: TITLEBAR_HEIGHT });
   void win?.loadFile(OFFLINE_PAGE).catch(() => {});
 }
 
@@ -1143,6 +1146,7 @@ function registerIpc(): void {
     return {
       server: origin(),
       pendingPlays: settings.get().pendingPlays.length,
+      theme: settings.get().offlineTheme ?? null,
       games: await Promise.all(
         games.map(async (g) => ({
           gameId: g.gameId,
@@ -1173,6 +1177,17 @@ function registerIpc(): void {
 
   // The page draws the title bar; it asks how, and passes its theme's colours for the buttons.
   ipcMain.handle("gm:frame", () => frameState());
+  // The theme's colours, kept for the offline page. Only known keys and #hex values are stored.
+  ipcMain.handle("gm:offlineTheme", (e, colors: Record<string, unknown>) => {
+    fromServer(e);
+    const clean: Record<string, string> = {};
+    for (const key of OFFLINE_THEME_KEYS) {
+      const v = colors?.[key];
+      if (typeof v === "string" && /^#[0-9a-f]{3,8}$/i.test(v)) clean[key] = v;
+    }
+    if (!clean.bg || !clean.text) return;
+    if (JSON.stringify(clean) !== JSON.stringify(settings.get().offlineTheme)) settings.update({ offlineTheme: clean });
+  });
   ipcMain.handle("gm:titleBarColors", (e, color: string, symbolColor: string) => {
     fromServer(e);
     if (!customFrame || !win) return;

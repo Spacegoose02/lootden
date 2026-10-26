@@ -160,6 +160,9 @@ function apply(id: string) {
   root.dataset.scheme = t.scheme;
   // The desktop app's minimize, maximize and close buttons sit on the top bar, in its colours.
   void desktop?.titleBarColors?.(t.bg, t.text).catch(() => {});
+  // The offline library (a page in the app itself) wears the same colours when the server is away.
+  const { bg, bg2, panel, border, text, muted, accent, accent2 } = t;
+  void desktop?.offlineTheme?.({ bg, bg2, panel, border, text, muted, accent, accent2, accentText: t.accentText ?? (t.scheme === "dark" ? "#0b0b10" : "#ffffff") }).catch(() => {});
 }
 
 function read(key: string, fallback: string): string {
@@ -202,4 +205,31 @@ export function useTheme() {
   }, [touch]);
 
   return { theme, setTheme, touch, setTouch, logo, setLogo };
+}
+
+/**
+ * How big the Featured banner and a game page's poster are. "off" hides the banner (the game
+ * page then uses the small poster). Kept on <html> as data-poster, so styles.css sizes both.
+ */
+export type PosterSize = "large" | "normal" | "small" | "off";
+export const POSTER_SIZES: Array<[PosterSize, string]> = [
+  ["small", "Small"],
+  ["normal", "Normal"],
+  ["large", "Large"],
+  ["off", "Hide banner"],
+];
+
+function readPoster(): PosterSize {
+  const v = read("gm-poster", "normal");
+  return POSTER_SIZES.some(([id]) => id === v) ? (v as PosterSize) : "normal";
+}
+if (typeof document !== "undefined") document.documentElement.dataset.poster = readPoster();
+
+export function usePosterSize(): [PosterSize, (v: PosterSize) => void] {
+  const [size, setSize] = useState<PosterSize>(readPoster);
+  useEffect(() => {
+    document.documentElement.dataset.poster = size;
+    write("gm-poster", size);
+  }, [size]);
+  return [size, setSize];
 }

@@ -104,9 +104,17 @@ export function gameRoutes(app: FastifyInstance, ctx: AppContext) {
     const add = (id: string, title: string, games: GameSummary[]) => games.length && sections.push({ id, title, games: games.slice(0, 20) });
 
     if (p.user) {
-      const states = ctx.users.gameStates(p.user.id).filter((s) => s.lastPlayedAt);
+      const mine = ctx.users.gameStates(p.user.id);
       const byId = new Map(everything.map((g) => [g.id, g]));
-      add("continue", "Continue playing", [...new Set(states.map((s) => s.gameId))].map((id) => byId.get(id)!).filter(Boolean));
+      const games = (ids: string[]) => [...new Set(ids)].map((id) => byId.get(id)!).filter(Boolean);
+      // Installed on any of this person's devices, last played or installed first. The desktop app
+      // narrows it to the games on that PC. Not cut to 20, so the app still finds its own.
+      const installed = mine
+        .filter((s) => s.installedAt && !s.uninstalledAt)
+        .sort((a, b) => (b.lastPlayedAt ?? b.installedAt!).localeCompare(a.lastPlayedAt ?? a.installedAt!));
+      const installedGames = games(installed.map((s) => s.gameId));
+      if (installedGames.length) sections.push({ id: "installed", title: "Installed", games: installedGames.slice(0, 100) });
+      add("continue", "Continue playing", games(mine.filter((s) => s.lastPlayedAt).map((s) => s.gameId)));
     }
     // Disc images and installers wait for an admin to install them once in the app and upload the result.
     if (p.role === "admin") add("setup", "Needs setting up", all.filter((g) => g.needsSetup));

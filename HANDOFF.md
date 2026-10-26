@@ -107,6 +107,23 @@ can be set once by an admin on the add-on's card (`PUT /api/addons/:id/shared`, 
 like accounts, never sent back); a person's own value wins. `Integrations` (IGDB and other admin keys in the settings table) aren't encrypted yet; the
 vault can do it.
 
+## Handheld polish
+
+- Home puts an **Installed** row straight under Featured: `/api/home` sends an `installed`
+  section (this person's installs on any device, up to 100); the desktop app narrows it to the
+  games on that PC (`desktop.installed()`, with `stub()` from `InstalledGames.tsx` for games the
+  server doesn't list).
+- **Poster and cover size** (Profile, Appearance; `gm-poster` in localStorage, `data-poster` on
+  `<html>`): Small, Normal (default), Large (the old size) or Hide banner. It sizes the Featured
+  poster, a game page's poster and the covers in rows and grids. Normal caps the poster at about a
+  third of the screen's height, less in touch or handheld mode.
+- HUD-style styling at the end of `styles.css` (row title ticks, banner corner brackets and scan
+  line, focus glow), all from theme colours.
+- The offline page wears the app's theme: the web UI sends its colours with `offlineTheme`
+  (`gm:offlineTheme`, kept as `offlineTheme` in the desktop `settings.json`, #hex only), and
+  the page shows the selected game big with its cover blurred behind, an Offline badge, a
+  clock and controller hints in handheld mode.
+
 ## Offline mode (0.13.2)
 
 Offline mode for the desktop app. Before, a PC away from the server (a handheld out of the

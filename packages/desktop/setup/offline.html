@@ -5,54 +5,86 @@
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src 'self' data:" />
     <title>LootDen (offline)</title>
     <style>
+      /* Colours come from the theme picked in the app (kept by the desktop app while online); these are Wavelength's. */
+      :root { --bg: #0d0820; --bg2: #160d33; --panel: #1e1342; --border: #3a2a6e; --text: #f3eeff; --muted: #b3a6d9; --accent: #ff4fd8; --accent2: #2ef2ff; --accentText: #12051f; }
       * { box-sizing: border-box; }
-      body { margin: 0; min-height: 100vh; background: radial-gradient(900px 500px at 10% -10%, #3b136b, transparent 60%), #0d0820; color: #f3eeff; font: 16px/1.5 "Segoe UI", system-ui, sans-serif; }
-      header { display: flex; align-items: center; gap: 1rem; padding: 0.75rem 1.5rem; padding-top: calc(var(--lootden-titlebar, 0px) + 0.5rem); flex-wrap: wrap; }
-      header img { width: 44px; height: 44px; }
-      header h1 { margin: 0; font-size: 1.3rem; }
-      .status { flex: 1; min-width: 14rem; color: #b3a6d9; margin: 0; }
-      .status b { color: #ffcf5c; }
-      main { padding: 0.5rem 1.5rem 2rem; }
-      .bar { display: flex; gap: 0.75rem; align-items: center; margin-bottom: 1.25rem; flex-wrap: wrap; }
-      input { font: inherit; padding: 0.55em 1em; border-radius: 12px; border: 1px solid rgba(160, 120, 255, 0.35); background: #160d33; color: inherit; min-width: 16rem; }
-      button { font: inherit; font-weight: 700; padding: 0.55em 1.2em; border: 0; border-radius: 999px; cursor: pointer; color: #12051f; background: linear-gradient(135deg, #ff4fd8, #2ef2ff); }
-      button.ghost { background: rgba(160, 120, 255, 0.15); color: #f3eeff; font-weight: 600; }
+      body { margin: 0; min-height: 100vh; background: var(--bg); color: var(--text); font: 16px/1.5 "Segoe UI", system-ui, sans-serif; overflow-x: hidden; }
+      /* The selected game's cover, blurred behind everything, like a console's home screen. */
+      .backdrop { position: fixed; inset: -40px; z-index: -2; background: radial-gradient(900px 500px at 10% -10%, color-mix(in srgb, var(--accent) 22%, transparent), transparent 60%), radial-gradient(800px 480px at 100% 0%, color-mix(in srgb, var(--accent2) 16%, transparent), transparent 60%), var(--bg); background-size: cover; background-position: center; transition: background-image 0.4s; }
+      .backdrop.art { filter: blur(40px) saturate(1.2) brightness(0.35); }
+      .gridlines { position: fixed; inset: 0; z-index: -1; pointer-events: none; background: linear-gradient(color-mix(in srgb, var(--accent2) 6%, transparent) 1px, transparent 1px) 0 0 / 44px 44px, linear-gradient(90deg, color-mix(in srgb, var(--accent2) 6%, transparent) 1px, transparent 1px) 0 0 / 44px 44px; mask-image: linear-gradient(180deg, transparent, #000 30%, #000 70%, transparent); }
+      header { display: flex; align-items: center; gap: 1rem; padding: 0.75rem 1.5rem; padding-top: calc(var(--lootden-titlebar, 0px) + 0.5rem); flex-wrap: wrap; background: color-mix(in srgb, var(--bg) 70%, transparent); backdrop-filter: blur(12px); border-bottom: 1px solid color-mix(in srgb, var(--accent2) 25%, transparent); position: sticky; top: 0; z-index: 2; }
+      header img { width: 40px; height: 40px; }
+      header h1 { margin: 0; font-size: 1.25rem; letter-spacing: 0.02em; }
+      .pill { display: inline-flex; align-items: center; gap: 0.45em; font-size: 0.72rem; font-weight: 800; letter-spacing: 0.16em; text-transform: uppercase; padding: 0.25em 0.75em; border-radius: 999px; color: #ffcf5c; border: 1px solid rgba(255, 207, 92, 0.5); background: rgba(255, 207, 92, 0.1); }
+      .pill::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: #ffcf5c; box-shadow: 0 0 8px #ffcf5c; animation: pulse 1.6s ease-in-out infinite; }
+      @keyframes pulse { 50% { opacity: 0.35; } }
+      .status { flex: 1; min-width: 14rem; color: var(--muted); margin: 0; font-size: 0.92rem; }
+      .status b { color: var(--text); }
+      .clock { font-variant-numeric: tabular-nums; font-weight: 700; color: var(--muted); }
+      main { padding: 1rem 1.5rem 2rem; }
+      .spotlight { display: flex; align-items: flex-end; gap: 1.5rem; min-height: 9rem; margin-bottom: 1.25rem; }
+      .spotlight .eyebrow { margin: 0; font-size: 0.72rem; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase; color: var(--accent2); }
+      .spotlight h2 { margin: 0.1em 0 0.15em; font-size: clamp(1.6rem, 4vw, 2.6rem); line-height: 1.1; text-shadow: 0 2px 18px rgba(0, 0, 0, 0.5); }
+      .spotlight p { margin: 0; color: var(--muted); }
+      .bar { display: flex; gap: 0.75rem; align-items: center; margin-bottom: 1rem; flex-wrap: wrap; }
+      .bar h3 { margin: 0 auto 0 0; display: flex; align-items: center; gap: 0.6rem; font-size: 1.1rem; }
+      .bar h3::before { content: ""; width: 4px; height: 1.1em; border-radius: 2px; background: linear-gradient(180deg, var(--accent), var(--accent2)); box-shadow: 0 0 10px var(--accent); }
+      input { font: inherit; padding: 0.55em 1em; border-radius: 12px; border: 1px solid var(--border); background: color-mix(in srgb, var(--bg2) 85%, transparent); color: inherit; min-width: 16rem; }
+      button { font: inherit; font-weight: 700; padding: 0.55em 1.2em; border: 0; border-radius: 999px; cursor: pointer; color: var(--accentText); background: linear-gradient(135deg, var(--accent), var(--accent2)); }
+      button.ghost { background: color-mix(in srgb, var(--panel) 80%, transparent); color: var(--text); font-weight: 600; border: 1px solid var(--border); }
       button:disabled { opacity: 0.6; cursor: default; }
-      :focus-visible { outline: 3px solid #2ef2ff; outline-offset: 3px; }
-      .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 1.25rem; }
-      .card { background: rgba(36, 22, 74, 0.8); border: 1px solid rgba(160, 120, 255, 0.25); border-radius: 14px; overflow: hidden; display: flex; flex-direction: column; }
-      .cover { aspect-ratio: 3 / 4; background: linear-gradient(160deg, #2a1660, #120a2c); display: grid; place-items: center; text-align: center; padding: 1rem; font-weight: 700; color: #cbbcf5; }
+      :focus-visible { outline: 3px solid var(--accent2); outline-offset: 3px; }
+      .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 1rem; }
+      .card { background: color-mix(in srgb, var(--panel) 75%, transparent); border: 1px solid var(--border); border-radius: 14px; overflow: hidden; display: flex; flex-direction: column; transition: transform 0.15s, box-shadow 0.15s, border-color 0.15s; backdrop-filter: blur(8px); }
+      .card:focus-within { transform: translateY(-4px); border-color: var(--accent2); box-shadow: 0 0 0 1px var(--accent2), 0 0 26px color-mix(in srgb, var(--accent2) 45%, transparent); }
+      .card :focus-visible { outline-offset: 2px; }
+      .cover { aspect-ratio: 3 / 4; background: linear-gradient(160deg, color-mix(in srgb, var(--accent) 30%, var(--panel)), var(--bg2)); display: grid; place-items: center; text-align: center; padding: 1rem; font-weight: 800; color: var(--text); text-shadow: 0 2px 8px rgba(0, 0, 0, 0.5); }
       .cover img { width: 100%; height: 100%; object-fit: cover; display: block; }
       .card .cover:has(img) { padding: 0; }
-      .info { padding: 0.6rem 0.75rem 0.75rem; display: flex; flex-direction: column; gap: 0.5rem; flex: 1; }
-      .title { font-weight: 600; line-height: 1.25; }
-      .meta { color: #b3a6d9; font-size: 0.85rem; }
+      .info { padding: 0.6rem 0.75rem 0.75rem; display: flex; flex-direction: column; gap: 0.4rem; flex: 1; }
+      .title { font-weight: 700; line-height: 1.25; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .meta { color: var(--muted); font-size: 0.82rem; }
       .actions { display: flex; gap: 0.4rem; margin-top: auto; }
       .actions button { padding: 0.4em 0.9em; font-size: 0.9rem; }
       .actions .play { flex: 1; }
-      .message { color: #b3a6d9; }
-      .error { color: #ff5c7a; min-height: 1.5em; margin: 0 0 1rem; }
+      .message { color: var(--muted); }
+      .empty { grid-column: 1 / -1; text-align: center; padding: 3rem 1rem; border: 1px dashed var(--border); border-radius: 14px; }
+      .hints { position: fixed; right: 1.25rem; bottom: 0.9rem; display: flex; gap: 1rem; font-size: 0.82rem; color: var(--muted); background: color-mix(in srgb, var(--bg) 75%, transparent); padding: 0.35rem 0.9rem; border-radius: 999px; border: 1px solid var(--border); backdrop-filter: blur(8px); }
+      .hints kbd { font: inherit; font-weight: 800; display: inline-grid; place-items: center; width: 1.5em; height: 1.5em; border-radius: 50%; margin-right: 0.3em; color: var(--accentText); background: var(--accent2); }
+      .error { color: #ff5c7a; min-height: 1.5em; margin: 0 0 0.5rem; }
       /* No system title bar: the top strip moves the window, the buttons sit at its right. */
-      html[data-lootden-frame="hidden"] body::before { content: ""; position: fixed; inset: 0 0 auto 0; height: var(--lootden-titlebar, 40px); -webkit-app-region: drag; }
+      html[data-lootden-frame="hidden"] body::before { content: ""; position: fixed; inset: 0 0 auto 0; height: var(--lootden-titlebar, 40px); -webkit-app-region: drag; z-index: 3; }
       html[data-handheld="on"] body { font-size: 19px; }
+      html[data-handheld="on"] .grid { grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); }
+      html:not([data-handheld="on"]) .hints { display: none; }
+      @media (max-width: 720px) { .spotlight { display: none; } .grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); } }
+      @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
     </style>
   </head>
   <body>
+    <div class="backdrop" id="backdrop"></div>
+    <div class="gridlines"></div>
     <header>
       <img src="../build/icon.png" alt="" />
       <h1>LootDen</h1>
-      <p class="status" id="status">Offline</p>
+      <span class="pill">Offline</span>
+      <p class="status" id="status">Can't reach your server.</p>
+      <span class="clock" id="clock"></span>
       <button id="retry">Try again</button>
       <button class="ghost" id="change">Change server</button>
     </header>
     <main>
+      <section class="spotlight" id="spotlight" aria-live="polite"></section>
       <div class="bar">
-        <input type="search" id="search" placeholder="Search games on this PC" aria-label="Search" />
+        <h3>Installed on this PC</h3>
         <span class="message" id="count"></span>
+        <input type="search" id="search" placeholder="Search games on this PC" aria-label="Search" />
       </div>
       <p class="error" id="err" role="alert"></p>
       <div class="grid" id="grid"></div>
     </main>
+    <div class="hints" aria-hidden="true"><span><kbd>A</kbd>Select</span><span><kbd>Y</kbd>Try again</span></div>
     <script>
       const off = window.lootdenOffline;
       const $ = (id) => document.getElementById(id);
@@ -70,7 +102,7 @@
         $("count").textContent = games.length ? `${shown.length} of ${games.length} installed` : "";
         if (!games.length) {
           const p = document.createElement("p");
-          p.className = "message";
+          p.className = "message empty";
           p.textContent = "No games are installed on this PC yet. Install some while connected to your server and they'll be playable here offline.";
           grid.append(p);
           return;
@@ -110,9 +142,36 @@
           actions.append(play, folder);
           info.append(title, meta, actions);
           card.append(cover, info);
+          card.addEventListener("focusin", () => spotlight(g));
+          card.addEventListener("pointerenter", () => spotlight(g));
           grid.append(card);
         }
       }
+
+      /** The selected game, big at the top, with its cover blurred behind the page. */
+      function spotlight(g) {
+        const box = $("spotlight");
+        const eyebrow = Object.assign(document.createElement("p"), { className: "eyebrow", textContent: playing === g.gameId ? "Playing now" : "Ready to play" });
+        const title = Object.assign(document.createElement("h2"), { textContent: g.title });
+        const installed = g.installedAt ? `Installed ${new Date(g.installedAt).toLocaleDateString()}` : "";
+        const meta = Object.assign(document.createElement("p"), { textContent: [platformName(g.platform), g.version ? `v${g.version}` : "", installed].filter(Boolean).join(" · ") });
+        const text = document.createElement("div");
+        text.append(eyebrow, title, meta);
+        box.replaceChildren(text);
+        const back = $("backdrop");
+        back.classList.toggle("art", !!g.cover);
+        back.style.backgroundImage = g.cover ? `url("${g.cover}")` : "";
+      }
+
+      /** The theme picked in the app, so offline looks like the rest of LootDen. */
+      function applyTheme(theme) {
+        if (!theme) return;
+        for (const [k, v] of Object.entries(theme)) if (/^#[0-9a-f]{3,8}$/i.test(v)) document.documentElement.style.setProperty(`--${k}`, v);
+      }
+
+      const tick = () => ($("clock").textContent = new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }));
+      tick();
+      setInterval(tick, 15000);
 
       async function start(gameId) {
         $("err").textContent = "";
@@ -126,10 +185,13 @@
       async function load() {
         try {
           const lib = await off.library();
+          applyTheme(lib.theme);
           games = lib.games.sort((a, b) => a.title.localeCompare(b.title));
           const status = $("status");
           status.replaceChildren("Can't reach ", Object.assign(document.createElement("b"), { textContent: lib.server || "your server" }), ". Games on this PC still play; play time is sent when you're back online.");
           render();
+          const newest = [...games].sort((a, b) => String(b.installedAt).localeCompare(String(a.installedAt)))[0];
+          if (newest) spotlight(newest);
           if (!document.activeElement || document.activeElement === document.body) document.querySelector(".grid button:not(:disabled)")?.focus();
         } catch (x) {
           $("err").textContent = cleanError(x);

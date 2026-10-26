@@ -178,8 +178,12 @@ describe("accounts and auth", () => {
     assert.equal(states[0].playtimeSeconds, 2400);
     assert.equal(states[0].installPath, "D:\\Games\\The Sims 4");
     const home = (await app.inject({ url: "/api/home", headers })).json();
-    assert.equal(home.sections[0].id, "continue");
+    assert.deepEqual(home.sections.slice(0, 2).map((s: { id: string }) => s.id), ["installed", "continue"], "installed games come first");
     assert.equal(home.sections[0].games[0].id, sims!.id);
+    assert.equal(home.sections[1].games[0].id, sims!.id);
+    await post({ gameId: sims!.id, device: "Desktop", event: "uninstalled" });
+    const after = (await app.inject({ url: "/api/home", headers })).json();
+    assert.equal(after.sections[0].id, "continue", "uninstalled games leave the Installed row");
     assert.equal((await post({ gameId: "x", device: "d", event: "bogus" })).statusCode, 400);
     const csv = await app.inject({ url: "/api/me/export/yamtrack.csv", headers });
     assert.match(csv.headers["content-type"] as string, /text\/csv/);

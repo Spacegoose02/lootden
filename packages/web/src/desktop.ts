@@ -137,6 +137,8 @@ export interface DesktopBridge {
   quit?(): Promise<void>;
   /** Colours of the window buttons drawn over the top bar (apps from 0.11.2; older ones keep the system title bar). */
   titleBarColors?(color: string, symbolColor: string): Promise<void>;
+  /** Keeps the theme's colours for the offline page (newer apps only). */
+  offlineTheme?(colors: Record<string, string>): Promise<void>;
   onProgress(cb: (p: Progress) => void): () => void;
 }
 
