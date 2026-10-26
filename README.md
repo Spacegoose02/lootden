@@ -10,9 +10,10 @@ installs games from it on any PC in the house.
 
 - Scans and watches a games folder, one folder or archive per game.
 - Pulls covers, descriptions, genres, age ratings and controller support from IGDB, RAWG,
-  Steam, PCGamingWiki and SteamGridDB. Steam and PCGamingWiki work without keys.
+  Steam, PCGamingWiki and SteamGridDB, and for console games ScreenScraper, TheGamesDB and
+  LaunchBox in a priority order you set. Steam, PCGamingWiki and LaunchBox work without keys.
 - Web UI with grid, cover wall and list views, filters, a release calendar, news, videos,
-  a Discover page and 23 themes. Works with a gamepad.
+  a Discover page and 35 themes. Works with a gamepad.
 - Desktop app for Windows and Linux: download with resume, unpack zip/7z/rar, delete the
   archives, play, track play time, uninstall. Runs in the tray and updates itself from the
   server.
