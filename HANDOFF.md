@@ -107,7 +107,14 @@ can be set once by an admin on the add-on's card (`PUT /api/addons/:id/shared`, 
 like accounts, never sent back); a person's own value wins. `Integrations` (IGDB and other admin keys in the settings table) aren't encrypted yet; the
 vault can do it.
 
-## Handheld polish
+## Also in 0.16.0
+
+- **Laser Grid and Nuclear themes** (35 themes in all).
+- **xREL and AnkerGames sources removed**; downloads are deleted once imported by default.
+- **Retro metadata sources**: ScreenScraper, TheGamesDB and LaunchBox for console games, with
+  an admin-set source priority (see `docs/CONFIGURATION.md`).
+
+## Handheld polish (0.16.0)
 
 - Home puts an **Installed** row straight under Featured: `/api/home` sends an `installed`
   section (this person's installs on any device, up to 100); the desktop app narrows it to the
