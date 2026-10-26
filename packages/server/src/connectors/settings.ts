@@ -28,7 +28,7 @@ export interface ConnectorSettings {
   sabnzbd: { url: string; apiKey: string; category: string };
   prowlarr: { url: string; apiKey: string; categories: number[] };
   import: {
-    /** copy keeps torrents seeding; move frees the space (best for usenet); off leaves files alone. */
+    /** move (the default) deletes the download once imported; copy keeps torrents seeding; off leaves files alone. */
     mode: "copy" | "move" | "off";
     /** How paths reported by the download clients map to paths inside this container. */
     pathMappings: Array<{ from: string; to: string }>;
@@ -77,7 +77,7 @@ export const DEFAULT_CONNECTORS: ConnectorSettings = {
   sabnzbd: { url: "", apiKey: "", category: "games" },
   // 4000 = PC games in the Newznab/Torznab category tree that Prowlarr uses.
   prowlarr: { url: "", apiKey: "", categories: [4000] },
-  import: { mode: "copy", pathMappings: [], tidy: DEFAULT_TIDY, folder: "", autoImportFolder: false },
+  import: { mode: "move", pathMappings: [], tidy: DEFAULT_TIDY, folder: "", autoImportFolder: false },
   itch: { apiKey: "" },
   rules: DEFAULT_RULES,
   wanted: { autoSearch: false, autoGrab: false, intervalHours: 12, onlyReleased: true },

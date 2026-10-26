@@ -372,6 +372,14 @@ const MIGRATIONS: string[] = [
     PRIMARY KEY (user_id, addon, external_id)
   );
   `,
+  `
+  -- The xREL and AnkerGames sources are gone: drop what they listed and their settings.
+  DELETE FROM source_items WHERE source IN ('xrel', 'ankergames');
+  UPDATE settings SET value = json_remove(value, '$.xrel', '$.ankergames') WHERE key = 'sources' AND json_valid(value);
+  -- Imports now delete the download once it's in the library; switch existing installs over.
+  UPDATE settings SET value = json_set(value, '$.import.mode', 'move')
+    WHERE key = 'connectors' AND json_valid(value) AND json_extract(value, '$.import.mode') = 'copy';
+  `,
 ];
 
 export function openDatabase(file: string): Db {
