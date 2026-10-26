@@ -157,6 +157,15 @@ export function gameRoutes(app: FastifyInstance, ctx: AppContext) {
     });
   }
 
+  app.get<{ Params: { id: string; index: string } }>("/api/games/:id/screenshots/:index", async (req, reply) => {
+    visibleGame(req, req.params.id);
+    const index = Number(req.params.index);
+    const image = Number.isInteger(index) && index >= 0 && index < 50 ? await ctx.metadata.screenshotFile(req.params.id, index) : null;
+    if (!image) throw new HttpProblem(404, "No screenshot");
+    reply.header("Content-Type", image.contentType).header("Cache-Control", "private, max-age=86400");
+    return reply.send(createReadStream(image.file));
+  });
+
   // ---- Admin: custom artwork --------------------------------------------------
 
   app.get<{ Params: { id: string; kind: string }; Querystring: { q?: string } }>("/api/games/:id/artwork/:kind", async (req) => {

@@ -1,4 +1,5 @@
 import path from "node:path";
+import { DEFAULT_ORDER } from "./metadata/sources.js";
 
 export interface ServerConfig {
   host: string;
@@ -46,6 +47,14 @@ export interface ServerConfig {
   rawg: { apiKey: string };
   /** SteamGridDB artwork (free key from steamgriddb.com). */
   steamgriddb: { apiKey: string };
+  /** ScreenScraper.fr: developer credentials (required) and the user's own account (optional, raises the daily quota). */
+  screenscraper: { devId: string; devPassword: string; username: string; password: string };
+  /** TheGamesDB.net (free key from the forums.thegamesdb.net API key thread). */
+  thegamesdb: { apiKey: string };
+  /** LaunchBox Games Database: no key, the whole database is downloaded and searched locally. */
+  launchbox: { enabled: boolean };
+  /** Metadata sources to try, in order, for PC and for emulated games. */
+  metadataOrder: { pc: string[]; emulated: string[] };
   /** Look up metadata automatically for new games. */
   metadataAuto: boolean;
 }
@@ -108,6 +117,15 @@ export function loadConfig(rawEnv: NodeJS.ProcessEnv = process.env): ServerConfi
     igdb: { clientId: env.GM_IGDB_CLIENT_ID || "", clientSecret: env.GM_IGDB_CLIENT_SECRET || "" },
     rawg: { apiKey: env.GM_RAWG_API_KEY || "" },
     steamgriddb: { apiKey: env.GM_STEAMGRIDDB_API_KEY || "" },
+    screenscraper: {
+      devId: env.GM_SCREENSCRAPER_DEV_ID || "",
+      devPassword: env.GM_SCREENSCRAPER_DEV_PASSWORD || "",
+      username: env.GM_SCREENSCRAPER_USER || "",
+      password: env.GM_SCREENSCRAPER_PASSWORD || "",
+    },
+    thegamesdb: { apiKey: env.GM_THEGAMESDB_API_KEY || "" },
+    launchbox: { enabled: bool(env.GM_LAUNCHBOX, false) },
+    metadataOrder: { pc: [...DEFAULT_ORDER.pc], emulated: [...DEFAULT_ORDER.emulated] },
     metadataAuto: bool(env.GM_METADATA_AUTO, true),
   };
 }

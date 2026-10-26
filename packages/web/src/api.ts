@@ -377,10 +377,21 @@ export interface Integrations {
     igdb: { clientId: string; clientSecret: string };
     rawg: { apiKey: string };
     steamgriddb: { apiKey: string };
+    screenscraper: { devId: string; devPassword: string; username: string; password: string };
+    thegamesdb: { apiKey: string };
+    launchbox: { enabled: boolean };
+    metadataOrder: { pc: MetadataSourceEntry[]; emulated: MetadataSourceEntry[] };
     oidc: { issuer: string; clientId: string; clientSecret: string; name: string; adminGroup: string; autoCreate: boolean };
   };
   fromEnvironment: string[];
   callbackUrl: string | null;
+  /** Metadata sources that have their keys (or need none). */
+  ready: string[];
+}
+
+export interface MetadataSourceEntry {
+  id: string;
+  on: boolean;
 }
 
 export interface ArtworkOption {

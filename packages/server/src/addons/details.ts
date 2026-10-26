@@ -100,7 +100,7 @@ export class StoreGameDetails {
     if (addon === "steam" && /^\d+$/.test(externalId)) found = { provider: "steam", providerId: externalId, name: title, steamAppId: externalId, coverUrl: null };
     else {
       const query = { query: storeQuery(title), year: null };
-      for (const p of this.metadata.providers) {
+      for (const p of this.metadata.ordered(false)) {
         try {
           const best = (await p.search(query.query))
             .map((c) => ({ ...c, score: matchScore(query, c) }))
