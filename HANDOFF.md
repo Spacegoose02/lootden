@@ -107,6 +107,11 @@ can be set once by an admin on the add-on's card (`PUT /api/addons/:id/shared`, 
 like accounts, never sent back); a person's own value wins. `Integrations` (IGDB and other admin keys in the settings table) aren't encrypted yet; the
 vault can do it.
 
+## Controller navigation (0.16.2)
+
+- **D-pad up goes row by row** instead of jumping past rows (`gamepad.ts`).
+- **LB/RB switch the top menu sections** (`components/Layout.tsx`).
+
 ## Store and offline fixes (0.16.1)
 
 - **Install or Play on store games.** In the desktop app, once this PC's launchers have been
