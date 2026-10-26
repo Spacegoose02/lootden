@@ -439,8 +439,8 @@ function DownloadsSection({ say }: { say: Msg }) {
         <div className="field-grid">
           <Field label="When a download finishes">
             <select value={c.import.mode} onChange={(e) => set("import", { mode: e.target.value as Connectors["import"]["mode"] })}>
+              <option value="move">Import it, then delete the download</option>
               <option value="copy">Copy it (keeps torrents seeding)</option>
-              <option value="move">Move it (frees the space)</option>
               <option value="off">Leave it where it is</option>
             </select>
           </Field>

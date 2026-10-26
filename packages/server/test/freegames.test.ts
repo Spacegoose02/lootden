@@ -149,6 +149,24 @@ describe("free games, update notes and the downloads folder", () => {
     assert.equal(text, "Patch 1.2\n\n• Fixed crash\n• New map");
   });
 
+  it("deletes a download once it's imported, by default", async () => {
+    const downloads = await mkdtemp(path.join(os.tmpdir(), "gm-dl-"));
+    try {
+      await mkdir(path.join(downloads, "Other.Game.v2-GOG"));
+      await writeFile(path.join(downloads, "Other.Game.v2-GOG", "game.exe"), "x");
+      const { app, ctx } = await makeApp(root, { apiToken: "svc" });
+      assert.equal(ctx.downloads.settings().import.mode, "move");
+      saveConnectorSettings(ctx.db, { import: { ...ctx.downloads.settings().import, folder: downloads, tidy: { stripJunk: true, extract: false, repack: "folder" } } });
+      const r = await app.inject({ method: "POST", url: "/api/downloads/folder/import", headers: { authorization: "Bearer svc" }, payload: { name: "Other.Game.v2-GOG" } });
+      assert.equal(r.statusCode, 200, r.body);
+      assert.deepEqual(await readdir(r.json().target), ["game.exe"]);
+      assert.deepEqual(await readdir(downloads), []);
+      await rm(r.json().target, { recursive: true });
+    } finally {
+      await rm(downloads, { recursive: true, force: true });
+    }
+  });
+
   it("imports games already sitting in the downloads folder", async () => {
     const downloads = await mkdtemp(path.join(os.tmpdir(), "gm-dl-"));
     try {
@@ -158,7 +176,7 @@ describe("free games, update notes and the downloads folder", () => {
       await writeFile(path.join(downloads, "half.iso.part"), "x");
       const { app, ctx } = await makeApp(root, { apiToken: "svc" });
       const headers = { authorization: "Bearer svc" };
-      saveConnectorSettings(ctx.db, { import: { ...ctx.downloads.settings().import, folder: downloads, tidy: { stripJunk: true, extract: false, repack: "folder" } } });
+      saveConnectorSettings(ctx.db, { import: { ...ctx.downloads.settings().import, folder: downloads, mode: "copy", tidy: { stripJunk: true, extract: false, repack: "folder" } } });
       const list = (await app.inject({ url: "/api/downloads/folder", headers })).json();
       assert.deepEqual(list.items.map((i: { name: string; status: string }) => [i.name, i.status]), [["Cool.Game.v1.2-GOG", "new"]]);
       const r = await app.inject({ method: "POST", url: "/api/downloads/folder/import", headers, payload: { name: "Cool.Game.v1.2-GOG" } });

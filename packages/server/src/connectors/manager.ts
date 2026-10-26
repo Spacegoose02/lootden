@@ -423,6 +423,11 @@ export class DownloadManager {
             .run(entry, target, now());
         this.log.info({ name: r.name, target }, "Imported download into the library");
         imported = true;
+        // Moved: drop it from the client too, with whatever junk the import left behind.
+        if (settings.import.mode === "move")
+          await this.client(r.client)
+            .remove(l.id, true)
+            .catch((err: Error) => this.log.warn({ name: r.name, err: err.message }, "Couldn't remove the imported download from its client"));
       } catch (err) {
         const msg = (err as NodeJS.ErrnoException).code === "EROFS" || (err as NodeJS.ErrnoException).code === "EACCES"
           ? "The games folder is read-only; mount it read-write to import downloads"
