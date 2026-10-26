@@ -56,7 +56,7 @@ import { addonRoutes } from "./routes/addons.js";
 import { DirectDownloads } from "./direct/manager.js";
 import { directRoutes } from "./routes/direct.js";
 
-export const VERSION = "0.16.1";
+export const VERSION = "0.16.2";
 
 /** Routes reachable without signing in. */
 // The Steam sign-in callback finds its person by a one-time state value (it may land in a browser nobody is signed in to).
