@@ -9,7 +9,7 @@ import { build } from "esbuild";
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const require = createRequire(import.meta.url);
 
-for (const entry of ["main", "preload"]) {
+for (const entry of ["main", "preload", "browser-preload"]) {
   await build({
     entryPoints: [path.join(root, "src", `${entry}.ts`)],
     bundle: true,
