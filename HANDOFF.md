@@ -42,7 +42,7 @@ in-process (`packages/server/test/helpers.ts`), so they need no network.
    `packages/server/src/app.ts` (what `/api/health` reports), and `package-lock.json`
    (`npm install --package-lock-only`); commit "LootDen x.y.z".
 2. Merge the PR to `main` once CI (`.github/workflows/ci.yml`: tests, Playnite build, Docker
-   build) is green. Sessions can't merge without a review, so the owner merges.
+   build) is green. Sessions can merge when the owner asks for it; otherwise the owner merges.
 3. Publish a GitHub release with tag `vX.Y.Z` on `main` (the owner clicks Publish; tag pushes
    from sessions have been refused). `release.yml` then builds the Windows and Linux apps,
    the CLI and the Docker image (`ghcr.io/spacegoose02/lootden`) and attaches the files a few
@@ -106,6 +106,29 @@ shows up. And a **server-wide Steam Web API key**: fields marked `shared` (Steam
 can be set once by an admin on the add-on's card (`PUT /api/addons/:id/shared`, encrypted
 like accounts, never sent back); a person's own value wins. `Integrations` (IGDB and other admin keys in the settings table) aren't encrypted yet; the
 vault can do it.
+
+## Every launcher in Library, requests, Workshop, Console home (0.18.0)
+
+- **Library tabs**: Installed (default in the app), All, Backlog, Stats. Other stores is gone;
+  its games are in All under the source filter "Every other store" (`?tab=stores` redirects).
+  Installed lists LootDen and store installs together with launcher filter chips.
+- **Metadata refresh**: per game (`POST /api/games/:id/metadata/refresh`), per store game, and
+  in bulk by scope (`POST /api/metadata/refresh {scope: all|pc|emulated|<platform>}`), so a
+  changed source priority reaches games already matched.
+- **Controller**: popups keep the d-pad inside them, focus resumes near where it was, the
+  left stick follows its strongest axis, `<summary>` is focusable, the lightbox has buttons.
+  Offline page: store games, auto-retry, pad repeat.
+- **Game requests** (`/requests`, `RequestService`, `game_requests` table): anyone asks,
+  admins approve onto the wanted list (searching when Prowlarr is set up) or decline; status
+  runs pending, searching, downloading, ready. Alert kind `requests`.
+- **Steam Workshop** (`workshop_settings` table, `routes/workshop.ts`): admins set the app id
+  and a mods folder per game; items by pasted link (no key) or browse/search with the Steam
+  add-on's Web API key. The desktop app downloads with SteamCMD (fetched from Valve, anonymous
+  login; the Alpine server image can't run it) into `<game>/<mods>/<item id>` with a
+  `.lootden-workshop.json` marker; Remove only touches marked folders.
+- **Console home**: `/api/home` `resume` (last played PC game) leads Home with a big Play;
+  Ready to play mixes LootDen and store installs; pill menu, clock in the app, controller
+  button hints along the bottom while a pad is in use.
 
 ## Glow themes, feed names, Home posters (0.17.0)
 
