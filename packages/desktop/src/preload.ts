@@ -33,6 +33,7 @@ const bridge = {
   localGame: (gameId: string) => ipcRenderer.invoke("gm:localGame", gameId),
   storeGames: () => ipcRenderer.invoke("gm:storeGames"),
   launchStore: (url: string) => ipcRenderer.invoke("gm:launchStore", url),
+  openBrowser: (url?: string) => ipcRenderer.invoke("gm:openBrowser", url),
   storeScan: (patch?: object) => ipcRenderer.invoke("gm:storeScan", patch),
   addStoreFolder: () => ipcRenderer.invoke("gm:addStoreFolder"),
   changeServer: () => ipcRenderer.invoke("gm:changeServer"),

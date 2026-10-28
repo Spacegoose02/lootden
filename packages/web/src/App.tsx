@@ -4,6 +4,7 @@ import { useAuth } from "./auth";
 import { Layout } from "./components/Layout";
 import { installSpatialNavigation } from "./gamepad";
 import { Apps } from "./pages/Apps";
+import { Browser } from "./pages/Browser";
 import { Wishlist } from "./pages/Wishlist";
 import { Calendar } from "./pages/Calendar";
 import { Discover } from "./pages/Discover";
@@ -68,6 +69,7 @@ export function App() {
         <Route path="settings/:section?" element={<Settings />} />
         <Route path="downloads" element={<Downloads />} />
         <Route path="apps" element={<Apps />} />
+        <Route path="browser" element={<Browser />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>

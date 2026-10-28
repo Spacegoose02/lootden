@@ -307,3 +307,19 @@ Known trade-offs (owner's call):
   it's masked in logs.
 - `npm audit` reports moderate issues only in electron-builder's dependencies (build time,
   not shipped).
+
+## Built-in web browser
+
+For handhelds and the Xbox full screen experience, where opening Edge means leaving the
+controller behind. `packages/desktop/src/browser.ts` (`WebBrowser`) opens a window of its own
+over LootDen, which hides meanwhile so its controller navigation doesn't act on the same
+presses. The toolbar and start page are the local `setup/browser.html` (preload
+`browser-preload.ts`, IPC `gm:browser:*` accepted only from that page). Each tab is a
+`WebContentsView` in the `persist:lootden-browser` session: sandboxed, no preload, apart from
+the server's cookies. Only http(s) pages open; store launcher links (`isStoreLaunchUrl`) ask
+first; camera and microphone ask once per site per run. Address bar, bookmark and launcher
+rules are in `packages/client/src/browser.ts` (tested). The controller has three modes:
+toolbar, a pointer on the page (left stick, A clicks, right stick scrolls), and pass-through
+for cloud gaming (Menu; View + Menu comes back). Opened from the Browser menu item (desktop app,
+not kids), the tray, the "Web browser" jump list task (`--browser`), and, in handheld mode or when
+chosen in Profile, links from LootDen's pages.
