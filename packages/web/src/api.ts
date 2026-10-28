@@ -59,6 +59,8 @@ export interface Me {
 export interface HomeData {
   featured: Array<GameSummary & { backgroundUrl: string | null; blurb: string | null }>;
   sections: Array<{ id: string; title: string; games: GameSummary[] }>;
+  /** The PC game this person played last, to pick up where they left off. Missing from older servers. */
+  resume?: (GameSummary & { backgroundUrl: string | null; blurb: string | null; playtimeSeconds: number; lastPlayedAt: string }) | null;
 }
 
 export interface Candidate {

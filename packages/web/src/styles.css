@@ -3856,3 +3856,190 @@ html[data-lootden-frame] .lightbox {
   border-color: var(--launcher, var(--border));
   box-shadow: inset 3px 0 0 var(--launcher, transparent);
 }
+
+/* ---------- Console home -------------------------------------------------------
+   The game played last fills the top of Home, the menu is a row of pills, and while a
+   controller is in use its buttons are spelled out along the bottom. */
+
+.nav a.active {
+  color: var(--bg);
+  background: var(--text);
+  box-shadow: none;
+}
+.topbar-clock {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+  padding: 0 0.4rem;
+  white-space: nowrap;
+}
+
+.console-hero {
+  position: relative;
+  margin: -1.25rem calc(-1 * clamp(1rem, 3vw, 2.5rem)) 1.5rem;
+  min-height: clamp(320px, 52vh, 560px);
+  display: flex;
+  align-items: flex-end;
+  overflow: hidden;
+  isolation: isolate;
+}
+/* No art yet: the theme's colours instead. */
+.console-hero.plain {
+  min-height: clamp(260px, 38vh, 400px);
+  background:
+    radial-gradient(700px 360px at 85% 20%, color-mix(in srgb, var(--accent) 30%, transparent), transparent 70%),
+    radial-gradient(600px 300px at 60% 110%, color-mix(in srgb, var(--accent-2) 18%, transparent), transparent 70%);
+}
+.console-hero-art {
+  position: absolute;
+  inset: 0;
+  z-index: -2;
+  background-size: cover;
+  background-position: center 25%;
+}
+.console-hero-art.cover {
+  filter: blur(30px) saturate(1.3);
+  transform: scale(1.2);
+}
+.console-hero::before,
+.console-hero::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+}
+.console-hero::before {
+  background: linear-gradient(90deg, var(--bg) 0%, color-mix(in srgb, var(--bg) 82%, transparent) 36%, color-mix(in srgb, var(--bg) 18%, transparent) 70%, color-mix(in srgb, var(--bg) 50%, transparent) 100%);
+}
+.console-hero::after {
+  background: linear-gradient(180deg, transparent 55%, var(--bg) 100%);
+}
+.console-hero-body {
+  max-width: 640px;
+  padding: 3rem clamp(1rem, 3vw, 2.5rem) 2.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+.console-hero .eyebrow {
+  color: var(--accent-2);
+  letter-spacing: 0.18em;
+  font-weight: 800;
+}
+.console-hero h1 {
+  margin: 0;
+  font-size: clamp(2.4rem, 6vw, 4.75rem);
+  line-height: 0.95;
+  letter-spacing: -0.01em;
+}
+.console-hero-meta {
+  margin: 0;
+  color: color-mix(in srgb, var(--text) 82%, transparent);
+  font-size: 1.05rem;
+}
+.console-hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-top: 0.8rem;
+}
+.console-hero-actions .button,
+.console-hero-actions button {
+  min-height: 52px;
+  padding: 0 1.6rem;
+  border-radius: 999px;
+  font-size: 1.05rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+}
+.play-big {
+  background: var(--accent-2);
+  color: var(--bg);
+  font-weight: 800;
+  padding: 0 2.1rem;
+}
+.play-big:hover,
+.play-big:focus-visible {
+  box-shadow:
+    0 0 0 4px var(--bg),
+    0 0 0 7px var(--accent-2);
+}
+.button.glass {
+  background: color-mix(in srgb, var(--bg) 50%, transparent);
+  border: 1px solid color-mix(in srgb, var(--text) 35%, transparent);
+  color: var(--text);
+  font-weight: 700;
+  backdrop-filter: blur(10px);
+}
+.row-sub {
+  margin-right: auto;
+}
+
+/* The shelf the controller is on lifts the focused game, like a console's. */
+:root[data-nav="pad"] .row-track .card:focus {
+  transform: translateY(-6px) scale(1.05);
+}
+
+.pad-hints {
+  display: none;
+}
+:root[data-nav="pad"] .pad-hints {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 20;
+  display: flex;
+  justify-content: flex-end;
+  gap: 1.6rem;
+  padding: 0.7rem clamp(1rem, 3vw, 2.5rem);
+  background: color-mix(in srgb, var(--bg) 88%, transparent);
+  border-top: 1px solid var(--border);
+  backdrop-filter: blur(14px);
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+:root[data-nav="pad"] main {
+  padding-bottom: 4.5rem;
+}
+.pad-hints span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  white-space: nowrap;
+}
+.pad-hints kbd {
+  display: inline-grid;
+  place-items: center;
+  min-width: 1.6rem;
+  height: 1.6rem;
+  border-radius: 999px;
+  font: 800 0.8rem var(--font);
+  color: #0b0718;
+}
+.pad-hints .pad-a {
+  background: #59ff9a;
+}
+.pad-hints .pad-b {
+  background: #ff5c7a;
+}
+.pad-hints .pad-y {
+  background: #ffcf5c;
+}
+.pad-hints .pad-shoulder {
+  padding: 0 0.5rem;
+  border-radius: 6px;
+  background: var(--panel-solid);
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+@media (max-width: 720px) {
+  :root[data-nav="pad"] .pad-hints {
+    justify-content: center;
+    gap: 0.9rem;
+  }
+  .pad-hints span:nth-child(n + 4) {
+    display: none;
+  }
+}
