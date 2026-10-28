@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import type { GameListing, GameSummary } from "@lootden/shared";
-import { api, type HomeData, type NewsItem, type Video } from "../api";
+import { api, formatPlaytime, type HomeData, type NewsItem, type Video } from "../api";
 import { useAuth } from "../auth";
 import { Badges } from "../components/Badges";
 import { Cover } from "../components/Cover";
@@ -10,7 +10,7 @@ import { stub } from "../components/InstalledGames";
 import { ListingRow } from "../components/Listing";
 import { VideoRow } from "../components/Videos";
 import { StoreGameCard, storeKey, useStoreGames } from "../components/StoreGameCard";
-import { desktop, type InstalledGame } from "../desktop";
+import { bridgeError, desktop, type InstalledGame } from "../desktop";
 import { usePosterSize } from "../theme";
 
 const NOTES: Record<string, string> = {
@@ -35,7 +35,7 @@ export function Home() {
   const [poster] = usePosterSize();
   // Games played lately on connected stores (Steam, Xbox...), next to the LootDen ones.
   const store = useStoreGames();
-  const storeRecent = (store.games ?? []).filter((g) => g.lastPlayedAt).sort((a, b) => Date.parse(b.lastPlayedAt!) - Date.parse(a.lastPlayedAt!)).slice(0, 20);
+  const storeRecent = (store.games ?? []).filter((g) => g.lastPlayedAt && !(desktop && store.installed.has(storeKey(g)))).sort((a, b) => Date.parse(b.lastPlayedAt!) - Date.parse(a.lastPlayedAt!)).slice(0, 20);
 
   useEffect(() => {
     api.home().then(setData, (e: Error) => setError(e.message));
@@ -105,13 +105,17 @@ export function Home() {
       .map((l) => known.get(l.gameId) ?? extra.get(l.gameId) ?? stub(l))
       .sort((a, b) => (order.get(a.id) ?? Infinity) - (order.get(b.id) ?? Infinity) || a.title.localeCompare(b.title));
   }
+  // Store games installed on this PC sit in the same shelf, last played first.
+  const storeReady = desktop ? (store.games ?? []).filter((g) => store.installed.has(storeKey(g))).sort((a, b) => (b.lastPlayedAt ?? "").localeCompare(a.lastPlayedAt ?? "") || a.title.localeCompare(b.title)) : [];
+  const launchers = [...new Set([...(installed.length ? ["LootDen"] : []), ...storeReady.map((g) => g.store)])];
   // Library rows first, with the extras slotted between them so the page alternates.
   const blocks: ReactNode[] = [];
-  if (installed.length)
+  if (installed.length || storeReady.length)
     blocks.push(
       <section className="row row-installed" key="installed">
         <div className="row-head">
-          <h2>{desktop ? "Installed on this PC" : "Installed"}</h2>
+          <h2>{desktop ? "Ready to play" : "Installed"}</h2>
+          {desktop && launchers.length > 0 && <span className="muted small row-sub">{listOf(launchers)} on this PC</span>}
           <Link to="/library?tab=installed" className="muted small">
             All installed
           </Link>
@@ -119,6 +123,9 @@ export function Home() {
         <div className="row-track">
           {installed.map((g) => (
             <GameCard key={g.id} game={g} />
+          ))}
+          {storeReady.map((g) => (
+            <StoreGameCard key={storeKey(g)} game={g} local={store.installed.get(storeKey(g))} scanned={store.scanned} />
           ))}
         </div>
       </section>,
@@ -152,9 +159,11 @@ export function Home() {
   }
   blocks.push(...sections.map((s) => row(s)));
 
+  const resume = data.resume && poster !== "off" ? data.resume : null;
   return (
     <>
-      {hero && poster !== "off" && (
+      {resume && <ResumeHero game={resume} installedHere={!!local?.some((l) => l.gameId === resume.id)} />}
+      {!resume && hero && poster !== "off" && (
         <section className={`hero hero-${poster}`}>
           <div className={`hero-bg${hero.backgroundUrl ? " wide" : ""}`} style={hero.backgroundUrl || hero.coverUrl ? { backgroundImage: `url(${hero.backgroundUrl ?? hero.coverUrl})` } : undefined} />
           {/* Every featured game is laid out in the same spot and only the current one shows, so the
@@ -212,6 +221,65 @@ function NewsStrip({ items }: { items: NewsItem[] }) {
             </span>
           </a>
         ))}
+      </div>
+    </section>
+  );
+}
+
+const listOf = (names: string[]) => (names.length < 2 ? names.join("") : `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`);
+
+function lastPlayed(iso: string): string {
+  const days = Math.floor((Date.now() - Date.parse(iso)) / 86_400_000);
+  if (days < 1) return "played today";
+  if (days < 2) return "played yesterday";
+  if (days < 7) return `played ${days} days ago`;
+  return `played ${new Date(iso).toLocaleDateString(undefined, { day: "numeric", month: "short" })}`;
+}
+
+/** The game played last, full width: pick up where you left off with one press. */
+function ResumeHero({ game, installedHere }: { game: NonNullable<HomeData["resume"]>; installedHere: boolean }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const art = game.backgroundUrl ?? game.coverUrl;
+  const play = async () => {
+    setBusy(true);
+    setError("");
+    try {
+      await desktop!.play(game.id);
+    } catch (e) {
+      setError(bridgeError(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <section className={`console-hero${art ? "" : " plain"}`} aria-label="Continue playing">
+      {art && <div className={`console-hero-art${game.backgroundUrl ? "" : " cover"}`} style={{ backgroundImage: `url(${art})` }} />}
+      <div className="console-hero-body">
+        <p className="eyebrow">Continue playing</p>
+        <h1>{game.title}</h1>
+        <p className="console-hero-meta">{[game.playtimeSeconds >= 60 ? `${formatPlaytime(game.playtimeSeconds)} played` : null, lastPlayed(game.lastPlayedAt), game.genres.slice(0, 2).join(", ") || null].filter(Boolean).join(" · ")}</p>
+        <div className="console-hero-actions">
+          {desktop && installedHere ? (
+            <button className="primary play-big" disabled={busy} onClick={() => void play()}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                <path d="M7 4l13 8-13 8z" />
+              </svg>
+              {busy ? "Starting…" : "Play"}
+            </button>
+          ) : (
+            <Link to={`/games/${game.id}`} className="button primary play-big">
+              {desktop ? "Install" : "Open"}
+            </Link>
+          )}
+          <Link to={`/games/${game.id}`} className="button glass">
+            Details
+          </Link>
+          <Link to="/library?tab=installed" className="button glass">
+            Library
+          </Link>
+        </div>
+        {error && <p className="error small">{error}</p>}
       </div>
     </section>
   );

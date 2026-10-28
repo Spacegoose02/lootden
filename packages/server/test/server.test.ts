@@ -181,6 +181,9 @@ describe("accounts and auth", () => {
     assert.deepEqual(home.sections.slice(0, 2).map((s: { id: string }) => s.id), ["installed", "continue"], "installed games come first");
     assert.equal(home.sections[0].games[0].id, sims!.id);
     assert.equal(home.sections[1].games[0].id, sims!.id);
+    assert.equal(home.resume.id, sims!.id, "the game played last leads the page");
+    assert.equal(home.resume.playtimeSeconds, 2400);
+    assert.ok(home.resume.lastPlayedAt);
     await post({ gameId: sims!.id, device: "Desktop", event: "uninstalled" });
     const after = (await app.inject({ url: "/api/home", headers })).json();
     assert.equal(after.sections[0].id, "continue", "uninstalled games leave the Installed row");

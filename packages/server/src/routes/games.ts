@@ -101,6 +101,11 @@ export function gameRoutes(app: FastifyInstance, ctx: AppContext) {
     const everything = ctx.library.list({ kidSafe });
     const all = everything.filter((g) => g.platform === PC_PLATFORM);
     const sections: Array<{ id: string; title: string; games: GameSummary[] }> = [];
+    const withArt = (g: GameSummary) => {
+      const d = ctx.library.get(g.id);
+      return { ...g, backgroundUrl: d?.backgroundUrl ?? null, blurb: d?.metadata?.summary?.slice(0, 280) ?? null };
+    };
+    let resume: (ReturnType<typeof withArt> & { playtimeSeconds: number; lastPlayedAt: string }) | null = null;
     const add = (id: string, title: string, games: GameSummary[]) => games.length && sections.push({ id, title, games: games.slice(0, 20) });
 
     if (p.user) {
@@ -114,7 +119,14 @@ export function gameRoutes(app: FastifyInstance, ctx: AppContext) {
         .sort((a, b) => (b.lastPlayedAt ?? b.installedAt!).localeCompare(a.lastPlayedAt ?? a.installedAt!));
       const installedGames = games(installed.map((s) => s.gameId));
       if (installedGames.length) sections.push({ id: "installed", title: "Installed", games: installedGames.slice(0, 100) });
-      add("continue", "Continue playing", games(mine.filter((s) => s.lastPlayedAt).map((s) => s.gameId)));
+      const played = mine.filter((s) => s.lastPlayedAt).sort((a, b) => b.lastPlayedAt!.localeCompare(a.lastPlayedAt!));
+      add("continue", "Continue playing", games(played.map((s) => s.gameId)));
+      // The game played last leads the page, with its play time across this person's devices.
+      const last = played.map((s) => byId.get(s.gameId)).find((g) => g && g.platform === PC_PLATFORM);
+      if (last) {
+        const states = mine.filter((s) => s.gameId === last.id);
+        resume = { ...withArt(last), playtimeSeconds: states.reduce((n, s) => n + s.playtimeSeconds, 0), lastPlayedAt: states.map((s) => s.lastPlayedAt ?? "").sort().at(-1)! };
+      }
     }
     // Disc images and installers wait for an admin to install them once in the app and upload the result.
     if (p.role === "admin") add("setup", "Needs setting up", all.filter((g) => g.needsSetup));
@@ -133,11 +145,8 @@ export function gameRoutes(app: FastifyInstance, ctx: AppContext) {
       .filter((g) => g.coverUrl)
       .sort(() => Math.random() - 0.5)
       .slice(0, 6)
-      .map((g) => {
-        const d = ctx.library.get(g.id);
-        return { ...g, backgroundUrl: d?.backgroundUrl ?? null, blurb: d?.metadata?.summary?.slice(0, 280) ?? null };
-      });
-    return { featured, sections };
+      .map(withArt);
+    return { featured, sections, resume };
   });
 
   app.get<{ Params: { id: string } }>("/api/games/:id", async (req) => visibleGame(req, req.params.id));

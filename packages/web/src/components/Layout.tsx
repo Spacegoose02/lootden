@@ -163,6 +163,7 @@ export function Layout() {
         <MainNav items={links} onSignOut={signOut} />
         <div className="topbar-right">
           {me?.role === "admin" && <AlertsBell />}
+          {desktop && <Clock />}
           {user ? (
             <NavLink to="/profile" className="me" aria-label="Profile">
               <img src={avatarUrl(user.avatar)} alt="" width={36} height={36} className="avatar" />
@@ -180,6 +181,44 @@ export function Layout() {
         <AppUpdateBanner />
         <Outlet />
       </main>
+      <PadHints />
     </div>
+  );
+}
+
+/** The time, in the app's top bar, like a console's. */
+function Clock() {
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const t = setInterval(() => setNow(new Date()), 15_000);
+    return () => clearInterval(t);
+  }, []);
+  return (
+    <time className="topbar-clock" dateTime={now.toISOString()}>
+      {now.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
+    </time>
+  );
+}
+
+/** What the controller buttons do, along the bottom while a controller is in use (shown by CSS). */
+function PadHints() {
+  return (
+    <footer className="pad-hints" aria-hidden="true">
+      <span>
+        <kbd className="pad-a">A</kbd>Select
+      </span>
+      <span>
+        <kbd className="pad-b">B</kbd>Back
+      </span>
+      <span>
+        <kbd className="pad-y">Y</kbd>Filters and games
+      </span>
+      <span>
+        <kbd className="pad-shoulder">LT RT</kbd>Tabs
+      </span>
+      <span>
+        <kbd className="pad-shoulder">LB RB</kbd>Sections
+      </span>
+    </footer>
   );
 }

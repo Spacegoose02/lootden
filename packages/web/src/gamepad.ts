@@ -112,10 +112,12 @@ const hidden = (el: Element, r: DOMRect) => {
 /** Scrolls an item into view below the sticky bars, not under them. */
 function reveal(el: HTMLElement, instant: boolean): void {
   const root = document.documentElement;
-  const before = root.style.scrollPaddingTop;
+  const before = [root.style.scrollPaddingTop, root.style.scrollPaddingBottom];
   root.style.scrollPaddingTop = `${coveredTop(el) + 12}px`;
+  // The controller hints along the bottom cover the page too.
+  root.style.scrollPaddingBottom = `${(document.querySelector(".pad-hints")?.getBoundingClientRect().height ?? 0) + 16}px`;
   el.scrollIntoView({ block: "nearest", inline: "nearest", behavior: instant ? "auto" : "smooth" });
-  root.style.scrollPaddingTop = before;
+  [root.style.scrollPaddingTop, root.style.scrollPaddingBottom] = before;
 }
 
 /** An open menu, the alerts panel or a video: B and Esc close it before going back a page. */
