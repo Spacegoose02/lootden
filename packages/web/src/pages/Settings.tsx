@@ -136,6 +136,14 @@ function LibrarySection({ say }: { say: Msg }) {
             <button className="ghost" disabled={busy} onClick={() => act(() => api.refreshMetadata(true), "Retrying every unmatched game")}>
               Retry unmatched
             </button>
+            <button
+              className="ghost"
+              disabled={busy}
+              title="Look every game up again with the current sources and their priority. Hand-picked matches keep their pick."
+              onClick={() => act(() => api.refreshAllMetadata("all"), "Refreshing every game's metadata in the background")}
+            >
+              Refresh all
+            </button>
             <button disabled={busy} onClick={() => act(() => api.refreshMetadata(false), "Looking up new games")}>
               Look up new games
             </button>

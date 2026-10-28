@@ -518,11 +518,14 @@ export const api = {
   searchMetadata: (id: string, q: string) => call<Candidate[]>("GET", `/api/games/${id}/metadata/search${qs({ q })}`),
   applyMetadata: (id: string, provider: string, providerId: string) => call<GameDetail>("PUT", `/api/games/${id}/metadata`, { provider, providerId }),
   clearMetadata: (id: string) => call("DELETE", `/api/games/${id}/metadata`),
+  refreshGameMetadata: (id: string) => call<GameDetail>("POST", `/api/games/${id}/metadata/refresh`),
 
   stats: () => call<LibraryStats>("GET", "/api/library/stats"),
   rescan: () => call<LibraryStats>("POST", "/api/library/rescan"),
   metadataStatus: () => call<{ providers: string[]; queued: number; running: boolean; matched: number; unmatched: number }>("GET", "/api/metadata/status"),
   refreshMetadata: (force = false) => call<{ queued: number }>("POST", "/api/metadata/refresh", { force }),
+  /** Looks matched games up again too: "all", "pc", "emulated" or one system's id. */
+  refreshAllMetadata: (scope: string) => call<{ queued: number }>("POST", "/api/metadata/refresh", { scope }),
 
   users: () => call<User[]>("GET", "/api/users"),
   createUser: (u: { username: string; password?: string; displayName?: string; role?: string; kidMode?: boolean }) => call<User>("POST", "/api/users", u),
@@ -611,6 +614,7 @@ export const api = {
   storeGame: (addon: string, id: string, title = "") => call<StoreGameDetail>("GET", `${storeGamePath(addon, id)}${titleQuery(title)}`),
   updateStoreGame: (addon: string, id: string, patch: { title?: string | null; match?: { provider: string; providerId: string } | null }, title = "") =>
     call<StoreGameDetail>("PUT", `${storeGamePath(addon, id)}${titleQuery(title)}`, patch),
+  refreshStoreGame: (addon: string, id: string, title = "") => call<StoreGameDetail>("POST", `${storeGamePath(addon, id)}/refresh${titleQuery(title)}`),
   storeGameMatches: (addon: string, id: string, q: string, title = "") => call<GameListing[]>("GET", `${storeGamePath(addon, id)}/matches?q=${encodeURIComponent(q)}${title ? `&title=${encodeURIComponent(title)}` : ""}`),
   storeArtworkOptions: (addon: string, id: string, kind: string, q = "", title = "") =>
     call<ArtworkOption[]>("GET", `${storeGamePath(addon, id)}/artwork/${kind}?q=${encodeURIComponent(q)}${title ? `&title=${encodeURIComponent(title)}` : ""}`),

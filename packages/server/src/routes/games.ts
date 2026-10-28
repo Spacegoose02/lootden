@@ -377,9 +377,30 @@ export function gameRoutes(app: FastifyInstance, ctx: AppContext) {
     return ctx.metadata.status();
   });
 
-  app.post<{ Body: { force?: boolean } }>("/api/metadata/refresh", async (req) => {
+  /**
+   * Looks games up. By default only the ones without metadata (force retries those tried lately
+   * too). scope looks matched games up again as well: "all", "pc", "emulated" or one system's id.
+   */
+  app.post<{ Body: { force?: boolean; scope?: string } }>("/api/metadata/refresh", async (req) => {
     requireAdmin(req);
-    return { queued: ctx.metadata.queueMissing(ctx.library.allScanned(), !!req.body?.force) };
+    const scope = req.body?.scope;
+    if (!scope) return { queued: ctx.metadata.queueMissing(ctx.library.allScanned(), !!req.body?.force) };
+    const games = ctx.library
+      .allScanned()
+      .filter((g) => g.kind === "game" && (scope === "all" || (scope === "pc" ? g.platform === PC_PLATFORM : scope === "emulated" ? g.platform !== PC_PLATFORM : g.platform === scope)));
+    return { queued: ctx.metadata.queueRefresh(games.map((g) => g.id)) };
+  });
+
+  /** One game looked up again now (see MetadataService.refresh). */
+  app.post<{ Params: { id: string } }>("/api/games/:id/metadata/refresh", async (req) => {
+    requireAdmin(req);
+    if (!ctx.library.get(req.params.id)) throw new HttpProblem(404, "Game not found");
+    try {
+      await ctx.metadata.refresh(req.params.id);
+    } catch (err) {
+      throw new HttpProblem(502, `Couldn't refresh the metadata: ${(err as Error).message}`);
+    }
+    return ctx.library.get(req.params.id);
   });
 
   app.get<{ Params: { id: string }; Querystring: { q?: string } }>("/api/games/:id/metadata/search", async (req) => {

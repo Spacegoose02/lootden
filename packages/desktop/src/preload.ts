@@ -90,6 +90,7 @@ contextBridge.exposeInMainWorld("lootdenOffline", {
   library: () => ipcRenderer.invoke("gm:offline:library"),
   play: (gameId: string) => ipcRenderer.invoke("gm:offline:play", gameId),
   openFolder: (gameId: string) => ipcRenderer.invoke("gm:offline:openFolder", gameId),
+  launchStore: (url: string) => ipcRenderer.invoke("gm:offline:launchStore", url),
   retry: () => ipcRenderer.invoke("gm:offline:retry"),
   changeServer: () => ipcRenderer.invoke("gm:changeServer"),
 });

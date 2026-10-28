@@ -101,6 +101,16 @@ export function groupGames<T extends GameSummary>(games: T[], group: GroupBy, is
     .sort((a, b) => order(a.title) - order(b.title) || (group === "genre" ? b.games.length - a.games.length : 0) || a.title.localeCompare(b.title));
 }
 
+/** The installed mark on a cover. */
+export function InstalledPill({ label = "Installed" }: { label?: string }) {
+  return (
+    <span className="installed-pill" title={label}>
+      <span className="installed-glyph" aria-hidden="true" />
+      {label}
+    </span>
+  );
+}
+
 /**
  * Games in the chosen layout, grouped. `aside` adds something per game (an installed mark,
  * Play buttons) to cards and list rows.
@@ -145,7 +155,11 @@ export function GameCollection<T extends GameSummary>({
                   <Badges game={g} compact />
                   <span className="muted small num">{formatBytes(g.sizeBytes)}</span>
                   <span className="game-list-aside">
-                    {isInstalled(g) && <span className="badge badge-kid">Installed</span>}
+                    {isInstalled(g) && (
+                      <span className="badge badge-kid">
+                        <span className="installed-glyph" aria-hidden="true" /> Installed
+                      </span>
+                    )}
                     {aside?.(g)}
                   </span>
                 </li>
@@ -165,7 +179,7 @@ export function GameCollection<T extends GameSummary>({
               {list.map((g) => (
                 <div key={g.id} className={`card-wrap${isInstalled(g) ? " is-installed" : ""}`}>
                   <GameCard game={g} />
-                  {isInstalled(g) && <span className="installed-dot" title="Installed" />}
+                  {isInstalled(g) && <InstalledPill />}
                 </div>
               ))}
             </div>

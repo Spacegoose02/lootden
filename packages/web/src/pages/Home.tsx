@@ -129,7 +129,7 @@ export function Home() {
       <section className="row" key="stores">
         <div className="row-head">
           <h2>Recently played on your other stores</h2>
-          <Link to="/library?tab=stores" className="muted small">
+          <Link to="/library?tab=all&source=stores" className="muted small">
             All store games
           </Link>
         </div>

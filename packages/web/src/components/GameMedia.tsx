@@ -4,6 +4,8 @@ import type { GameInfo } from "@lootden/shared";
 /** A game's trailer and screenshots (with a lightbox), from its IGDB, RAWG or Steam details. */
 export function GameMedia({ game }: { game: Pick<GameInfo, "name" | "trailer" | "screenshots"> }) {
   const [shot, setShot] = useState<string | null>(null);
+  const at = shot ? game.screenshots.indexOf(shot) : -1;
+  const step = (by: number) => setShot(game.screenshots[(at + by + game.screenshots.length) % game.screenshots.length] ?? null);
   // Esc, and B on a controller (sent as Esc while a dialog is open), close the big screenshot.
   useEffect(() => {
     if (!shot) return;
@@ -45,8 +47,27 @@ export function GameMedia({ game }: { game: Pick<GameInfo, "name" | "trailer" | 
       )}
 
       {shot && (
-        <div className="lightbox" role="dialog" onClick={() => setShot(null)}>
+        // Buttons so a controller can page through the screenshots and close them: the d-pad stays inside the picture while it's open.
+        <div className="lightbox" role="dialog" aria-label="Screenshot" onClick={() => setShot(null)}>
           <img className="lightbox-image" src={shot} alt="" />
+          <div className="lightbox-nav" onClick={(e) => e.stopPropagation()}>
+            {game.screenshots.length > 1 && (
+              <button className="secondary" aria-label="Previous screenshot" onClick={() => step(-1)}>
+                ‹
+              </button>
+            )}
+            <span className="muted small">
+              {at + 1} / {game.screenshots.length}
+            </span>
+            {game.screenshots.length > 1 && (
+              <button className="secondary" aria-label="Next screenshot" onClick={() => step(1)}>
+                ›
+              </button>
+            )}
+            <button className="ghost" onClick={() => setShot(null)}>
+              Close
+            </button>
+          </div>
         </div>
       )}
     </>
