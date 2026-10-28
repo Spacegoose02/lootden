@@ -53,7 +53,7 @@ export function AppOptions() {
   if (!bridge.appSettings || !bridge.quit) {
     return <p className="muted small">Update the LootDen app to choose tray, start-up and update options here.</p>;
   }
-  const set = (patch: Partial<Pick<AppSettings, "closeToTray" | "autoUpdate" | "openAtLogin" | "handheld" | "fullscreen">>) =>
+  const set = (patch: Partial<Pick<AppSettings, "closeToTray" | "autoUpdate" | "openAtLogin" | "handheld" | "fullscreen" | "browserLinks">>) =>
     bridge.appSettings!(patch).then(setOpts, (e) => setError(bridgeError(e)));
   const run = (fn: () => Promise<unknown>) => fn().catch((e) => setError(bridgeError(e)));
   return (
@@ -99,6 +99,17 @@ export function AppOptions() {
               <small className="muted">
                 Full screen with larger text and buttons, for the ROG Ally, Steam Deck and other handhelds or a TV. Starting with the computer opens LootDen in front instead of in the tray.
               </small>
+            </label>
+          )}
+          {opts.browserLinks && (
+            <label className="field">
+              <span className="field-label">Open links in</span>
+              <select value={opts.browserLinks} onChange={(e) => void set({ browserLinks: e.target.value as "auto" | "on" | "off" })}>
+                <option value="auto">LootDen's browser in handheld mode, otherwise your usual browser</option>
+                <option value="on">LootDen's browser</option>
+                <option value="off">Your usual browser</option>
+              </select>
+              <small className="muted">Links in news, game pages and trailers. LootDen's browser works with a controller and stays in full screen.</small>
             </label>
           )}
         </div>

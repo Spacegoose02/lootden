@@ -13,3 +13,4 @@ export { applyUpdate, BACKUP_FOLDER, undoUpdate, UpdateMismatchError, updateProb
 export { scanStoreGames, STORE_SCANNERS, type StoreScanner } from "./stores/index.js";
 export { downloadWorkshopItem, ensureSteamCmd, installWorkshopItem, listWorkshopItems, removeWorkshopItem, steamCmdResult, type InstalledWorkshopItem } from "./workshop.js";
 export { isStoreLaunchUrl } from "@lootden/shared";
+export { addressToUrl, cleanBookmarks, DEFAULT_BOOKMARKS, isBrowsable, launcherShortcuts, MAX_BOOKMARKS, SEARCH_ENGINES, siteName, type Bookmark, type LauncherShortcut, type SearchEngine } from "./browser.js";

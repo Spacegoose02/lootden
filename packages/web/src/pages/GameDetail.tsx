@@ -231,6 +231,15 @@ function AdminTools({ game, onChange }: { game: Game; onChange: (g: Game) => voi
       >
         <input value={query} onChange={(e) => setQuery(e.target.value)} aria-label="Search metadata" />
         <button disabled={busy}>Find metadata</button>
+        <button
+          type="button"
+          className="secondary"
+          disabled={busy}
+          title={game.metadata?.locked ? "Fetch the hand-picked match's details again" : "Match it again with the current sources and their priority"}
+          onClick={() => run(async () => onChange(await api.refreshGameMetadata(game.id)))}
+        >
+          ⟳ Refresh metadata
+        </button>
         {game.metadata && (
           <button type="button" className="ghost" disabled={busy} onClick={() => run(async () => { await api.clearMetadata(game.id); onChange(await api.game(game.id)); })}>
             Clear match

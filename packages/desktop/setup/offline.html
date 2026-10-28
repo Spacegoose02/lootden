@@ -46,12 +46,22 @@
       .title { font-weight: 700; line-height: 1.25; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
       .meta { color: var(--muted); font-size: 0.82rem; }
       .actions { display: flex; gap: 0.4rem; margin-top: auto; }
-      .actions button { padding: 0.4em 0.9em; font-size: 0.9rem; }
+      .actions button { padding: 0.4em 0.9em; font-size: 0.9rem; white-space: nowrap; }
       .actions .play { flex: 1; }
       .message { color: var(--muted); }
       .empty { grid-column: 1 / -1; text-align: center; padding: 3rem 1rem; border: 1px dashed var(--border); border-radius: 14px; }
       .hints { position: fixed; right: 1.25rem; bottom: 0.9rem; display: flex; gap: 1rem; font-size: 0.82rem; color: var(--muted); background: color-mix(in srgb, var(--bg) 75%, transparent); padding: 0.35rem 0.9rem; border-radius: 999px; border: 1px solid var(--border); backdrop-filter: blur(8px); }
       .hints kbd { font: inherit; font-weight: 800; display: inline-grid; place-items: center; width: 1.5em; height: 1.5em; border-radius: 50%; margin-right: 0.3em; color: var(--accentText); background: var(--accent2); }
+      .chips { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+      .chips button { padding: 0.35em 0.9em; font-size: 0.85rem; font-weight: 700; color: var(--text); background: color-mix(in srgb, var(--panel) 80%, transparent); border: 1px solid var(--border); }
+      .chips button[aria-checked="true"] { color: var(--accentText); background: linear-gradient(135deg, var(--accent), var(--accent2)); border-color: transparent; }
+      .chips .dot { display: inline-block; width: 0.6em; height: 0.6em; border-radius: 50%; margin-right: 0.4em; background: var(--launcher, var(--accent)); }
+      .chips .n { opacity: 0.7; margin-left: 0.35em; font-size: 0.85em; }
+      .cover { position: relative; }
+      .launcher { position: absolute; top: 8px; right: 8px; font-size: 0.68rem; font-weight: 800; padding: 0.15em 0.6em; border-radius: 999px; color: #fff; background: var(--launcher, var(--accent)); box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4); text-shadow: none; }
+      .card.store .cover:not(:has(img)) { background: linear-gradient(160deg, color-mix(in srgb, var(--launcher, var(--accent)) 55%, var(--panel)), var(--bg2)); }
+      .l-lootden { --launcher: var(--accent); } .l-steam { --launcher: #1a9fff; } .l-epic { --launcher: #5c5c66; } .l-gog { --launcher: #86328a; } .l-xbox { --launcher: #107c10; } .l-ubisoft { --launcher: #0070ff; } .l-ea { --launcher: #ff4747; } .l-itch { --launcher: #fa5c5c; }
+      .sync { color: #ffcf5c; }
       .error { color: #ff5c7a; min-height: 1.5em; margin: 0 0 0.5rem; }
       /* No system title bar: the top strip moves the window, the buttons sit at its right. */
       html[data-lootden-frame="hidden"] body::before { content: ""; position: fixed; inset: 0 0 auto 0; height: var(--lootden-titlebar, 40px); -webkit-app-region: drag; z-index: 3; }
@@ -78,6 +88,7 @@
       <section class="spotlight" id="spotlight" aria-live="polite"></section>
       <div class="bar">
         <h3>Installed on this PC</h3>
+        <div class="chips" id="chips" role="radiogroup" aria-label="Launcher"></div>
         <span class="message" id="count"></span>
         <input type="search" id="search" placeholder="Search games on this PC" aria-label="Search" />
       </div>
@@ -90,16 +101,20 @@
       const $ = (id) => document.getElementById(id);
       let games = [];
       let playing = null;
+      let launcher = "";
+      const LAUNCHER_NAMES = { lootden: "LootDen" };
+      const cls = (id) => `l-${String(id).replace(/[^a-z0-9-]/gi, "")}`;
 
       const platformName = (p) => (p && p !== "pc" ? p.toUpperCase() : "");
       const cleanError = (x) => String(x?.message || x).replace(/^Error invoking remote method '[^']+': (Error: )?/, "");
 
       function render() {
         const q = $("search").value.trim().toLowerCase();
-        const shown = games.filter((g) => !q || g.title.toLowerCase().includes(q));
+        const shown = games.filter((g) => (!q || g.title.toLowerCase().includes(q)) && (!launcher || g.launcher === launcher));
         const grid = $("grid");
         grid.replaceChildren();
         $("count").textContent = games.length ? `${shown.length} of ${games.length} installed` : "";
+        renderChips();
         if (!games.length) {
           const p = document.createElement("p");
           p.className = "message empty";
@@ -109,9 +124,27 @@
         }
         for (const g of shown) {
           const card = document.createElement("article");
-          card.className = "card";
+          card.className = `card ${cls(g.launcher)}${g.kind === "store" ? " store" : ""}`;
           const cover = document.createElement("div");
           cover.className = "cover";
+          if (g.kind === "store") {
+            cover.textContent = g.title;
+            cover.append(Object.assign(document.createElement("span"), { className: "launcher", textContent: g.store }));
+            const info = document.createElement("div");
+            info.className = "info";
+            const title = Object.assign(document.createElement("div"), { className: "title", textContent: g.title });
+            const meta = Object.assign(document.createElement("div"), { className: "meta", textContent: `Plays through ${g.store}` });
+            const actions = Object.assign(document.createElement("div"), { className: "actions" });
+            const play = Object.assign(document.createElement("button"), { className: "play", textContent: "▶ Play", title: `Starts it through ${g.store}; some launchers need their own offline mode` });
+            play.addEventListener("click", () => off.launchStore(g.launchUrl).catch((x) => ($("err").textContent = cleanError(x))));
+            actions.append(play);
+            info.append(title, meta, actions);
+            card.append(cover, info);
+            card.addEventListener("focusin", () => spotlight(g));
+            card.addEventListener("pointerenter", () => spotlight(g));
+            grid.append(card);
+            continue;
+          }
           if (g.cover) {
             const img = document.createElement("img");
             img.src = g.cover;
@@ -148,12 +181,34 @@
         }
       }
 
+      /** One chip per launcher with games here, when there's more than one. */
+      function renderChips() {
+        const box = $("chips");
+        const ids = [...new Set(games.map((g) => g.launcher))].sort((a, b) => (a === "lootden" ? -1 : b === "lootden" ? 1 : (LAUNCHER_NAMES[a] ?? a).localeCompare(LAUNCHER_NAMES[b] ?? b)));
+        box.replaceChildren();
+        if (ids.length < 2) return;
+        const chip = (id, label, n) => {
+          const b = document.createElement("button");
+          b.setAttribute("role", "radio");
+          b.setAttribute("aria-checked", String(launcher === id));
+          if (id) b.append(Object.assign(document.createElement("span"), { className: `dot ${cls(id)}` }));
+          b.append(label, Object.assign(document.createElement("span"), { className: "n", textContent: String(n) }));
+          b.addEventListener("click", () => {
+            launcher = id;
+            render();
+            box.querySelector('[aria-checked="true"]')?.focus();
+          });
+          return b;
+        };
+        box.append(chip("", "All", games.length), ...ids.map((id) => chip(id, LAUNCHER_NAMES[id] ?? id, games.filter((g) => g.launcher === id).length)));
+      }
+
       /** The selected game, big at the top, with its cover blurred behind the page. */
       function spotlight(g) {
         const box = $("spotlight");
         const eyebrow = Object.assign(document.createElement("p"), { className: "eyebrow", textContent: playing === g.gameId ? "Playing now" : "Ready to play" });
         const title = Object.assign(document.createElement("h2"), { textContent: g.title });
-        const installed = g.installedAt ? `Installed ${new Date(g.installedAt).toLocaleDateString()}` : "";
+        const installed = g.kind === "store" ? g.store : g.installedAt ? `Installed ${new Date(g.installedAt).toLocaleDateString()}` : "";
         const meta = Object.assign(document.createElement("p"), { textContent: [platformName(g.platform), g.version ? `v${g.version}` : "", installed].filter(Boolean).join(" · ") });
         const text = document.createElement("div");
         text.append(eyebrow, title, meta);
@@ -186,11 +241,16 @@
         try {
           const lib = await off.library();
           applyTheme(lib.theme);
-          games = lib.games.sort((a, b) => a.title.localeCompare(b.title));
+          const own = lib.games.map((g) => ({ ...g, kind: "lootden", launcher: "lootden" }));
+          const stores = (lib.stores ?? []).map((g) => ({ ...g, kind: "store", launcher: g.addon, gameId: `${g.addon}:${g.externalId}` }));
+          for (const g of stores) LAUNCHER_NAMES[g.addon] = g.store;
+          games = [...own, ...stores].sort((a, b) => a.title.localeCompare(b.title));
           const status = $("status");
-          status.replaceChildren("Can't reach ", Object.assign(document.createElement("b"), { textContent: lib.server || "your server" }), ". Games on this PC still play; play time is sent when you're back online.");
+          status.replaceChildren("Can't reach ", Object.assign(document.createElement("b"), { textContent: lib.server || "your server" }), ". Games on this PC still play; play time is sent when you're back online. ");
+          if (lib.pendingPlays) status.append(Object.assign(document.createElement("span"), { className: "sync", textContent: `${lib.pendingPlays} play ${lib.pendingPlays === 1 ? "session is" : "sessions are"} waiting to sync. ` }));
+          status.append(Object.assign(document.createElement("span"), { id: "next" }));
           render();
-          const newest = [...games].sort((a, b) => String(b.installedAt).localeCompare(String(a.installedAt)))[0];
+          const newest = games.filter((g) => g.kind === "lootden").sort((a, b) => String(b.installedAt).localeCompare(String(a.installedAt)))[0];
           if (newest) spotlight(newest);
           if (!document.activeElement || document.activeElement === document.body) document.querySelector(".grid button:not(:disabled)")?.focus();
         } catch (x) {
@@ -221,10 +281,18 @@
         if (p.type === "error") $("err").textContent = p.message;
         if (["playing", "stopped", "error"].includes(p.type)) render();
       });
-      // Back home: pick the server up again on its own while no game is running.
+      // Back home: pick the server up again on its own while no game is running, saying when it'll look next.
+      let nextTry = 30;
       setInterval(() => {
-        if (!playing && document.visibilityState === "visible") void retry(true);
-      }, 30000);
+        if (playing || document.visibilityState !== "visible") return;
+        nextTry -= 1;
+        const next = $("next");
+        if (next) next.textContent = nextTry > 0 ? `Checking again in ${nextTry}s.` : "Checking…";
+        if (nextTry <= 0) {
+          nextTry = 30;
+          void retry(true);
+        }
+      }, 1000);
 
       // Controllers and arrow keys move between buttons; A or Enter presses.
       function move(dx, dy) {
@@ -253,23 +321,41 @@
         move(...KEYS[e.key]);
       });
       let held = {};
+      // A held direction repeats, like the main app: a short pause, then steadily.
+      const repeatAt = {};
       function poll() {
         for (const pad of navigator.getGamepads?.() ?? []) {
           if (!pad) continue;
           const ax = pad.axes[0] ?? 0, ay = pad.axes[1] ?? 0;
+          // The stick moves along whichever way it's pushed most.
+          const sx = Math.abs(ax) >= Math.abs(ay) ? ax : 0, sy = Math.abs(ay) > Math.abs(ax) ? ay : 0;
           const now = {
-            up: pad.buttons[12]?.pressed || ay < -0.6,
-            down: pad.buttons[13]?.pressed || ay > 0.6,
-            left: pad.buttons[14]?.pressed || ax < -0.6,
-            right: pad.buttons[15]?.pressed || ax > 0.6,
+            up: pad.buttons[12]?.pressed || sy < -0.55,
+            down: pad.buttons[13]?.pressed || sy > 0.55,
+            left: pad.buttons[14]?.pressed || sx < -0.55,
+            right: pad.buttons[15]?.pressed || sx > 0.55,
             a: pad.buttons[0]?.pressed,
+            b: pad.buttons[1]?.pressed,
             y: pad.buttons[3]?.pressed,
           };
           const pressed = (k) => now[k] && !held[k];
-          if (pressed("up")) move(0, -1);
-          if (pressed("down")) move(0, 1);
-          if (pressed("left")) move(-1, 0);
-          if (pressed("right")) move(1, 0);
+          const t = performance.now();
+          const dir = (k, dx, dy) => {
+            if (!now[k]) return void delete repeatAt[k];
+            if (pressed(k)) repeatAt[k] = t + 300;
+            else if (t < repeatAt[k]) return;
+            else repeatAt[k] = t + 110;
+            move(dx, dy);
+          };
+          dir("up", 0, -1);
+          dir("down", 0, 1);
+          dir("left", -1, 0);
+          dir("right", 1, 0);
+          // B leaves the search box, then clears the launcher filter.
+          if (pressed("b")) {
+            if (document.activeElement?.tagName === "INPUT") document.activeElement.blur();
+            else if (launcher) (launcher = ""), render();
+          }
           if (pressed("a")) document.activeElement?.click();
           if (pressed("y")) void retry(false);
           held = now;

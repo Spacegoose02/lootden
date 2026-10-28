@@ -1,6 +1,7 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import type { Bookmark, SearchEngine } from "@lootden/client";
 
 export interface DesktopSettings {
   serverUrl: string;
@@ -31,6 +32,11 @@ export interface DesktopSettings {
   storeScan: { disabled: string[]; folders: string[] };
   /** The web UI's theme colours (#hex), so the offline page looks like the app. Missing until the app has been online. */
   offlineTheme?: Record<string, string>;
+  /** The built-in browser's start page sites. Missing means the defaults. */
+  browserBookmarks?: Bookmark[];
+  browserSearch?: SearchEngine;
+  /** Links from LootDen's pages open in the built-in browser instead of the system one. "auto" does so in handheld mode. */
+  browserLinks?: "auto" | "on" | "off";
 }
 
 export function defaultSettings(): DesktopSettings {

@@ -164,6 +164,9 @@ function StoreGameEditor({ addon, id, title, detail, onChange }: { addon: string
       >
         <input type="search" value={query} onChange={(e) => setQuery(e.target.value)} aria-label="Search for the game" style={{ flex: 1 }} />
         <button disabled={busy || !query.trim()}>Search</button>
+        <button type="button" className="secondary" disabled={busy} title="Look the game and its details up again" onClick={() => run(async () => onChange(await api.refreshStoreGame(addon, id, title)))}>
+          ⟳ Refresh details
+        </button>
         {detail.custom.match && (
           <button type="button" className="ghost" disabled={busy} onClick={() => update({ match: null })}>
             Match automatically

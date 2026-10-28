@@ -1423,6 +1423,22 @@ button.small,
   aspect-ratio: 16 / 9;
   object-fit: cover;
 }
+.lightbox-nav {
+  position: fixed;
+  left: 50%;
+  bottom: 18px;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.4rem 0.6rem;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(8px);
+}
+.lightbox-nav button {
+  min-width: 2.6rem;
+}
 .lightbox-image {
   max-width: 92vw;
   max-height: 88vh;
@@ -2686,16 +2702,98 @@ label.field {
   position: relative;
   min-width: 0;
 }
-.installed-dot {
+/* Installed: a frosted pill on the cover instead of a bare dot or check mark. */
+.installed-pill {
   position: absolute;
-  top: 12px;
-  right: 12px;
-  width: 12px;
-  height: 12px;
+  top: 10px;
+  right: 10px;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35em;
+  padding: 0.22em 0.65em 0.22em 0.5em;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  color: var(--good, #59ff9a);
+  background: rgba(8, 10, 14, 0.72);
+  border: 1px solid color-mix(in srgb, var(--good, #59ff9a) 55%, transparent);
+  box-shadow: 0 0 14px color-mix(in srgb, var(--good, #59ff9a) 30%, transparent);
+  backdrop-filter: blur(6px);
+  pointer-events: none;
+}
+.installed-glyph {
+  display: inline-block;
+  width: 0.55em;
+  height: 0.55em;
   border-radius: 50%;
   background: var(--good, #59ff9a);
-  box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.55);
-  pointer-events: none;
+  box-shadow: 0 0 6px var(--good, #59ff9a);
+}
+/* Launchers: each one's own colour, so a mixed Installed shelf reads at a glance. */
+.launcher-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.18em 0.65em;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 800;
+  white-space: nowrap;
+  color: #fff;
+  background: var(--launcher, var(--accent));
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+}
+.play-card-launcher {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+}
+.launcher-dot {
+  display: inline-block;
+  width: 0.6em;
+  height: 0.6em;
+  margin-right: 0.4em;
+  border-radius: 50%;
+  background: var(--launcher, var(--accent));
+}
+.launcher-lootden {
+  --launcher: var(--accent);
+}
+.launcher-pill.launcher-lootden {
+  color: var(--accent-text, #fff);
+}
+.launcher-steam {
+  --launcher: #1a9fff;
+}
+.launcher-epic {
+  --launcher: #5c5c66;
+}
+.launcher-gog {
+  --launcher: #86328a;
+}
+.launcher-xbox {
+  --launcher: #107c10;
+}
+.launcher-ubisoft {
+  --launcher: #0070ff;
+}
+.launcher-ea {
+  --launcher: #ff4747;
+}
+.launcher-itch {
+  --launcher: #fa5c5c;
+}
+.launcher-battlenet {
+  --launcher: #148eff;
+}
+.launcher-filter {
+  flex-wrap: wrap;
+}
+.chip-count {
+  margin-left: 0.35em;
+  font-size: 0.8em;
+  opacity: 0.7;
 }
 .grid-compact {
   grid-template-columns: repeat(auto-fill, minmax(112px, 1fr));
@@ -2758,7 +2856,7 @@ label.field {
   height: 9px;
   border-radius: 50%;
   background: var(--good, #59ff9a);
-  box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.55);
+  box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.55), 0 0 10px var(--good, #59ff9a);
 }
 .game-list {
   list-style: none;
@@ -3662,4 +3760,10 @@ html[data-lootden-frame] .lightbox {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* A store's name on its card, in the launcher's colour. */
+.badge.launcher-badge {
+  border-color: var(--launcher, var(--border));
+  box-shadow: inset 3px 0 0 var(--launcher, transparent);
 }

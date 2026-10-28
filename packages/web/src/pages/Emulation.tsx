@@ -2,6 +2,7 @@ import { useEffect, useState, type CSSProperties } from "react";
 import { Link, NavLink, useParams } from "react-router-dom";
 import { platformFor, type GameSummary } from "@lootden/shared";
 import { api, formatBytes, type EmulationOverview } from "../api";
+import { useAuth } from "../auth";
 import { GameGrid } from "../components/GameCard";
 
 function useOverview() {
@@ -88,7 +89,15 @@ export function EmulationSystem() {
   const [games, setGames] = useState<GameSummary[] | null>(null);
   const [search, setSearch] = useState("");
   const [sort, setSort] = useState("title");
+  const [note, setNote] = useState("");
+  const { me } = useAuth();
   const p = platformFor(platform);
+  // Looks this system's games up again with the sources and order under Settings, Metadata sources.
+  const refresh = () =>
+    api.refreshAllMetadata(p.id).then(
+      (r) => setNote(`Refreshing ${r.queued} ${p.short} ${r.queued === 1 ? "game" : "games"} in the background. Reload in a minute to see new box art.`),
+      (e: Error) => setNote(e.message),
+    );
 
   useEffect(() => {
     setGames(null);
@@ -119,7 +128,13 @@ export function EmulationSystem() {
           <option value="added">Recently added</option>
           <option value="rating">Rating</option>
         </select>
+        {me?.role === "admin" && (
+          <button className="secondary" onClick={() => void refresh()} title="Look these games up again with the metadata sources and order under Settings">
+            ⟳ Refresh metadata
+          </button>
+        )}
       </div>
+      {note && <p className="muted small">{note}</p>}
       {games && games.length === 0 ? <p className="muted">No {p.name} games match.</p> : games && <GameGrid games={games} aspect={p.coverAspect} />}
     </div>
   );

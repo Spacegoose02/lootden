@@ -19,7 +19,7 @@ export function StoreScan() {
   return (
     <div className="store-scan">
       <h3>Games from other stores on this PC</h3>
-      <p className="muted small">LootDen looks in these launchers for installed games, so they get ▶ Play under Library, Other stores. These settings are for this PC only.</p>
+      <p className="muted small">LootDen looks in these launchers for installed games, so they show up with ▶ Play under Library, Installed. These settings are for this PC only.</p>
       {error && <p className="error">{error}</p>}
       {scan.stores.map((s) => (
         <Toggle key={s.id} label={s.name} checked={s.enabled} onChange={(on) => void save({ disabled: on ? disabled.filter((d) => d !== s.id) : [...disabled, s.id] })} />
