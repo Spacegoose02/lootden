@@ -49,7 +49,7 @@ export interface ConnectorSettings {
   /** Wanted list: wishlist games searched on a schedule through Prowlarr. */
   wanted: { autoSearch: boolean; autoGrab: boolean; intervalHours: number; onlyReleased: boolean };
   /** Alerts in the web UI, and through an Apprise API server to Discord, Telegram, phones... */
-  notify: { appriseUrl: string; appriseTargets: string; released: boolean; found: boolean; grabbed: boolean; imported: boolean; updates: boolean; flagged: boolean; sources: boolean };
+  notify: { appriseUrl: string; appriseTargets: string; released: boolean; found: boolean; grabbed: boolean; imported: boolean; updates: boolean; flagged: boolean; sources: boolean; requests: boolean };
   /** Virus scanning before an import joins the library. */
   scan: { clamav: "off" | "clamd" | "clamscan"; clamdHost: string; clamdPort: number; virusTotalKey: string; hold: boolean };
   /** NexusMods API key for trending mods on game pages. */
@@ -81,7 +81,7 @@ export const DEFAULT_CONNECTORS: ConnectorSettings = {
   itch: { apiKey: "" },
   rules: DEFAULT_RULES,
   wanted: { autoSearch: false, autoGrab: false, intervalHours: 12, onlyReleased: true },
-  notify: { appriseUrl: "", appriseTargets: "", released: true, found: true, grabbed: true, imported: true, updates: true, flagged: true, sources: true },
+  notify: { appriseUrl: "", appriseTargets: "", released: true, found: true, grabbed: true, imported: true, updates: true, flagged: true, sources: true, requests: true },
   scan: { clamav: "off", clamdHost: "clamav", clamdPort: 3310, virusTotalKey: "", hold: true },
   nexus: { apiKey: "" },
   hltb: { enabled: true },

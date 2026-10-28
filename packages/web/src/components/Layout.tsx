@@ -131,6 +131,7 @@ export function Layout() {
     { to: "/updates", label: "Updates" },
     { to: "/emulation", label: "Emulation" },
     ...(kid ? [] : [{ to: "/discover", label: "Discover" }, { to: "/wishlist", label: "Wishlist" }, { to: "/calendar", label: "Calendar" }]),
+    { to: "/requests", label: "Requests" },
     { to: "/news", label: "News" },
     // Inside the desktop app the page is still there (Profile links to it for the Playnite extension), just not in the menu.
     ...(desktop ? [] : [{ to: "/apps", label: "Get the app" }]),

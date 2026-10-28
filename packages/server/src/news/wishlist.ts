@@ -274,6 +274,13 @@ export class WishlistService {
     return this.list().find((i) => titleKey(i.title) === key)!;
   }
 
+  /** Brings back an entry removed earlier (an approved request asks for it again); returns it. */
+  restore(title: string): WishItem | undefined {
+    const key = titleKey(title);
+    this.db.prepare("UPDATE wishlist SET hidden = 0 WHERE title_key = ?").run(key);
+    return this.list().find((i) => titleKey(i.title) === key);
+  }
+
   /** Removes an entry; syncing won't add it again. */
   remove(id: number): void {
     this.db.prepare("UPDATE wishlist SET hidden = 1 WHERE id = ?").run(id);

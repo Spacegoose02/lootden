@@ -5,6 +5,7 @@ import { Layout } from "./components/Layout";
 import { installSpatialNavigation } from "./gamepad";
 import { Apps } from "./pages/Apps";
 import { Wishlist } from "./pages/Wishlist";
+import { Requests } from "./pages/Requests";
 import { Calendar } from "./pages/Calendar";
 import { Discover } from "./pages/Discover";
 import { DiscoverGame } from "./pages/DiscoverGame";
@@ -59,6 +60,7 @@ export function App() {
         <Route path="store/:addon/:id" element={<StoreGame />} />
         <Route path="calendar" element={<Calendar />} />
         <Route path="wishlist" element={<Wishlist />} />
+        <Route path="requests" element={<Requests />} />
         <Route path="emulation" element={<Emulation />} />
         <Route path="play/:id" element={<PlayInBrowser />} />
         <Route path="emulation/setup" element={<EmulatorSetup />} />

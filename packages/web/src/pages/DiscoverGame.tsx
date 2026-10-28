@@ -6,6 +6,7 @@ import { useAuth } from "../auth";
 import { FindDownloads } from "../components/FindDownloads";
 import { GameMedia } from "../components/GameMedia";
 import { listingDate } from "../components/Listing";
+import { RequestButton } from "./Requests";
 
 const SOURCES: Record<string, string> = { igdb: "IGDB", rawg: "RAWG", steam: "Steam" };
 
@@ -60,6 +61,7 @@ export function DiscoverGame() {
                 Search for releases
               </button>
             )}
+            {!game.libraryId && me?.role !== "admin" && <RequestButton game={game} />}
             {game.libraryId && (
               <Link className="button primary" to={`/games/${game.libraryId}`}>
                 In your library

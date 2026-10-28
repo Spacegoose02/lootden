@@ -570,6 +570,7 @@ const ALERT_KINDS: Array<[keyof Connectors["notify"] & string, string, string]> 
   ["updates", "A game has an update", "This copy is behind GOG, itch.io or Steam"],
   ["flagged", "The virus scan flags something", "Held for review"],
   ["sources", "A wishlist game shows up in a release source", "From the sources under Release sources"],
+  ["requests", "Someone asks for a game", "Approve or decline it under Requests"],
 ];
 
 function SafetySection({ say }: { say: Msg }) {

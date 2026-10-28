@@ -40,6 +40,8 @@ import { extraRoutes } from "./routes/extras.js";
 import { Notifier } from "./alerts/notifier.js";
 import { Scanner } from "./connectors/scan.js";
 import { WantedService } from "./news/wanted.js";
+import { RequestService } from "./news/requests.js";
+import { requestRoutes } from "./routes/requests.js";
 import { VersionChecker } from "./news/version-check.js";
 import { JournalStore } from "./users/journal.js";
 import { NexusMods } from "./news/nexus.js";
@@ -111,6 +113,7 @@ export function buildContext(config: ServerConfig, db: Db, log: Log, opts: Build
     else if (r.path) await notifier.send("imported", `${name} is in the library`, null, "/library");
     return r.path;
   };
+  const wanted = new WantedService(db, wishlist, downloads, notifier);
   const direct = new DirectDownloads(db, library, downloads, log, opts.fetchImpl);
   direct.onEvent = (e) => void notifier.send("failed", `Couldn't download ${e.title}`, e.message ?? null, "/downloads?tab=links");
   downloads.onEvent = (e) => void notifier.send(e.kind, e.kind === "grabbed" ? `Sent ${e.title} to the download client` : `Couldn't download ${e.title}`, e.message ?? null, "/downloads");
@@ -136,7 +139,8 @@ export function buildContext(config: ServerConfig, db: Db, log: Log, opts: Build
     direct,
     notifier,
     scanner,
-    wanted: new WantedService(db, wishlist, downloads, notifier),
+    wanted,
+    requests: new RequestService(db, library, wishlist, wanted, downloads, notifier),
     versions: new VersionChecker(db, library, updates, notifier, () => settings().itch.apiKey, opts.fetchImpl),
     journal: new JournalStore(db),
     nexus: new NexusMods(() => settings().nexus.apiKey, opts.fetchImpl),
@@ -211,6 +215,7 @@ export function buildApp(config: ServerConfig, db: Db, opts: BuildOptions = {}):
   saveRoutes(app, ctx);
   discoverRoutes(app, ctx);
   wishlistRoutes(app, ctx);
+  requestRoutes(app, ctx);
   extraRoutes(app, ctx);
   sourceRoutes(app, ctx);
   addonRoutes(app, ctx);
