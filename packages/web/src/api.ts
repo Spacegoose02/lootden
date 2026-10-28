@@ -136,7 +136,7 @@ export interface Connectors {
   itch: { apiKey: string };
   rules: ReleaseRules;
   wanted: { autoSearch: boolean; autoGrab: boolean; intervalHours: number; onlyReleased: boolean };
-  notify: { appriseUrl: string; appriseTargets: string } & Record<"released" | "found" | "grabbed" | "imported" | "updates" | "flagged" | "sources", boolean>;
+  notify: { appriseUrl: string; appriseTargets: string } & Record<"released" | "found" | "grabbed" | "imported" | "updates" | "flagged" | "sources" | "requests", boolean>;
   scan: { clamav: "off" | "clamd" | "clamscan"; clamdHost: string; clamdPort: number; virusTotalKey: string; hold: boolean };
   nexus: { apiKey: string };
   hltb: { enabled: boolean };
@@ -213,6 +213,22 @@ export interface VersionCheck {
   url: string | null;
   behind: boolean;
   checkedAt: string;
+}
+
+/** A game someone asked for (see the server's news/requests.ts). */
+export interface GameRequest {
+  id: number;
+  title: string;
+  url: string | null;
+  image: string | null;
+  steamAppId: number | null;
+  note: string | null;
+  status: "pending" | "declined" | "searching" | "downloading" | "ready";
+  requestedBy: { id: number; name: string };
+  createdAt: string;
+  decidedAt: string | null;
+  reason: string | null;
+  libraryId: string | null;
 }
 
 export const BACKLOG = ["backlog", "playing", "done", "shelved", "dropped", "wishlist"] as const;
@@ -570,6 +586,11 @@ export const api = {
   calendar: (days = 120, platform = "pc", past = 0) => call<ListingResult & { error?: string }>("GET", `/api/calendar${qs({ days: String(days), platform, past: String(past) })}`),
   addCalendarEntry: (e: { title: string; date: string; note?: string; url?: string }) => call<{ id: number }>("POST", "/api/calendar/entries", e),
   deleteCalendarEntry: (id: string) => call("DELETE", `/api/calendar/entries/${id}`),
+  requests: () => call<GameRequest[]>("GET", "/api/requests"),
+  requestGame: (r: { title: string; url?: string | null; image?: string | null; steamAppId?: number | null; note?: string | null }) => call<GameRequest>("POST", "/api/requests", r),
+  approveRequest: (id: number) => call<GameRequest>("POST", `/api/requests/${id}/approve`),
+  declineRequest: (id: number, reason: string) => call<GameRequest>("POST", `/api/requests/${id}/decline`, { reason }),
+  withdrawRequest: (id: number) => call("DELETE", `/api/requests/${id}`),
   wishlist: () => call<WishlistState>("GET", "/api/wishlist"),
   addWish: (title: string, url?: string) => call<WishlistState>("POST", "/api/wishlist", { title, url }),
   removeWish: (id: number) => call<WishlistState>("DELETE", `/api/wishlist/${id}`),
