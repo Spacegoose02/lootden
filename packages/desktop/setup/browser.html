@@ -1,0 +1,463 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src 'self' data: https:" />
+    <title>LootDen browser</title>
+    <style>
+      /* Colours come from the theme picked in the app, like the offline page; these are Wavelength's. */
+      :root { --bg: #0d0820; --bg2: #160d33; --panel: #1e1342; --border: #3a2a6e; --text: #f3eeff; --muted: #b3a6d9; --accent: #ff4fd8; --accent2: #2ef2ff; --accentText: #12051f; --buttons: 0px; }
+      * { box-sizing: border-box; }
+      html, body { height: 100%; }
+      body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.4 "Segoe UI", system-ui, sans-serif; overflow: hidden; display: flex; flex-direction: column; }
+      button, input { font: inherit; color: inherit; }
+      button { cursor: pointer; border: 1px solid transparent; background: transparent; border-radius: 10px; padding: 0.35em 0.6em; }
+      button:hover { background: color-mix(in srgb, var(--panel) 90%, transparent); }
+      button:disabled { opacity: 0.4; cursor: default; background: transparent; }
+      :focus-visible { outline: 3px solid var(--accent2); outline-offset: 1px; }
+      header { flex: none; background: var(--bg2); border-bottom: 1px solid color-mix(in srgb, var(--accent2) 25%, transparent); }
+      /* The tab strip is the window's title bar: it drags the window, with room for the system's buttons. */
+      .tabs { display: flex; align-items: flex-end; gap: 4px; height: var(--lootden-titlebar, 40px); padding: 0 calc(var(--buttons) + 8px) 0 8px; -webkit-app-region: drag; overflow: hidden; }
+      .tabs > * { -webkit-app-region: no-drag; }
+      .tab { display: flex; align-items: center; gap: 0.45em; min-width: 0; flex: 0 1 220px; height: calc(100% - 6px); padding: 0 0.3em 0 0.75em; border-radius: 10px 10px 0 0; background: color-mix(in srgb, var(--panel) 50%, transparent); border: 1px solid var(--border); border-bottom: 0; }
+      .tab.active { background: var(--bg); border-color: color-mix(in srgb, var(--accent2) 45%, var(--border)); }
+      .tab .pick { flex: 1; min-width: 0; display: flex; align-items: center; gap: 0.45em; padding: 0.2em 0; border: 0; background: none; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .tab img, .tab .dot { width: 16px; height: 16px; flex: none; border-radius: 4px; }
+      .tab .dot { background: linear-gradient(135deg, var(--accent), var(--accent2)); }
+      .tab .dot.loading { animation: spin 0.9s linear infinite; border-radius: 50%; background: conic-gradient(var(--accent2), transparent); }
+      @keyframes spin { to { transform: rotate(1turn); } }
+      .tab .x { padding: 0 0.4em; line-height: 1.4; color: var(--muted); }
+      .newtab { font-size: 1.2rem; line-height: 1; padding: 0.15em 0.5em; margin-bottom: 4px; }
+      .toolbar { display: flex; align-items: center; gap: 4px; padding: 6px 8px; background: var(--bg); }
+      .toolbar > button { min-width: 2.3em; font-size: 1.05rem; }
+      .toolbar .exit { font-size: 0.9rem; font-weight: 700; padding: 0.35em 0.8em; border-color: var(--border); }
+      form { flex: 1; display: flex; min-width: 8rem; }
+      #address { flex: 1; min-width: 0; padding: 0.45em 1em; border-radius: 999px; border: 1px solid var(--border); background: var(--bg2); }
+      #address:focus { border-color: var(--accent2); outline: none; box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent2) 40%, transparent); }
+      #star.on { color: #ffcf5c; }
+      .mode { font-size: 0.75rem; font-weight: 700; color: var(--muted); white-space: nowrap; padding: 0 0.4em; }
+      .mode b { color: var(--accent2); }
+      .mode kbd { font: inherit; font-weight: 800; padding: 0 0.4em; border-radius: 6px; color: var(--accentText); background: var(--accent2); }
+      html:not([data-pad]) .mode { display: none; }
+      /* The start page: the sites people go to and the launchers on this PC. */
+      main { flex: 1; overflow: auto; padding: 2rem clamp(1rem, 5vw, 4rem) 3rem; background: radial-gradient(900px 500px at 10% -10%, color-mix(in srgb, var(--accent) 18%, transparent), transparent 60%), radial-gradient(800px 480px at 100% 0%, color-mix(in srgb, var(--accent2) 14%, transparent), transparent 60%), var(--bg); }
+      body:not(.start) main { display: none; }
+      .search { display: flex; gap: 0.5rem; max-width: 760px; margin: 0 auto 2rem; }
+      .search input { flex: 1; padding: 0.8em 1.3em; font-size: 1.1rem; border-radius: 999px; border: 1px solid var(--border); background: color-mix(in srgb, var(--bg2) 85%, transparent); }
+      .primary { font-weight: 700; color: var(--accentText); background: linear-gradient(135deg, var(--accent), var(--accent2)); border-radius: 999px; padding: 0.6em 1.4em; }
+      .primary:hover { background: linear-gradient(135deg, var(--accent), var(--accent2)); filter: brightness(1.1); }
+      .ghost { border-color: var(--border); border-radius: 999px; padding: 0.45em 1em; }
+      h2 { display: flex; align-items: center; gap: 0.6rem; font-size: 1.05rem; margin: 1.5rem 0 0.8rem; }
+      h2::before { content: ""; width: 4px; height: 1.1em; border-radius: 2px; background: linear-gradient(180deg, var(--accent), var(--accent2)); box-shadow: 0 0 10px var(--accent); }
+      h2 .ghost { margin-left: auto; font-size: 0.85rem; }
+      .sites { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 0.9rem; }
+      .site { position: relative; }
+      .site > button.go { width: 100%; display: flex; flex-direction: column; align-items: center; gap: 0.5rem; padding: 1rem 0.5rem; border-radius: 14px; border: 1px solid var(--border); background: color-mix(in srgb, var(--panel) 75%, transparent); }
+      .site > button.go:focus-visible, .site > button.go:hover { border-color: var(--accent2); box-shadow: 0 0 0 1px var(--accent2), 0 0 22px color-mix(in srgb, var(--accent2) 40%, transparent); outline: none; }
+      .badge { width: 52px; height: 52px; border-radius: 14px; display: grid; place-items: center; font-size: 1.5rem; font-weight: 800; color: #fff; text-shadow: 0 1px 4px rgba(0, 0, 0, 0.4); }
+      .site .name { font-weight: 600; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .site .remove { position: absolute; top: -8px; right: -8px; width: 2em; height: 2em; padding: 0; border-radius: 50%; background: #ff5c7a; color: #fff; font-weight: 800; }
+      .add { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 1rem; }
+      .add[hidden], section[hidden] { display: none; }
+      .add input { flex: 1 1 12rem; padding: 0.5em 1em; border-radius: 12px; border: 1px solid var(--border); background: var(--bg2); }
+      .row { display: flex; flex-wrap: wrap; gap: 0.6rem; }
+      .chip { border: 1px solid var(--border); border-radius: 999px; padding: 0.45em 1em; font-weight: 600; background: color-mix(in srgb, var(--panel) 80%, transparent); }
+      .chip[aria-checked="true"] { color: var(--accentText); background: linear-gradient(135deg, var(--accent), var(--accent2)); border-color: transparent; }
+      .muted { color: var(--muted); }
+      .error { color: #ff5c7a; min-height: 1.4em; }
+      .hints { margin-top: 2rem; font-size: 0.85rem; }
+      .hints kbd { font: inherit; font-weight: 800; padding: 0.05em 0.45em; border-radius: 6px; color: var(--accentText); background: var(--accent2); margin-right: 0.25em; }
+      html[data-handheld="on"] body { font-size: 17px; }
+      @media (max-width: 720px) { .toolbar .exit span { display: none; } }
+    </style>
+  </head>
+  <body class="start">
+    <header id="bar">
+      <div class="tabs" id="tabs"></div>
+      <div class="toolbar">
+        <button class="exit" id="exit" title="Close the browser and go back to LootDen (B on the start page)">✕ <span>LootDen</span></button>
+        <button id="back" title="Back (Alt+Left)" aria-label="Back">←</button>
+        <button id="forward" title="Forward (Alt+Right)" aria-label="Forward">→</button>
+        <button id="reload" title="Reload (F5)" aria-label="Reload">⟳</button>
+        <button id="home" title="Start page" aria-label="Start page">⌂</button>
+        <form id="form"><input id="address" type="text" spellcheck="false" autocomplete="off" placeholder="Search or type a web address" aria-label="Address" /></form>
+        <button id="star" title="Add to the start page" aria-label="Bookmark">☆</button>
+        <span class="mode" id="mode" aria-live="polite"></span>
+        <button id="full" title="Full screen (F11)" aria-label="Full screen">⛶</button>
+      </div>
+    </header>
+    <main id="start">
+      <form class="search" id="searchForm">
+        <input id="q" type="text" spellcheck="false" autocomplete="off" placeholder="Search the web or type an address" aria-label="Search the web" />
+        <button class="primary" type="submit">Go</button>
+      </form>
+      <h2>Sites <button class="ghost" id="edit" type="button">Edit</button></h2>
+      <div class="sites" id="sites"></div>
+      <form class="add" id="add" hidden>
+        <input id="addTitle" placeholder="Name (optional)" aria-label="Name" />
+        <input id="addUrl" placeholder="Address, e.g. youtube.com" aria-label="Address" required />
+        <button class="primary" type="submit">Add site</button>
+        <button class="ghost" type="button" id="reset">Reset to the usual sites</button>
+      </form>
+      <p class="error" id="err" role="alert"></p>
+      <section id="launchersBox">
+        <h2>Launchers on this PC</h2>
+        <div class="row" id="launchers"></div>
+      </section>
+      <h2>Search with</h2>
+      <div class="row" id="engines" role="radiogroup" aria-label="Search engine"></div>
+      <p class="muted hints">
+        Controller: <kbd>A</kbd>select <kbd>B</kbd>back <kbd>Y</kbd>address bar <kbd>LB</kbd><kbd>RB</kbd>tabs <kbd>View</kbd>toolbar or page. On a page the left stick moves a pointer, <kbd>A</kbd>clicks and the right stick scrolls;
+        <kbd>Menu</kbd>hands the controller to the page for cloud gaming, and <kbd>View</kbd>+<kbd>Menu</kbd> takes it back.
+      </p>
+    </main>
+    <script>
+      const br = window.lootdenBrowser;
+      const $ = (id) => document.getElementById(id);
+      let state = null;
+      let editing = false;
+      /** Who the controller drives: the toolbar ("bar"), a pointer on the page ("page"), or the page itself ("pass"). */
+      let mode = "bar";
+      const cleanError = (x) => String(x?.message || x).replace(/^Error invoking remote method '[^']+': (Error: )?/, "");
+      const current = () => state?.tabs.find((t) => t.id === state.active);
+      const onPage = () => !!current() && !current().start;
+
+      /** A steady colour per site for its tile. */
+      function hue(text) {
+        let h = 0;
+        for (const c of text) h = (h * 31 + c.charCodeAt(0)) % 360;
+        return h;
+      }
+      const host = (url) => {
+        try {
+          return new URL(url).hostname.replace(/^www\./, "");
+        } catch {
+          return url;
+        }
+      };
+
+      function applyFrame(frame, theme) {
+        const root = document.documentElement;
+        if (theme) for (const [k, v] of Object.entries(theme)) if (/^#[0-9a-f]{3,8}$/i.test(v)) root.style.setProperty(`--${k}`, v);
+        root.style.setProperty("--lootden-titlebar", `${frame.height}px`);
+        // Windows draws minimize, maximize and close over the top right while not full screen.
+        root.style.setProperty("--buttons", frame.custom && !frame.fullscreen ? "140px" : "0px");
+        if (frame.handheld) root.dataset.handheld = "on";
+        else delete root.dataset.handheld;
+      }
+
+      function render() {
+        if (!state) return;
+        applyFrame(state.frame, state.theme);
+        const tab = current();
+        document.body.classList.toggle("start", !tab || tab.start);
+        if (tab?.start && mode !== "bar") setMode("bar");
+        // Tabs
+        const strip = $("tabs");
+        strip.replaceChildren();
+        for (const t of state.tabs) {
+          const el = document.createElement("div");
+          el.className = `tab${t.id === state.active ? " active" : ""}`;
+          const pick = document.createElement("button");
+          pick.className = "pick";
+          pick.title = t.url || t.title;
+          if (t.favicon && !t.loading) {
+            const img = document.createElement("img");
+            img.src = t.favicon;
+            img.alt = "";
+            img.addEventListener("error", () => img.replaceWith(Object.assign(document.createElement("span"), { className: "dot" })));
+            pick.append(img);
+          } else pick.append(Object.assign(document.createElement("span"), { className: `dot${t.loading ? " loading" : ""}` }));
+          pick.append(t.title || "New tab");
+          pick.addEventListener("click", () => br.selectTab(t.id));
+          const x = Object.assign(document.createElement("button"), { className: "x", textContent: "✕", title: "Close tab (Ctrl+W)" });
+          x.setAttribute("aria-label", `Close ${t.title}`);
+          x.addEventListener("click", () => br.closeTab(t.id));
+          el.append(pick, x);
+          strip.append(el);
+        }
+        const plus = Object.assign(document.createElement("button"), { className: "newtab", textContent: "+", title: "New tab (Ctrl+T)" });
+        plus.setAttribute("aria-label", "New tab");
+        plus.addEventListener("click", () => br.newTab());
+        strip.append(plus);
+        // Toolbar
+        $("back").disabled = !state.canGoBack;
+        $("forward").disabled = !state.canGoForward;
+        $("reload").disabled = !onPage();
+        $("reload").textContent = tab?.loading ? "✕" : "⟳";
+        $("reload").title = tab?.loading ? "Stop" : "Reload (F5)";
+        $("home").disabled = !onPage();
+        $("star").disabled = !onPage();
+        const marked = onPage() && state.bookmarks.some((b) => b.url === tab.url);
+        $("star").textContent = marked ? "★" : "☆";
+        $("star").classList.toggle("on", marked);
+        $("star").title = marked ? "Take off the start page" : "Add to the start page";
+        if (document.activeElement !== $("address")) $("address").value = tab?.url ?? "";
+        renderStart();
+        renderMode();
+      }
+
+      function renderStart() {
+        const sites = $("sites");
+        sites.replaceChildren();
+        for (const b of state.bookmarks) {
+          const box = document.createElement("div");
+          box.className = "site";
+          const go = document.createElement("button");
+          go.className = "go";
+          go.title = b.url;
+          const badge = Object.assign(document.createElement("span"), { className: "badge", textContent: (b.title.trim()[0] || "?").toUpperCase() });
+          badge.style.background = `linear-gradient(135deg, hsl(${hue(host(b.url))} 70% 45%), hsl(${(hue(host(b.url)) + 40) % 360} 70% 35%))`;
+          go.append(badge, Object.assign(document.createElement("span"), { className: "name", textContent: b.title }));
+          go.addEventListener("click", () => br.open(b.url));
+          box.append(go);
+          if (editing) {
+            const rm = Object.assign(document.createElement("button"), { className: "remove", textContent: "✕" });
+            rm.setAttribute("aria-label", `Remove ${b.title}`);
+            rm.addEventListener("click", () => br.bookmarks(state.bookmarks.filter((x) => x.url !== b.url)));
+            box.append(rm);
+          }
+          sites.append(box);
+        }
+        if (!state.bookmarks.length) sites.append(Object.assign(document.createElement("p"), { className: "muted", textContent: "No sites yet. Use Edit to add some, or the star on any page." }));
+        $("add").hidden = !editing;
+        $("edit").textContent = editing ? "Done" : "Edit";
+        const launchers = $("launchers");
+        launchers.replaceChildren();
+        $("launchersBox").hidden = !state.launchers.length;
+        for (const l of state.launchers) {
+          const b = Object.assign(document.createElement("button"), { className: "chip", textContent: l.name, title: `Open ${l.name}` });
+          b.addEventListener("click", () => br.launch(l.id).catch(() => ($("err").textContent = `Couldn't open ${l.name}. Is it installed?`)));
+          launchers.append(b);
+        }
+        const engines = $("engines");
+        engines.replaceChildren();
+        for (const e of state.engines) {
+          const b = Object.assign(document.createElement("button"), { className: "chip", textContent: e.name });
+          b.setAttribute("role", "radio");
+          b.setAttribute("aria-checked", String(state.search === e.id));
+          b.addEventListener("click", () => br.search(e.id));
+          engines.append(b);
+        }
+      }
+
+      function renderMode() {
+        const m = $("mode");
+        if (!onPage()) return void (m.textContent = "");
+        m.innerHTML =
+          mode === "pass"
+            ? "<b>Controller → page</b> · <kbd>View</kbd>+<kbd>Menu</kbd> to take it back"
+            : mode === "page"
+              ? "<b>Pointer</b> · <kbd>A</kbd> click <kbd>B</kbd> back <kbd>View</kbd> toolbar <kbd>Menu</kbd> page"
+              : "<b>Toolbar</b> · <kbd>View</kbd> or <kbd>B</kbd> back to the page";
+      }
+
+      function setMode(next) {
+        if (next !== "bar" && !onPage()) next = "bar";
+        mode = next;
+        if (next === "bar") {
+          void br.focusShell();
+          const el = document.activeElement;
+          if (!el || el === document.body) (onPage() ? $("address") : document.querySelector(".site .go, #q"))?.focus();
+        } else {
+          document.activeElement?.blur();
+          void br.focusPage();
+          if (next === "page") void br.pointer(0, 0);
+        }
+        renderMode();
+      }
+
+      // ---- Toolbar and start page ----------------------------------------------------
+
+      $("exit").addEventListener("click", () => br.close());
+      $("back").addEventListener("click", () => br.back());
+      $("forward").addEventListener("click", () => br.forward());
+      $("reload").addEventListener("click", () => (current()?.loading ? br.stop() : br.reload()));
+      $("home").addEventListener("click", () => br.home());
+      $("star").addEventListener("click", () => br.toggleBookmark());
+      $("full").addEventListener("click", () => br.fullscreen());
+      $("form").addEventListener("submit", (e) => {
+        e.preventDefault();
+        const text = $("address").value;
+        $("address").blur();
+        void br.navigate(text).then(() => setMode("page"));
+      });
+      $("address").addEventListener("focus", () => $("address").select());
+      $("address").addEventListener("keydown", (e) => {
+        if (e.key === "Escape") {
+          $("address").value = current()?.url ?? "";
+          $("address").blur();
+        }
+      });
+      $("searchForm").addEventListener("submit", (e) => {
+        e.preventDefault();
+        const text = $("q").value;
+        if (!text.trim()) return;
+        $("q").value = "";
+        void br.navigate(text).then(() => setMode("page"));
+      });
+      $("edit").addEventListener("click", () => {
+        editing = !editing;
+        renderStart();
+      });
+      $("add").addEventListener("submit", (e) => {
+        e.preventDefault();
+        const text = $("addUrl").value.trim();
+        const url = /^https?:\/\//i.test(text) ? text : `https://${text}`;
+        try {
+          new URL(url);
+        } catch {
+          $("err").textContent = "That doesn't look like a web address.";
+          return;
+        }
+        $("err").textContent = "";
+        void br.bookmarks([...state.bookmarks, { title: $("addTitle").value.trim(), url }]);
+        $("addTitle").value = "";
+        $("addUrl").value = "";
+      });
+      $("reset").addEventListener("click", () => br.resetBookmarks());
+
+      // Clicking or tapping the page hands it the controller's pointer; the toolbar takes it back.
+      window.addEventListener("blur", () => {
+        if (onPage() && mode === "bar") (mode = "page"), renderMode();
+      });
+      window.addEventListener("focus", () => {
+        if (mode === "page") (mode = "bar"), renderMode();
+      });
+
+      br.onState((s) => {
+        const first = !state;
+        state = s;
+        render();
+        if (first && !onPage()) $("q").focus();
+      });
+      br.onFocusAddress(() => {
+        mode = "bar";
+        if (onPage()) $("address").focus();
+        else $("q").focus();
+        renderMode();
+      });
+      void br.state().then((s) => {
+        state = s;
+        render();
+        if (!onPage()) $("q").focus();
+      });
+      new ResizeObserver(() => br.layout($("bar").getBoundingClientRect().height)).observe($("bar"));
+
+      // ---- Controller ----------------------------------------------------------------
+
+      /** Moves focus to the nearest item that way, as in the rest of LootDen. */
+      function move(dx, dy) {
+        const items = [...document.querySelectorAll("button:not(:disabled), input")].filter((el) => {
+          const r = el.getBoundingClientRect();
+          return r.width > 0 && r.height > 0 && r.bottom > 0 && r.top < innerHeight;
+        });
+        const cur = document.activeElement;
+        if (!items.includes(cur)) return items[0]?.focus();
+        const r = cur.getBoundingClientRect();
+        const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+        let best = null, bestScore = Infinity;
+        for (const el of items) {
+          if (el === cur) continue;
+          const o = el.getBoundingClientRect();
+          const ox = o.left + o.width / 2 - cx, oy = o.top + o.height / 2 - cy;
+          const along = dx ? ox * dx : oy * dy;
+          if (along <= 4) continue;
+          const score = along + 3 * Math.abs(dx ? oy : ox);
+          if (score < bestScore) (best = el), (bestScore = score);
+        }
+        best?.focus();
+        best?.scrollIntoView({ block: "nearest" });
+      }
+      const KEYS = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
+      document.addEventListener("keydown", (e) => {
+        if (!KEYS[e.key] || (e.target.tagName === "INPUT" && (e.key === "ArrowLeft" || e.key === "ArrowRight"))) return;
+        e.preventDefault();
+        move(...KEYS[e.key]);
+      });
+
+      let held = {};
+      const repeatAt = {};
+      const dead = (v) => (Math.abs(v) < 0.18 ? 0 : v);
+      function poll() {
+        for (const pad of navigator.getGamepads?.() ?? []) {
+          if (!pad) continue;
+          document.documentElement.dataset.pad = "on";
+          const btn = (i) => !!pad.buttons[i]?.pressed;
+          const ax = dead(pad.axes[0] ?? 0), ay = dead(pad.axes[1] ?? 0);
+          const rx = dead(pad.axes[2] ?? 0), ry = dead(pad.axes[3] ?? 0);
+          const now = {
+            a: btn(0), b: btn(1), x: btn(2), y: btn(3), lb: btn(4), rb: btn(5), view: btn(8), menu: btn(9),
+            up: btn(12), down: btn(13), left: btn(14), right: btn(15),
+            sup: ay < -0.55 && Math.abs(ay) > Math.abs(ax), sdown: ay > 0.55 && Math.abs(ay) > Math.abs(ax),
+            sleft: ax < -0.55 && Math.abs(ax) >= Math.abs(ay), sright: ax > 0.55 && Math.abs(ax) >= Math.abs(ay),
+          };
+          const pressed = (k) => now[k] && !held[k];
+          const t = performance.now();
+          const repeat = (k, fn) => {
+            if (!now[k]) return void delete repeatAt[k];
+            if (pressed(k)) repeatAt[k] = t + 300;
+            else if (t < repeatAt[k]) return;
+            else repeatAt[k] = t + 110;
+            fn();
+          };
+
+          if (mode === "pass") {
+            // Everything goes to the page (Xbox Cloud Gaming, GeForce NOW); only View + Menu together comes back.
+            if (now.view && now.menu && !(held.view && held.menu)) setMode("page");
+          } else if (mode === "page") {
+            // Left stick: the pointer, faster the further it's pushed.
+            if (ax || ay) {
+              const speed = (v) => Math.sign(v) * Math.pow(Math.abs(v), 2) * 22;
+              void br.pointer(speed(ax), speed(ay));
+            }
+            if (rx || ry) void br.scroll(rx * 40, ry * 60);
+            repeat("up", () => br.key("Up"));
+            repeat("down", () => br.key("Down"));
+            repeat("left", () => br.key("Left"));
+            repeat("right", () => br.key("Right"));
+            if (pressed("a")) void br.click("left");
+            if (pressed("x")) void br.click("right");
+            if (pressed("b")) state?.canGoBack ? void br.back() : setMode("bar");
+            if (pressed("y")) {
+              setMode("bar");
+              $("address").focus();
+            }
+            if (pressed("view")) setMode("bar");
+            else if (pressed("menu")) setMode("pass");
+            if (pressed("lb")) void br.stepTab(-1);
+            if (pressed("rb")) void br.stepTab(1);
+          } else {
+            repeat("up", () => move(0, -1));
+            repeat("down", () => move(0, 1));
+            repeat("left", () => move(-1, 0));
+            repeat("right", () => move(1, 0));
+            repeat("sup", () => move(0, -1));
+            repeat("sdown", () => move(0, 1));
+            repeat("sleft", () => move(-1, 0));
+            repeat("sright", () => move(1, 0));
+            if (pressed("a")) {
+              const el = document.activeElement;
+              if (el?.tagName === "INPUT") el.value.trim() && el.form?.requestSubmit();
+              else el?.click();
+            }
+            if (pressed("b")) {
+              if (document.activeElement?.tagName === "INPUT" && document.activeElement.value) document.activeElement.blur();
+              else if (onPage()) setMode("page");
+              else if (editing) (editing = false), renderStart();
+              else void br.close();
+            }
+            if (pressed("y")) (onPage() ? $("address") : $("q")).focus();
+            if (pressed("view") && onPage()) setMode("page");
+            if (pressed("lb")) void br.stepTab(-1);
+            if (pressed("rb")) void br.stepTab(1);
+          }
+          held = now;
+          break;
+        }
+        requestAnimationFrame(poll);
+      }
+      requestAnimationFrame(poll);
+    </script>
+  </body>
+</html>

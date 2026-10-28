@@ -12,3 +12,4 @@ export { findSetup, prepareGame, runLocalSetup, uploadInstalledFolder, type Prep
 export { applyUpdate, BACKUP_FOLDER, undoUpdate, UpdateMismatchError, updateProblem, type AppliedUpdate, type ApplyUpdateOptions } from "./updates.js";
 export { scanStoreGames, STORE_SCANNERS, type StoreScanner } from "./stores/index.js";
 export { isStoreLaunchUrl } from "@lootden/shared";
+export { addressToUrl, cleanBookmarks, DEFAULT_BOOKMARKS, isBrowsable, launcherShortcuts, MAX_BOOKMARKS, SEARCH_ENGINES, siteName, type Bookmark, type LauncherShortcut, type SearchEngine } from "./browser.js";

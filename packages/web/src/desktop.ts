@@ -80,6 +80,8 @@ export interface AppSettings {
   fullscreen?: boolean;
   /** Handheld mode; missing in older apps. */
   handheld?: "auto" | "on" | "off";
+  /** Links open in the built-in browser: "auto" does so in handheld mode (apps with the browser only). */
+  browserLinks?: "auto" | "on" | "off";
   handheldActive?: boolean;
   looksHandheld?: boolean;
   trayAvailable: boolean;
@@ -112,6 +114,8 @@ export interface DesktopBridge {
   /** Library add-ons: store games installed on this PC, and starting one through its launcher (apps from 0.14.0). */
   storeGames?(): Promise<LocalStoreGame[]>;
   launchStore?(url: string): Promise<void>;
+  /** The built-in web browser, over LootDen, on its start page or a web page (newer apps only). */
+  openBrowser?(url?: string): Promise<void>;
   /** This PC's store scanner settings, and adding a folder to it through the folder picker (newer apps only). */
   storeScan?(patch?: { disabled?: string[]; folders?: string[] }): Promise<StoreScanSettings>;
   addStoreFolder?(): Promise<StoreScanSettings>;
@@ -141,7 +145,7 @@ export interface DesktopBridge {
   goOffline?(): Promise<boolean>;
   toggleFullscreen(): Promise<boolean>;
   /** Tray, start-up and update options (missing in apps before 0.9.1). */
-  appSettings?(patch?: Partial<Pick<AppSettings, "closeToTray" | "autoUpdate" | "openAtLogin" | "handheld" | "fullscreen">>): Promise<AppSettings>;
+  appSettings?(patch?: Partial<Pick<AppSettings, "closeToTray" | "autoUpdate" | "openAtLogin" | "handheld" | "fullscreen" | "browserLinks">>): Promise<AppSettings>;
   appUpdate?(action?: "status" | "check" | "install"): Promise<AppUpdate>;
   /** Quits the app for real (closing the window only hides it to the tray). */
   quit?(): Promise<void>;

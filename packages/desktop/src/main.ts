@@ -6,6 +6,7 @@ import os from "node:os";
 import path from "node:path";
 import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, net, Notification, screen, session, shell, Tray, type IpcMainInvokeEvent } from "electron";
 import {
+  isBrowsable,
   addBiosFile,
   adoptFolder,
   findCopies,
@@ -42,6 +43,7 @@ import {
 } from "@lootden/client";
 import { isExternalLink, isFile, onOrigin, permissionAllowed } from "./links.js";
 import { SettingsStore, type DesktopSettings } from "./settings.js";
+import { WebBrowser } from "./browser.js";
 import { downloadUpdate, installKind, launchUpdate, pickUpdate, type AvailableUpdate } from "./updater.js";
 
 /** Emulators live in the app's data folder unless the user moved them. */
@@ -63,6 +65,9 @@ const playing = new Set<string>();
 const startHidden = process.argv.includes("--hidden");
 /** The "LootDen (full screen)" shortcut, jump list task or a launcher like Steam asked for full screen. */
 const launchFullscreen = process.argv.includes("--fullscreen");
+/** The "Web browser" jump list task. */
+const launchBrowser = process.argv.includes("--browser");
+let browser: WebBrowser;
 
 // Keep settings from before the rename: the app's data folder used to be "Game Manager".
 const legacyUserData = path.join(app.getPath("appData"), "Game Manager");
@@ -89,6 +94,16 @@ function fromServer(e: IpcMainInvokeEvent): void {
 }
 
 const OFFLINE_PAGE = path.join(__dirname, "..", "setup", "offline.html");
+/** The built-in browser's toolbar and start page. */
+const BROWSER_PAGE = path.join(__dirname, "..", "setup", "browser.html");
+
+/** Links out of LootDen's pages: the built-in browser on a handheld (or when chosen), otherwise the system's. */
+function openLink(url: string): void {
+  const choice = settings.get().browserLinks ?? "auto";
+  const inApp = choice === "on" || (choice === "auto" && handheldActive(settings.get()));
+  if (inApp && isBrowsable(url)) browser.open(url);
+  else if (isExternalLink(url)) void shell.openExternal(url);
+}
 /** The theme colours the offline page uses (see offlineTheme in the web UI's theme.ts). */
 const OFFLINE_THEME_KEYS = ["bg", "bg2", "panel", "border", "text", "muted", "accent", "accent2", "accentText"] as const;
 
@@ -330,6 +345,7 @@ function send(payload: object): void {
 const icon = () => nativeImage.createFromPath(path.join(__dirname, "..", "build", "icon.png"));
 
 function showWindow(route?: string): void {
+  browser?.close();
   if (!win) return void createWindow();
   if (win.isMinimized()) win.restore();
   win.show();
@@ -365,6 +381,7 @@ function refreshTray(): void {
     Menu.buildFromTemplate([
       { label: "Open LootDen", click: () => showWindow() },
       { label: "Installed games", click: () => showWindow("/library?tab=installed") },
+      { label: "Web browser", click: () => browser.open() },
       { type: "separator" },
       u.state === "ready"
         ? { label: `Restart to update to ${u.version}`, click: () => void installNow() }
@@ -432,6 +449,7 @@ function setJumpList(): void {
   if (process.platform !== "win32") return;
   app.setUserTasks([
     { program: appExe(), arguments: "--fullscreen", iconPath: appExe(), iconIndex: 0, title: "Open full screen", description: "Open LootDen full screen, for a handheld or TV" },
+    { program: appExe(), arguments: "--browser", iconPath: appExe(), iconIndex: 0, title: "Web browser", description: "Open LootDen's web browser" },
   ]);
 }
 
@@ -1114,17 +1132,24 @@ function registerIpc(): void {
     await shell.openExternal(url);
   });
 
+  /** The built-in web browser, on its start page or a web page. */
+  ipcMain.handle("gm:openBrowser", (e, url?: string) => {
+    fromServer(e);
+    browser.open(typeof url === "string" && isBrowsable(url) ? url : undefined);
+  });
+
   ipcMain.handle("gm:openFolder", async (e, gameId: string) => {
     fromServer(e);
     await shell.openPath((await findInstalled(gameId)).dir);
   });
 
-  ipcMain.handle("gm:appSettings", (e, patch?: Partial<Pick<DesktopSettings, "closeToTray" | "autoUpdate" | "openAtLogin" | "handheld" | "fullscreen">>) => {
+  ipcMain.handle("gm:appSettings", (e, patch?: Partial<Pick<DesktopSettings, "closeToTray" | "autoUpdate" | "openAtLogin" | "handheld" | "fullscreen" | "browserLinks">>) => {
     fromServer(e);
     if (patch) {
       const clean: Partial<DesktopSettings> = {};
       for (const k of ["closeToTray", "autoUpdate", "openAtLogin", "fullscreen"] as const) if (typeof patch[k] === "boolean") clean[k] = patch[k];
       if (patch.handheld && ["auto", "on", "off"].includes(patch.handheld)) clean.handheld = patch.handheld;
+      if (patch.browserLinks && ["auto", "on", "off"].includes(patch.browserLinks)) clean.browserLinks = patch.browserLinks;
       const s = settings.update(clean);
       // Ticking the box here also turns the entry back on if it was switched off in Windows.
       if ("openAtLogin" in clean) applyLoginItem(s, s.openAtLogin);
@@ -1147,6 +1172,7 @@ function registerIpc(): void {
       handheld: s.handheld,
       handheldActive: handheldActive(s),
       looksHandheld: looksHandheld(),
+      browserLinks: s.browserLinks ?? "auto",
       trayAvailable: !!tray,
       loginItemSupported: process.platform === "win32" || process.platform === "darwin",
     };
@@ -1185,10 +1211,16 @@ function registerIpc(): void {
     fromLocal(e);
     const covers = await readdir(coversDir()).catch(() => [] as string[]);
     const games = await listInstalled(await searchDirs());
+    // Steam, Epic, GOG and the other launchers' games play offline too, through the launcher.
+    const { disabled, folders } = settings.get().storeScan;
+    const stores = await scanStoreGames(STORE_SCANNERS, process.platform, { disabled, folders }).catch(() => []);
     return {
       server: origin(),
       pendingPlays: settings.get().pendingPlays.length,
       theme: settings.get().offlineTheme ?? null,
+      stores: stores
+        .filter((g) => g.launchUrl && isStoreLaunchUrl(g.launchUrl))
+        .map((g) => ({ addon: g.addon, store: g.store ?? g.addon, externalId: g.externalId, title: g.title, launchUrl: g.launchUrl! })),
       games: await Promise.all(
         games.map(async (g) => ({
           gameId: g.gameId,
@@ -1205,6 +1237,12 @@ function registerIpc(): void {
   ipcMain.handle("gm:offline:play", async (e, gameId: string) => {
     fromLocal(e);
     return play(gameId);
+  });
+  /** A store game from the offline page, through its launcher. Only store launcher links open. */
+  ipcMain.handle("gm:offline:launchStore", async (e, url: string) => {
+    fromLocal(e);
+    if (typeof url !== "string" || !isStoreLaunchUrl(url)) throw new Error("That isn't a store launcher link");
+    await shell.openExternal(url);
   });
   ipcMain.handle("gm:offline:openFolder", async (e, gameId: string) => {
     fromLocal(e);
@@ -1254,6 +1292,7 @@ async function openDeepLink(link: string): Promise<void> {
   const install = link.match(/^(?:lootden|gamemanager):\/\/install\/([\w-]+)/);
   const auth = link.match(/^(?:lootden|gamemanager):\/\/auth\/?\?code=([\w-]+)/);
   if (!(install || auth) || !win || !origin()) return;
+  browser.close();
   if (win.isMinimized()) win.restore();
   win.show();
   win.focus();
@@ -1321,7 +1360,7 @@ async function createWindow(): Promise<void> {
   Menu.setApplicationMenu(null);
   // Links to other sites (news, screenshots) open in the normal browser.
   win.webContents.setWindowOpenHandler(({ url }) => {
-    if (isExternalLink(url)) void shell.openExternal(url);
+    openLink(url);
     return { action: "deny" };
   });
   win.webContents.session.setPermissionRequestHandler((_wc, permission, callback, details) => callback(permissionAllowed(permission, details.requestingUrl, origin())));
@@ -1337,7 +1376,7 @@ async function createWindow(): Promise<void> {
     // window, so they stay here until the provider sends the window back to the server.
     if (onSignInPages() && /^https?:\/\//.test(url)) return;
     event.preventDefault();
-    if (isExternalLink(url)) void shell.openExternal(url);
+    openLink(url);
   });
   // Closing hides the window to the tray: the app keeps tracking play time and installs.
   win.on("close", (event) => {
@@ -1383,10 +1422,12 @@ async function createWindow(): Promise<void> {
 app.on("second-instance", (_e, argv) => {
   const link = argv.find(isDeepLink);
   if (link) {
+    browser.close();
     win?.show();
     void openDeepLink(link);
-  } else showWindow();
+  } else if (!argv.includes("--browser")) showWindow();
   if (argv.includes("--fullscreen") && win && !win.isFullScreen()) win.setFullScreen(true);
+  if (argv.includes("--browser")) browser.open();
 });
 app.on("before-quit", () => (quitting = true));
 app.on("open-url", (e, url) => {
@@ -1404,10 +1445,23 @@ app.userAgentFallback = app.userAgentFallback.replace(/ (?:Electron|LootDen|@loo
 void app.whenReady().then(async () => {
   settings = new SettingsStore(path.join(app.getPath("userData"), "settings.json"));
   registerIpc();
+  browser = new WebBrowser({
+    settings: () => settings,
+    mainWindow: () => win,
+    handheld: () => handheldActive(settings.get()),
+    customFrame,
+    titlebarHeight: TITLEBAR_HEIGHT,
+    zoom: HANDHELD_ZOOM,
+    shellPage: BROWSER_PAGE,
+    preload: path.join(__dirname, "browser-preload.cjs"),
+    icon: path.join(__dirname, "..", "build", "icon.png"),
+  });
+  browser.registerIpc();
   createTray();
   applyLoginItem(settings.get());
   setJumpList();
   await createWindow();
+  if (launchBrowser) browser.open();
   // The copy replaced by the last update.
   const self = process.env.PORTABLE_EXECUTABLE_FILE ?? process.env.APPIMAGE;
   if (self) void rm(`${self}.old`, { force: true }).catch(() => {});

@@ -291,4 +291,35 @@ describe("retro metadata sources", () => {
     assert.equal(lb.statusCode, 502);
     await app.close();
   });
+
+  it("refreshes matched games with the current sources, by system, and keeps hand-picked matches", async () => {
+    const f = fake((url) => screenscraper(url) ?? thegamesdb(url));
+    const { ctx, app, db } = await makeApp(root, { apiToken: "svc", screenscraper: SS_CREDS, thegamesdb: { apiKey: "tgdb-key" } }, { fetchImpl: f.impl });
+    const headers = { authorization: "Bearer svc" };
+    const sonic = gameOn(ctx, "genesis");
+    const mario = gameOn(ctx, "nes");
+    // Matched before the sources changed: a lookup of missing games leaves it alone.
+    db.prepare(
+      "INSERT INTO metadata (game_id, provider, provider_id, name, locked, fetched_at) VALUES (?, 'rawg', '9', 'Something Else', 0, '2020-01-01T00:00:00Z')",
+    ).run(sonic.id);
+    await ctx.metadata.apply(mario.id, "thegamesdb", "140");
+
+    const one = await app.inject({ method: "POST", url: "/api/metadata/refresh", headers, payload: { scope: "genesis" } });
+    assert.equal(one.statusCode, 200);
+    assert.equal(one.json().queued, 1, "only the system asked for");
+    await ctx.metadata.idle();
+    assert.equal(ctx.library.get(sonic.id)!.metadata?.provider, "screenscraper");
+
+    const single = await app.inject({ method: "POST", url: `/api/games/${mario.id}/metadata/refresh`, headers });
+    assert.equal(single.statusCode, 200);
+    assert.equal(single.json().metadata.provider, "thegamesdb");
+    assert.equal(single.json().metadata.locked, true, "a hand-picked match stays picked");
+
+    const all = await app.inject({ method: "POST", url: "/api/metadata/refresh", headers, payload: { scope: "emulated" } });
+    assert.equal(all.json().queued, 3);
+    await ctx.metadata.idle();
+    assert.equal(ctx.library.get(sonic.id)!.metadata?.provider, "screenscraper");
+    assert.equal((await app.inject({ method: "POST", url: "/api/games/nope/metadata/refresh", headers })).statusCode, 404);
+    await app.close();
+  });
 });

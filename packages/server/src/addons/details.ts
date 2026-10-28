@@ -135,11 +135,30 @@ export class StoreGameDetails {
     return row;
   }
 
-  /** Full details for a metadata entry, kept for a month. An old copy is used if the service is down. */
-  async info(provider: string, providerId: string): Promise<GameInfo | null> {
+  /**
+   * Looks a store game up again now: its match by title (skipped for a Steam game, which is
+   * matched by its app id) and the details of whichever match this person sees.
+   */
+  async refresh(userId: number, addon: string, externalId: string, title: string): Promise<void> {
+    const old = this.matchRow(addon, externalId);
+    if (title) {
+      const found = await this.enqueue(() => this.lookup(addon, externalId, title));
+      // Nothing found this time (or the services are down): keep the match it had.
+      if (!found.provider && old?.provider) {
+        this.db
+          .prepare("UPDATE store_game_match SET provider = ?, provider_id = ?, cover_url = ?, matched_at = ? WHERE addon = ? AND external_id = ?")
+          .run(old.provider, old.provider_id, old.cover_url, old.matched_at, addon, externalId);
+      }
+    }
+    const m = await this.effectiveMatch(userId, addon, externalId, title);
+    if (m) await this.info(m.provider, m.providerId, true);
+  }
+
+  /** Full details for a metadata entry, kept for a month (fresh fetches it now). An old copy is used if the service is down. */
+  async info(provider: string, providerId: string, fresh = false): Promise<GameInfo | null> {
     if (!PROVIDERS.includes(provider)) return null;
     const row = this.db.prepare("SELECT info, fetched_at FROM store_game_info WHERE provider = ? AND provider_id = ?").get(provider, providerId) as { info: string; fetched_at: string } | undefined;
-    if (row && Date.now() - Date.parse(row.fetched_at) < REFRESH_INFO_MS) return json<GameInfo | null>(row.info, null);
+    if (row && !fresh && Date.now() - Date.parse(row.fetched_at) < REFRESH_INFO_MS) return json<GameInfo | null>(row.info, null);
     try {
       const info = await gameInfo(this.metadata, provider, providerId);
       if (info) {

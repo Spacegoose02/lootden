@@ -12,6 +12,8 @@ interface NavItem {
   to: string;
   label: string;
   end?: boolean;
+  /** Passed to the page when the link itself is picked (not when LB/RB pass through it). */
+  state?: unknown;
 }
 
 /**
@@ -83,7 +85,7 @@ function MainNav({ items, onSignOut }: { items: NavItem[]; onSignOut: () => void
     <>
       <nav className="nav" ref={bar} aria-label="Main">
         {items.slice(0, fit).map((i) => (
-          <NavLink key={i.to} to={i.to} end={i.end}>
+          <NavLink key={i.to} to={i.to} end={i.end} state={i.state}>
             {i.label}
           </NavLink>
         ))}
@@ -106,7 +108,7 @@ function MainNav({ items, onSignOut }: { items: NavItem[]; onSignOut: () => void
         <div className="nav-menu" role="menu">
           {/* On phones every link is here; on wider screens only the ones that didn't fit. */}
           {items.map((i, n) => (
-            <NavLink key={i.to} to={i.to} end={i.end} role="menuitem" className={n < fit ? "nav-menu-fits" : ""}>
+            <NavLink key={i.to} to={i.to} end={i.end} state={i.state} role="menuitem" className={n < fit ? "nav-menu-fits" : ""}>
               {i.label}
             </NavLink>
           ))}
@@ -133,6 +135,8 @@ export function Layout() {
     ...(kid ? [] : [{ to: "/discover", label: "Discover" }, { to: "/wishlist", label: "Wishlist" }, { to: "/calendar", label: "Calendar" }]),
     { to: "/requests", label: "Requests" },
     { to: "/news", label: "News" },
+    // The desktop app's built-in web browser, for handhelds and the Xbox full screen experience. Not for kids.
+    ...(desktop?.openBrowser && !kid ? [{ to: "/browser", label: "Browser", state: { open: true } }] : []),
     // Inside the desktop app the page is still there (Profile links to it for the Playnite extension), just not in the menu.
     ...(desktop ? [] : [{ to: "/apps", label: "Get the app" }]),
     ...(admin ? [{ to: "/downloads", label: "Downloads" }] : []),

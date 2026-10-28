@@ -214,7 +214,7 @@ function StoreStats() {
     <>
       <section className="panel">
         <h2>Other stores</h2>
-        <Bars rows={rows.map(([store, b]) => ({ label: store, value: b.count, to: "/library?tab=stores" }))} />
+        <Bars rows={rows.map(([store, b]) => ({ label: store, value: b.count, to: "/library?tab=all&source=stores" }))} />
         {played.length > 0 && <p className="muted small">Play time there: {played.map(([store, b]) => `${store} ${formatPlaytime(b.seconds)}`).join(" · ")}</p>}
       </section>
       {top.length > 0 && (
