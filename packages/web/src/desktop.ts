@@ -54,6 +54,7 @@ export type Progress =
   | { gameId: string; type: "error" | "cancelled"; message: string }
   | { gameId: string; type: "playing" }
   | { gameId: string; type: "stopped"; seconds: number }
+  | { gameId: string; type: "workshop"; itemId: string; line: string }
   | { gameId: string; type: "saves"; backupId?: number; size?: number; error?: string }
   | { gameId: string; type: "prepare"; message: string; done?: boolean; error?: boolean; newId?: string }
   | ({ gameId: "lootden-app"; type: "appUpdate" } & AppUpdate);
@@ -112,6 +113,10 @@ export interface DesktopBridge {
   /** Library add-ons: store games installed on this PC, and starting one through its launcher (apps from 0.14.0). */
   storeGames?(): Promise<LocalStoreGame[]>;
   launchStore?(url: string): Promise<void>;
+  /** Steam Workshop items in an installed game's mods folder, and adding or removing one (newer apps only). */
+  workshopItems?(gameId: string): Promise<InstalledWorkshopItem[]>;
+  installWorkshopItem?(gameId: string, itemId: string, title: string): Promise<InstalledWorkshopItem>;
+  removeWorkshopItem?(gameId: string, itemId: string): Promise<void>;
   /** This PC's store scanner settings, and adding a folder to it through the folder picker (newer apps only). */
   storeScan?(patch?: { disabled?: string[]; folders?: string[] }): Promise<StoreScanSettings>;
   addStoreFolder?(): Promise<StoreScanSettings>;
@@ -199,4 +204,11 @@ export function useDesktopGame(gameId: string) {
 export interface StoreScanSettings {
   stores: Array<{ id: string; name: string; enabled: boolean }>;
   folders: string[];
+}
+
+export interface InstalledWorkshopItem {
+  id: string;
+  title: string;
+  installedAt: string;
+  dir: string;
 }

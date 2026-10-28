@@ -11,7 +11,7 @@ import { ReleaseLookup } from "../components/ReleaseLookup";
 import { SavesPanel } from "../components/SavesPanel";
 import { UpdatesPanel } from "../components/UpdatesPanel";
 import { PreparePanel } from "../components/PreparePanel";
-import { JournalPanel, ModsPanel, VersionBanner } from "../components/GameExtras";
+import { JournalPanel, ModsPanel, WorkshopPanel, VersionBanner } from "../components/GameExtras";
 import { bridgeError, desktop, type LocalGameCopy } from "../desktop";
 import { LocalGame } from "../components/LocalGame";
 import { launchStoreGame, storeKey, useStoreGames } from "../components/StoreGameCard";
@@ -181,6 +181,8 @@ export function GameDetail() {
       {!isAddon && <UpdatesPanel gameId={game.id} />}
 
       {game.platform === "pc" && !isAddon && <ModsPanel gameId={game.id} title={game.title} />}
+
+      {game.platform === "pc" && !isAddon && !me?.user?.kidMode && <WorkshopPanel gameId={game.id} isAdmin={me?.role === "admin"} installedHere={!!installed?.some((g) => g.gameId === game.id)} />}
 
       {!isAddon && <PreparePanel game={game} />}
 

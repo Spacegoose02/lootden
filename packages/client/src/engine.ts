@@ -11,4 +11,5 @@ export { backupSaves, expandSavePath, restoreSaves } from "./saves.js";
 export { findSetup, prepareGame, runLocalSetup, uploadInstalledFolder, type PrepareStep } from "./prepare.js";
 export { applyUpdate, BACKUP_FOLDER, undoUpdate, UpdateMismatchError, updateProblem, type AppliedUpdate, type ApplyUpdateOptions } from "./updates.js";
 export { scanStoreGames, STORE_SCANNERS, type StoreScanner } from "./stores/index.js";
+export { downloadWorkshopItem, ensureSteamCmd, installWorkshopItem, listWorkshopItems, removeWorkshopItem, steamCmdResult, type InstalledWorkshopItem } from "./workshop.js";
 export { isStoreLaunchUrl } from "@lootden/shared";
