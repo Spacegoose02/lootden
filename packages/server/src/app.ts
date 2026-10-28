@@ -40,6 +40,8 @@ import { extraRoutes } from "./routes/extras.js";
 import { Notifier } from "./alerts/notifier.js";
 import { Scanner } from "./connectors/scan.js";
 import { WantedService } from "./news/wanted.js";
+import { RequestService } from "./news/requests.js";
+import { requestRoutes } from "./routes/requests.js";
 import { SteamWorkshop } from "./workshop/steam.js";
 import { workshopRoutes } from "./routes/workshop.js";
 import { VersionChecker } from "./news/version-check.js";
@@ -113,6 +115,7 @@ export function buildContext(config: ServerConfig, db: Db, log: Log, opts: Build
     else if (r.path) await notifier.send("imported", `${name} is in the library`, null, "/library");
     return r.path;
   };
+  const wanted = new WantedService(db, wishlist, downloads, notifier);
   const direct = new DirectDownloads(db, library, downloads, log, opts.fetchImpl);
   direct.onEvent = (e) => void notifier.send("failed", `Couldn't download ${e.title}`, e.message ?? null, "/downloads?tab=links");
   downloads.onEvent = (e) => void notifier.send(e.kind, e.kind === "grabbed" ? `Sent ${e.title} to the download client` : `Couldn't download ${e.title}`, e.message ?? null, "/downloads");
@@ -138,7 +141,8 @@ export function buildContext(config: ServerConfig, db: Db, log: Log, opts: Build
     direct,
     notifier,
     scanner,
-    wanted: new WantedService(db, wishlist, downloads, notifier),
+    wanted,
+    requests: new RequestService(db, library, wishlist, wanted, downloads, notifier),
     workshop: new SteamWorkshop(opts.fetchImpl),
     versions: new VersionChecker(db, library, updates, notifier, () => settings().itch.apiKey, opts.fetchImpl),
     journal: new JournalStore(db),
@@ -214,6 +218,7 @@ export function buildApp(config: ServerConfig, db: Db, opts: BuildOptions = {}):
   saveRoutes(app, ctx);
   discoverRoutes(app, ctx);
   wishlistRoutes(app, ctx);
+  requestRoutes(app, ctx);
   workshopRoutes(app, ctx);
   extraRoutes(app, ctx);
   sourceRoutes(app, ctx);

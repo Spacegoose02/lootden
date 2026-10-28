@@ -381,6 +381,25 @@ const MIGRATIONS: string[] = [
     WHERE key = 'connectors' AND json_valid(value) AND json_extract(value, '$.import.mode') = 'copy';
   `,
   `
+  -- Games people ask for. Approved ones go on the wanted list (wish_id).
+  CREATE TABLE game_requests (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    title TEXT NOT NULL,
+    title_key TEXT NOT NULL,
+    url TEXT,
+    image TEXT,
+    steam_app_id INTEGER,
+    note TEXT,
+    state TEXT NOT NULL DEFAULT 'pending',
+    reason TEXT,
+    wish_id INTEGER,
+    created_at TEXT NOT NULL,
+    decided_at TEXT
+  );
+  CREATE INDEX game_requests_user ON game_requests (user_id);
+  `,
+  `
   -- Steam Workshop per game: the Steam app to take items from, and the mods folder in the install.
   CREATE TABLE workshop_settings (
     game_id TEXT PRIMARY KEY REFERENCES games(id) ON DELETE CASCADE,

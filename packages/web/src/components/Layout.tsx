@@ -133,6 +133,7 @@ export function Layout() {
     { to: "/updates", label: "Updates" },
     { to: "/emulation", label: "Emulation" },
     ...(kid ? [] : [{ to: "/discover", label: "Discover" }, { to: "/wishlist", label: "Wishlist" }, { to: "/calendar", label: "Calendar" }]),
+    { to: "/requests", label: "Requests" },
     { to: "/news", label: "News" },
     // The desktop app's built-in web browser, for handhelds and the Xbox full screen experience. Not for kids.
     ...(desktop?.openBrowser && !kid ? [{ to: "/browser", label: "Browser", state: { open: true } }] : []),

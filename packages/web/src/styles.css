@@ -3746,6 +3746,95 @@ html[data-lootden-frame] .lightbox {
   }
 }
 
+/* ---------- Requests ------------------------------------------------------- */
+
+.request-form h2 {
+  margin-top: 0;
+}
+.request-list {
+  list-style: none;
+  margin: 0 0 1.5rem;
+  padding: 0;
+  display: grid;
+  gap: 0.5rem;
+}
+.request {
+  display: grid;
+  grid-template-columns: 56px 1fr auto auto;
+  align-items: center;
+  gap: 0.9rem;
+  padding: 0.6rem 0.8rem;
+  border-radius: var(--radius);
+  background: var(--panel);
+  border: 1px solid var(--border);
+}
+.request-art {
+  width: 56px;
+  aspect-ratio: 3 / 4;
+  border-radius: 8px;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+  font-weight: 800;
+  font-size: 1.4rem;
+  background: linear-gradient(160deg, color-mix(in srgb, var(--accent) 35%, var(--panel)), var(--bg-2));
+}
+.request-art img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.request-main {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+.request-main a {
+  color: inherit;
+}
+.request-status {
+  font-size: 0.75rem;
+  font-weight: 800;
+  padding: 0.2em 0.7em;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  white-space: nowrap;
+}
+.status-pending {
+  color: #ffcf5c;
+  border-color: rgba(255, 207, 92, 0.5);
+}
+.status-searching,
+.status-downloading {
+  color: var(--accent-2);
+  border-color: color-mix(in srgb, var(--accent-2) 55%, transparent);
+}
+.status-ready {
+  color: var(--good, #59ff9a);
+  border-color: color-mix(in srgb, var(--good, #59ff9a) 55%, transparent);
+  box-shadow: 0 0 12px color-mix(in srgb, var(--good, #59ff9a) 25%, transparent);
+}
+.status-declined {
+  color: var(--muted);
+}
+.request-actions {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+@media (max-width: 640px) {
+  .request {
+    grid-template-columns: 44px 1fr;
+  }
+  .request-status,
+  .request-actions {
+    grid-column: 2;
+    justify-self: start;
+  }
+}
+
 /* ---------- Steam Workshop ---------------------------------------------------- */
 
 .workshop-setup {
