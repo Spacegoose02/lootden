@@ -399,6 +399,14 @@ const MIGRATIONS: string[] = [
   );
   CREATE INDEX game_requests_user ON game_requests (user_id);
   `,
+  `
+  -- Steam Workshop per game: the Steam app to take items from, and the mods folder in the install.
+  CREATE TABLE workshop_settings (
+    game_id TEXT PRIMARY KEY REFERENCES games(id) ON DELETE CASCADE,
+    app_id TEXT,
+    mods_path TEXT NOT NULL DEFAULT ''
+  );
+  `,
 ];
 
 export function openDatabase(file: string): Db {

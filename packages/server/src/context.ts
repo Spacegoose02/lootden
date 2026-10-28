@@ -21,6 +21,7 @@ import type { Notifier } from "./alerts/notifier.js";
 import type { Scanner } from "./connectors/scan.js";
 import type { WantedService } from "./news/wanted.js";
 import type { RequestService } from "./news/requests.js";
+import type { SteamWorkshop } from "./workshop/steam.js";
 import type { VersionChecker } from "./news/version-check.js";
 import type { JournalStore } from "./users/journal.js";
 import type { NexusMods } from "./news/nexus.js";
@@ -57,6 +58,7 @@ export interface AppContext {
   scanner: Scanner;
   wanted: WantedService;
   requests: RequestService;
+  workshop: SteamWorkshop;
   versions: VersionChecker;
   journal: JournalStore;
   nexus: NexusMods;

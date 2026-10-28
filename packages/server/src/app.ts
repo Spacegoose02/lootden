@@ -42,6 +42,8 @@ import { Scanner } from "./connectors/scan.js";
 import { WantedService } from "./news/wanted.js";
 import { RequestService } from "./news/requests.js";
 import { requestRoutes } from "./routes/requests.js";
+import { SteamWorkshop } from "./workshop/steam.js";
+import { workshopRoutes } from "./routes/workshop.js";
 import { VersionChecker } from "./news/version-check.js";
 import { JournalStore } from "./users/journal.js";
 import { NexusMods } from "./news/nexus.js";
@@ -141,6 +143,7 @@ export function buildContext(config: ServerConfig, db: Db, log: Log, opts: Build
     scanner,
     wanted,
     requests: new RequestService(db, library, wishlist, wanted, downloads, notifier),
+    workshop: new SteamWorkshop(opts.fetchImpl),
     versions: new VersionChecker(db, library, updates, notifier, () => settings().itch.apiKey, opts.fetchImpl),
     journal: new JournalStore(db),
     nexus: new NexusMods(() => settings().nexus.apiKey, opts.fetchImpl),
@@ -216,6 +219,7 @@ export function buildApp(config: ServerConfig, db: Db, opts: BuildOptions = {}):
   discoverRoutes(app, ctx);
   wishlistRoutes(app, ctx);
   requestRoutes(app, ctx);
+  workshopRoutes(app, ctx);
   extraRoutes(app, ctx);
   sourceRoutes(app, ctx);
   addonRoutes(app, ctx);

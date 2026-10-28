@@ -27,6 +27,11 @@ import {
   launchAndTrack,
   listDrives,
   listInstalled,
+  listWorkshopItems,
+  downloadWorkshopItem,
+  ensureSteamCmd,
+  installWorkshopItem,
+  removeWorkshopItem,
   prepareGame,
   restoreSaves,
   uploadInstalledFolder,
@@ -1091,6 +1096,41 @@ function registerIpc(): void {
   // ---- Library add-ons: games from other stores ------------------------------------
 
   /** Store games installed on this PC, found by each add-on's scanner. */
+  /**
+   * Steam Workshop items for an installed game: the ones LootDen put in its mods folder, and
+   * downloading one with SteamCMD (fetched from Valve on first use) to copy in. The app id and
+   * mods folder come from the server, never the page.
+   */
+  const workshopFor = async (gameId: string) => {
+    const game = await findInstalled(gameId);
+    const w = await (await client()).json<{ appId: string | null; modsPath: string }>(`/api/games/${encodeURIComponent(gameId)}/workshop`);
+    return { gameDir: game.installedDir ?? game.dir, w };
+  };
+  ipcMain.handle("gm:workshop:list", async (e, gameId: string) => {
+    fromServer(e);
+    const game = (await listInstalled(await searchDirs())).find((g) => g.gameId === gameId);
+    if (!game) return [];
+    const w = await (await client()).json<{ appId: string | null; modsPath: string }>(`/api/games/${encodeURIComponent(gameId)}/workshop`).catch(() => null);
+    return w?.modsPath ? listWorkshopItems(game.installedDir ?? game.dir, w.modsPath) : [];
+  });
+  ipcMain.handle("gm:workshop:install", async (e, gameId: string, itemId: string, title: string) => {
+    fromServer(e);
+    const { gameDir, w } = await workshopFor(gameId);
+    if (!w.appId) throw new Error("This game has no Steam app id set");
+    if (!w.modsPath) throw new Error("Set this game's mods folder first");
+    const progress = (line: string) => send({ gameId, type: "workshop", itemId, line: line.slice(0, 200) });
+    const steamcmd = await ensureSteamCmd(path.join(toolsDir(), "steamcmd"), { sevenZip: await sevenZip().catch(() => null), fetchImpl: (u, i) => net.fetch(String(u), i) });
+    const work = path.join(app.getPath("userData"), "workshop");
+    const content = await downloadWorkshopItem(steamcmd, work, w.appId, itemId, progress);
+    const item = await installWorkshopItem(content, gameDir, w.modsPath, { id: itemId, title: String(title || itemId) });
+    await rm(content, { recursive: true, force: true }).catch(() => {});
+    return item;
+  });
+  ipcMain.handle("gm:workshop:remove", async (e, gameId: string, itemId: string) => {
+    fromServer(e);
+    const { gameDir, w } = await workshopFor(gameId);
+    await removeWorkshopItem(gameDir, w.modsPath, itemId);
+  });
   ipcMain.handle("gm:storeGames", async (e) => {
     fromServer(e);
     const { disabled, folders } = settings.get().storeScan;

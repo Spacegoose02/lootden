@@ -336,3 +336,37 @@ export interface GameInfo extends GameListing {
   developers: string[];
   ageRatings: AgeRating[];
 }
+
+/** A Steam Workshop item (a mod, map or skin) for a game. */
+export interface WorkshopItem {
+  id: string;
+  /** The Steam app it belongs to. */
+  appId: string;
+  title: string;
+  previewUrl: string | null;
+  sizeBytes: number;
+  updatedAt: string | null;
+  subscriptions: number;
+  summary: string;
+  url: string;
+}
+
+/** Where a game's Workshop items come from and go: its Steam app, and the folder in its install they're copied to. */
+export interface WorkshopSettings {
+  /** The admin's pick, else the Steam app the metadata matched; null when neither is known. */
+  appId: string | null;
+  /** Relative to the game's install folder, e.g. "Mods". Empty: the app asks for one before installing. */
+  modsPath: string;
+  /** A Steam Web API key is set, so the Workshop can be browsed and searched (details by link always work). */
+  canBrowse: boolean;
+}
+
+/** A Workshop mods folder inside a game's install ("Mods", "Content/Workshop"): relative, no "..", no drive letters. "" when unset. */
+export function workshopModsPath(input: unknown): string {
+  const p = String(input ?? "").trim().replace(/\\/g, "/").replace(/^(\.\/)+/, "").replace(/\/+$/, "");
+  if (!p) return "";
+  if (p.startsWith("/") || /^[a-z]:/i.test(p) || p.split("/").some((s) => s === ".." || s === "." || s === "")) {
+    throw new Error("The mods folder is a folder inside the game's install, like Mods or Content/Workshop");
+  }
+  return p.slice(0, 200);
+}
