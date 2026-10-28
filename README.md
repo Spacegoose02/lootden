@@ -23,6 +23,9 @@ installs games from it on any PC in the house.
   parts, so a reverse proxy or Cloudflare tunnel in front of the server doesn't stop it.
 - Admins can delete a game from its page. The files move to `.deleted` in the games folder
   (or are removed for good), and moving them back restores the game with its settings.
+- Game requests: anyone can ask for a game, and an admin approves it onto the wanted list.
+- Steam Workshop items for PC games, added to the game's mods folder by the desktop app
+  (games whose Workshop allows anonymous downloads).
 - Time to beat from HowLongToBeat, with IGDB's times as the fallback.
 - Updates and DLC are kept on their own page and applied over an installed game with a
   backup, so they can be undone.
