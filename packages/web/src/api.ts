@@ -16,6 +16,8 @@ import type {
   SaveBackup,
   User,
   UserGameState,
+  WorkshopItem,
+  WorkshopSettings,
 } from "@lootden/shared";
 
 export class ApiError extends Error {
@@ -621,6 +623,10 @@ export const api = {
   roulette: (status = "backlog", controller = false) => call<{ game: GameSummary; from: string; poolSize: number }>("GET", `/api/backlog/roulette${qs({ status, controller: controller ? "1" : undefined })}`),
   timeToBeat: (id: string) => call<TimeToBeat | null>("GET", `/api/games/${id}/time-to-beat`),
   mods: (id: string) => call<{ configured: boolean; domain: string | null; mods: NexusMod[] }>("GET", `/api/games/${id}/mods`),
+  workshop: (id: string) => call<WorkshopSettings>("GET", `/api/games/${id}/workshop`),
+  saveWorkshop: (id: string, body: { appId: string | null; modsPath: string }) => call<WorkshopSettings>("PUT", `/api/games/${id}/workshop`, body),
+  workshopItems: (id: string, q = "", page = 1) => call<{ items: WorkshopItem[]; total: number }>("GET", `/api/games/${id}/workshop/items?q=${encodeURIComponent(q)}&page=${page}`),
+  workshopLinks: (id: string, links: string) => call<{ items: WorkshopItem[]; total: number }>("GET", `/api/games/${id}/workshop/items?ids=${encodeURIComponent(links)}`),
   testNexus: () => call<{ message: string }>("POST", "/api/mods/test"),
   sources: () => call<ReleaseSourceView[]>("GET", "/api/sources"),
   // Library add-ons: this person's store accounts and the games they own there.

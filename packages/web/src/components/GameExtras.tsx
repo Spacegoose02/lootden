@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
-import { api, BACKLOG, BACKLOG_LABELS, type BacklogStatus, type Journal, type NexusMod, type TimeToBeat, type VersionCheck } from "../api";
+import type { WorkshopItem, WorkshopSettings } from "@lootden/shared";
+import { api, BACKLOG, BACKLOG_LABELS, formatBytes, type BacklogStatus, type Journal, type NexusMod, type TimeToBeat, type VersionCheck } from "../api";
+import { bridgeError, desktop, type InstalledWorkshopItem } from "../desktop";
 
 const SOURCE: Record<string, string> = { gog: "GOG", steam: "Steam", itch: "itch.io" };
 
@@ -196,6 +198,226 @@ export function ModsPanel({ gameId, title }: { gameId: string; title: string }) 
             </a>
           ))}
         </div>
+      )}
+    </section>
+  );
+}
+
+/**
+ * Steam Workshop items for a PC game with a Steam app id: popular items and search (with a
+ * Steam Web API key), or items from pasted links, installed into the game's mods folder by the app.
+ */
+export function WorkshopPanel({ gameId, isAdmin, installedHere }: { gameId: string; isAdmin: boolean; installedHere: boolean }) {
+  const [w, setW] = useState<WorkshopSettings | null>(null);
+  const [items, setItems] = useState<WorkshopItem[] | null>(null);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const [q, setQ] = useState("");
+  const [links, setLinks] = useState("");
+  const [mine, setMine] = useState<InstalledWorkshopItem[]>([]);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [line, setLine] = useState("");
+  const [error, setError] = useState("");
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState({ appId: "", modsPath: "" });
+  const canInstall = !!desktop?.installWorkshopItem && installedHere && !!w?.modsPath;
+
+  const loadMine = () => {
+    if (desktop?.workshopItems && installedHere) void desktop.workshopItems(gameId).then(setMine, () => setMine([]));
+  };
+  const load = async (query: string, p: number) => {
+    setError("");
+    try {
+      const r = await api.workshopItems(gameId, query, p);
+      setItems(p === 1 ? r.items : [...(items ?? []), ...r.items]);
+      setTotal(r.total);
+      setPage(p);
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  };
+  useEffect(() => {
+    setW(null);
+    setItems(null);
+    setMine([]);
+    api.workshop(gameId).then((x) => {
+      setW(x);
+      setDraft({ appId: x.appId ?? "", modsPath: x.modsPath });
+    }, () => setW(null));
+  }, [gameId]);
+  useEffect(() => {
+    if (w?.appId && w.canBrowse) void load("", 1);
+    if (w?.modsPath) loadMine();
+  }, [w?.appId, w?.canBrowse, w?.modsPath]);
+  useEffect(() => desktop?.onProgress((p) => p.type === "workshop" && p.gameId === gameId && setLine(p.line)), [gameId]);
+
+  if (!w || (!w.appId && !isAdmin)) return null;
+  const has = new Set(mine.map((m) => m.id));
+
+  const install = async (item: WorkshopItem) => {
+    setBusy(item.id);
+    setLine("Getting SteamCMD ready…");
+    setError("");
+    try {
+      await desktop!.installWorkshopItem!(gameId, item.id, item.title);
+      loadMine();
+    } catch (e) {
+      setError(bridgeError(e));
+    } finally {
+      setBusy(null);
+      setLine("");
+    }
+  };
+  const remove = async (id: string) => {
+    setError("");
+    try {
+      await desktop!.removeWorkshopItem!(gameId, id);
+      loadMine();
+    } catch (e) {
+      setError(bridgeError(e));
+    }
+  };
+  const save = async () => {
+    setError("");
+    try {
+      setW(await api.saveWorkshop(gameId, { appId: draft.appId.trim() || null, modsPath: draft.modsPath }));
+      setEditing(false);
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  };
+
+  return (
+    <section className="row workshop">
+      <div className="inline" style={{ justifyContent: "space-between" }}>
+        <h2>Steam Workshop</h2>
+        <span className="inline">
+          {w.appId && (
+            <a className="small" href={`https://steamcommunity.com/app/${w.appId}/workshop/`} target="_blank" rel="noreferrer">
+              Open on Steam
+            </a>
+          )}
+          {isAdmin && (
+            <button className="ghost small" onClick={() => setEditing(!editing)}>
+              {editing ? "Cancel" : "Set up"}
+            </button>
+          )}
+        </span>
+      </div>
+
+      {editing && (
+        <form
+          className="inline wrap workshop-setup"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void save();
+          }}
+        >
+          <label className="field">
+            <span className="field-label">Steam app id</span>
+            <input inputMode="numeric" placeholder="620" value={draft.appId} onChange={(e) => setDraft({ ...draft, appId: e.target.value })} />
+          </label>
+          <label className="field" style={{ flex: 1 }}>
+            <span className="field-label">Mods folder, inside the game's folder</span>
+            <input placeholder="Mods" value={draft.modsPath} onChange={(e) => setDraft({ ...draft, modsPath: e.target.value })} />
+          </label>
+          <button>Save</button>
+        </form>
+      )}
+
+      {!w.appId ? (
+        <p className="muted small">Add this game's Steam app id to browse its Workshop.</p>
+      ) : (
+        <>
+          {mine.length > 0 && <h3 className="small muted">In this game on this PC</h3>}
+          {mine.length > 0 && (
+            <ul className="pkg-list workshop-mine">
+              {mine.map((m) => (
+                <li key={m.id}>
+                  <div className="pkg-title">
+                    <strong>{m.title}</strong>
+                    <span className="muted small">added {new Date(m.installedAt).toLocaleDateString()}</span>
+                  </div>
+                  <button className="ghost small" onClick={() => void remove(m.id)}>
+                    Remove
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+          <div className="inline wrap">
+            {w.canBrowse && (
+              <form
+                className="inline"
+                style={{ flex: 2 }}
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  void load(q.trim(), 1);
+                }}
+              >
+                <input type="search" placeholder="Search the Workshop" value={q} onChange={(e) => setQ(e.target.value)} style={{ flex: 1 }} />
+                <button className="ghost">Search</button>
+              </form>
+            )}
+            <form
+              className="inline"
+              style={{ flex: 2 }}
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (!links.trim()) return;
+                setError("");
+                api.workshopLinks(gameId, links).then((r) => (setItems(r.items), setTotal(r.total), setPage(1)), (err: Error) => setError(err.message));
+              }}
+            >
+              <input placeholder="Paste Workshop links or ids" value={links} onChange={(e) => setLinks(e.target.value)} style={{ flex: 1 }} />
+              <button className="ghost" disabled={!links.trim()}>
+                Look up
+              </button>
+            </form>
+          </div>
+          {!w.canBrowse && <p className="muted small">Paste links to items, or save a Steam Web API key under Integrations to browse and search here.</p>}
+          {desktop && !installedHere && <p className="muted small">Install the game on this PC to add Workshop items to it.</p>}
+          {desktop && installedHere && !w.modsPath && <p className="muted small">{isAdmin ? "Set" : "An admin needs to set"} the game's mods folder before items can be added.</p>}
+          {!desktop && <p className="muted small">The LootDen app adds Workshop items to games installed on your PC.</p>}
+          {line && <p className="muted small workshop-line">{line}</p>}
+          {error && <p className="error small">{error}</p>}
+          {items && !items.length && <p className="muted small">Nothing found.</p>}
+          {items && items.length > 0 && (
+            <div className="row-track mod-track">
+              {items.map((m) => (
+                <div key={m.id} className="mod-card workshop-card">
+                  {m.previewUrl ? <img src={m.previewUrl} alt="" loading="lazy" referrerPolicy="no-referrer" /> : <span className="mod-blank" />}
+                  <strong>{m.title}</strong>
+                  <small className="muted">
+                    {m.sizeBytes ? `${formatBytes(m.sizeBytes)} · ` : ""}
+                    {m.subscriptions.toLocaleString()} subscribers
+                  </small>
+                  <span className="inline">
+                    {canInstall &&
+                      (has.has(m.id) ? (
+                        <button className="ghost small" disabled={!!busy} onClick={() => void install(m)}>
+                          {busy === m.id ? "Updating…" : "Update"}
+                        </button>
+                      ) : (
+                        <button className="small" disabled={!!busy} onClick={() => void install(m)}>
+                          {busy === m.id ? "Adding…" : "Add to game"}
+                        </button>
+                      ))}
+                    <a className="small" href={m.url} target="_blank" rel="noreferrer">
+                      Steam page
+                    </a>
+                  </span>
+                  <small>{m.summary}</small>
+                </div>
+              ))}
+            </div>
+          )}
+          {items && items.length < total && (
+            <button className="ghost small" onClick={() => void load(q.trim(), page + 1)}>
+              Show more
+            </button>
+          )}
+        </>
       )}
     </section>
   );

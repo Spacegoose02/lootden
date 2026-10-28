@@ -119,6 +119,12 @@ export class AddonRegistry {
     return out;
   }
 
+  /** The Steam Web API key this person's Steam account uses, else the one an admin set for everyone. Server side only. */
+  steamKey(userId: number | null): string {
+    const own = userId ? this.config(this.account(userId, "steam")) : {};
+    return this.effective("steam", own).apiKey ?? "";
+  }
+
   enabled(id: string): boolean {
     return this.switches()[id]?.enabled !== false;
   }

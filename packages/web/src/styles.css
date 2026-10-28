@@ -3835,6 +3835,22 @@ html[data-lootden-frame] .lightbox {
   }
 }
 
+/* ---------- Steam Workshop ---------------------------------------------------- */
+
+.workshop-setup {
+  align-items: flex-end;
+}
+.workshop-card .inline {
+  gap: 0.6rem;
+  padding-top: 0.2rem;
+}
+.workshop-line {
+  font-family: var(--mono, ui-monospace, monospace);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 /* A store's name on its card, in the launcher's colour. */
 .badge.launcher-badge {
   border-color: var(--launcher, var(--border));
