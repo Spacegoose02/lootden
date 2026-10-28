@@ -3,11 +3,14 @@
  * any XInput pad) move focus between on-screen items by position, A activates,
  * B goes back. Mouse and touch keep working as normal.
  */
-const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex="0"]';
+const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), summary, [tabindex="0"]';
 
 type Dir = "up" | "down" | "left" | "right";
 
 function visible(el: HTMLElement): boolean {
+  // A closed <details> still lays its contents out in Chromium; only its summary can be reached.
+  const shut = el.closest("details:not([open])");
+  if (shut && !(el.tagName === "SUMMARY" && el.parentElement === shut)) return false;
   const r = el.getBoundingClientRect();
   return r.width > 0 && r.height > 0 && getComputedStyle(el).visibility !== "hidden";
 }
@@ -115,13 +118,47 @@ function reveal(el: HTMLElement, instant: boolean): void {
   root.style.scrollPaddingTop = before;
 }
 
+/** An open menu, the alerts panel or a video: B and Esc close it before going back a page. */
+const openPopup = () => document.querySelector('[role="dialog"], [role="menu"]');
+
+/**
+ * Where focus last was, so a press after the focused item went away (a filter changed, a list
+ * reloaded, a section opened) carries on from about the same spot instead of the top of the page.
+ */
+let lastSpot: { path: string; rect: DOMRect } | null = null;
+const remember = (el: HTMLElement) => (lastSpot = { path: location.pathname, rect: el.getBoundingClientRect() });
+
+/** The item nearest a spot on screen. */
+function nearest(items: HTMLElement[], to: DOMRect): HTMLElement | undefined {
+  const cx = to.left + to.width / 2;
+  const cy = to.top + to.height / 2;
+  let best: HTMLElement | undefined;
+  let bestD = Infinity;
+  for (const el of items) {
+    const r = el.getBoundingClientRect();
+    const d = Math.hypot(r.left + r.width / 2 - cx, (r.top + r.height / 2 - cy) * 1.5);
+    if (d < bestD) [best, bestD] = [el, d];
+  }
+  return best;
+}
+
 export function moveFocus(dir: Dir, repeating = false): void {
   setNavMode("pad");
   setEditing(null);
-  const items = [...document.querySelectorAll<HTMLElement>(FOCUSABLE)].filter(visible);
+  // An open menu, alerts panel or picture keeps the d-pad inside it until B closes it.
+  const popup = openPopup();
+  const scope: ParentNode = popup?.querySelector(FOCUSABLE) ? popup : document;
+  const items = [...scope.querySelectorAll<HTMLElement>(FOCUSABLE)].filter(visible);
   const current = document.activeElement as HTMLElement | null;
   if (!current || current === document.body || !items.includes(current)) {
-    (document.querySelector<HTMLElement>("main " + FOCUSABLE) ?? items[0])?.focus();
+    const inMain = items.filter((el) => el.closest("main"));
+    const resume = !popup && lastSpot?.path === location.pathname ? nearest(inMain.length ? inMain : items, lastSpot.rect) : undefined;
+    const first = resume ?? (popup ? items[0] : (inMain[0] ?? items[0]));
+    if (first) {
+      first.focus({ preventScroll: true });
+      reveal(first, repeating);
+      remember(first);
+    }
     return;
   }
   const from = current.getBoundingClientRect();
@@ -162,6 +199,7 @@ export function moveFocus(dir: Dir, repeating = false): void {
     best.focus({ preventScroll: true });
     // Smooth scrolling lags behind a held d-pad, so a held direction jumps.
     reveal(best, repeating);
+    remember(best);
   }
 }
 
@@ -181,7 +219,7 @@ export function switchZone(): void {
   if (el) reveal(el, false);
 }
 
-/** LT and RT: the previous or next tab of the page's tab bar (Library's All games, Installed, Other stores...). */
+/** LT and RT: the previous or next tab of the page's tab bar (Library's Installed, All games, Backlog...). */
 export function switchTab(by: number): void {
   const bar = document.querySelector<HTMLElement>('main [role="tablist"]');
   const tabs = bar ? [...bar.querySelectorAll<HTMLElement>('[role="tab"]')].filter(visible) : [];
@@ -235,8 +273,6 @@ const keepsKey = (el: Element | null, dir: Dir) => {
 
 const isTextField = (el: Element | null) => el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement || el instanceof HTMLSelectElement;
 
-/** An open menu, the alerts panel or a video: B and Esc close it before going back a page. */
-const openPopup = () => document.querySelector('[role="dialog"], [role="menu"]');
 
 /** A game has the controller: the in-browser player's frame is focused, or LootDen is in the background behind an emulator. */
 function padBelongsElsewhere(): boolean {
@@ -353,10 +389,14 @@ export function installSpatialNavigation(onBack: () => void): () => void {
         if (any) setNavMode("pad");
         // While a select is being changed the d-pad picks its options instead of moving.
         const move = (dir: Dir, by: number) => (repeating: boolean) => (editing && document.activeElement === editing ? stepSelect(editing, by) : moveFocus(dir, repeating));
-        repeat(`${pad.index}up`, b(12) || hat === "up" || ay < -0.6, move("up", -1));
-        repeat(`${pad.index}down`, b(13) || hat === "down" || ay > 0.6, move("down", 1));
-        repeat(`${pad.index}left`, b(14) || hat === "left" || ax < -0.6, move("left", -1));
-        repeat(`${pad.index}right`, b(15) || hat === "right" || ax > 0.6, move("right", 1));
+        // The left stick moves along whichever way it's pushed most, so a slightly diagonal push
+        // doesn't move down and sideways at once and skip past the item it was aimed at.
+        const sx = Math.abs(ax) >= Math.abs(ay) ? ax : 0;
+        const sy = Math.abs(ay) > Math.abs(ax) ? ay : 0;
+        repeat(`${pad.index}up`, b(12) || hat === "up" || sy < -0.55, move("up", -1));
+        repeat(`${pad.index}down`, b(13) || hat === "down" || sy > 0.55, move("down", 1));
+        repeat(`${pad.index}left`, b(14) || hat === "left" || sx < -0.55, move("left", -1));
+        repeat(`${pad.index}right`, b(15) || hat === "right" || sx > 0.55, move("right", 1));
         repeat(`${pad.index}a`, b(0), activate);
         repeat(`${pad.index}b`, b(1), () => {
           // B first stops changing a select or leaves a text box, then closes a menu or video, then goes back a page.

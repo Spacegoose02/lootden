@@ -4,6 +4,7 @@ import type { LocalStoreGame, StoreGame } from "@lootden/shared";
 import { api, formatPlaytime, storeGamePath } from "../api";
 import { bridgeError, desktop } from "../desktop";
 import { Cover } from "./Cover";
+import { InstalledPill } from "./LibraryLayout";
 
 export const storeKey = (g: { addon: string; externalId: string }) => `${g.addon}:${g.externalId}`;
 
@@ -87,13 +88,13 @@ export function StoreGameCard({ game: g, local, scanned, onError }: { game: Stor
       {/* The cover and title open the game's page, like a LootDen game's card. */}
       <Link to={storeGameLink(g)} className="store-card-link" aria-label={g.title}>
         <Cover game={{ id: storeKey(g), title: g.title, coverUrl: g.coverUrl ?? g.artUrl ?? null, backgroundUrl: g.coverUrl ? g.artUrl : null }} />
-        {local && <span className="installed-dot" title="Installed on this PC" />}
+        {local && <InstalledPill />}
         <div className="card-body">
           <div className="card-title" title={g.title}>
             {g.title}
           </div>
           <div className="card-meta">
-            <span className="badge">{g.store}</span>
+            <span className={`badge launcher-badge launcher-${g.addon.replace(/[^a-z0-9-]/gi, "")}`}>{g.store}</span>
             {g.playtimeSeconds ? ` ${formatPlaytime(g.playtimeSeconds)}` : ""}
           </div>
         </div>

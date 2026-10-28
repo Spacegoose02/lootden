@@ -4,7 +4,7 @@ import { platformFor, type GameSummary, type UserGameState } from "@lootden/shar
 import { api } from "../api";
 import { desktop } from "../desktop";
 import { InstalledGames } from "../components/InstalledGames";
-import { StoreGames, StoreSection } from "../components/StoreGames";
+import { StoreSection } from "../components/StoreGames";
 import { useStoreGames } from "../components/StoreGameCard";
 import { GameCollection, useViewPrefs, ViewPicker } from "../components/LibraryLayout";
 import { Backlog, Stats } from "../components/LibraryViews";
@@ -18,18 +18,24 @@ const SORTS = [
   ["played", "Recently played"],
 ] as const;
 
+/** The app opens the Library on what's ready to play; a browser, which can't play, on everything. */
+const DEFAULT_TAB = desktop ? "installed" : "all";
+
 export function Library() {
   const [params, setParams] = useSearchParams();
-  const tab = params.get("tab") ?? "all";
-  const go = (t: string) => setParams(t === "all" ? {} : { tab: t }, { replace: true });
+  const tab = params.get("tab") ?? DEFAULT_TAB;
+  const go = (t: string) => setParams(t === DEFAULT_TAB ? {} : { tab: t }, { replace: true });
+  // Other stores used to be its own tab; it's All games' library filter now, so old links still land there.
+  useEffect(() => {
+    if (tab === "stores") setParams({ tab: "all", source: "stores" }, { replace: true });
+  }, [tab, setParams]);
   return (
     <>
       <div className="segmented library-tabs" role="tablist" aria-label="Library view" data-nav-zone>
         {(
           [
-            ["all", "All games"],
             ["installed", desktop ? "Installed" : "My installs"],
-            ["stores", "Other stores"],
+            ["all", "All games"],
             ["backlog", "Backlog"],
             ["stats", "Stats"],
           ] as const
@@ -39,7 +45,7 @@ export function Library() {
           </button>
         ))}
       </div>
-      {tab === "installed" ? <InstalledGames /> : tab === "stores" ? <StoreGames /> : tab === "backlog" ? <Backlog /> : tab === "stats" ? <Stats /> : <AllGames />}
+      {tab === "installed" ? <InstalledGames /> : tab === "backlog" ? <Backlog /> : tab === "stats" ? <Stats /> : <AllGames />}
     </>
   );
 }
@@ -56,11 +62,12 @@ function AllGames() {
   const sort = params.get("sort") ?? "title";
   const system = params.get("system") ?? "pc";
   const onlyInstalled = params.get("installed") === "true";
-  // Which libraries: everything (LootDen, then the other stores), LootDen only, or one store.
+  // Which libraries: everything (LootDen, then the other stores), LootDen only, every other store, or one store.
   const source = params.get("source") ?? "";
   const store = useStoreGames();
   const storeNames = [...new Map((store.games ?? []).map((g) => [g.addon, g.store])).entries()].sort((a, b) => a[1].localeCompare(b[1]));
-  const oneStore = source && source !== "lootden" ? source : "";
+  const storesOnly = !!source && source !== "lootden";
+  const oneStore = storesOnly && source !== "stores" ? source : "";
   const [prefs, setPrefs] = useViewPrefs("library");
   const [platforms, setPlatforms] = useState<Array<{ id: string; count: number }>>([]);
   // What's installed: this PC's copies in the app, else installs on any of this person's devices.
@@ -121,6 +128,7 @@ function AllGames() {
           <select value={source} onChange={(e) => set("source", e.target.value)} aria-label="Library">
             <option value="">All libraries</option>
             <option value="lootden">LootDen only</option>
+            <option value="stores">Every other store</option>
             {storeNames.map(([id, name]) => (
               <option key={id} value={id}>
                 {name}
@@ -166,22 +174,26 @@ function AllGames() {
           <input type="checkbox" checked={kidSafe} onChange={(e) => set("kidSafe", e.target.checked ? "true" : "")} />
           Kid-safe only
         </label>
-        {installedIds.size > 0 && (
-          <label className="check">
-            <input type="checkbox" checked={onlyInstalled} onChange={(e) => set("installed", e.target.checked ? "true" : "")} />
-            {desktop ? "On this PC" : "Installed"}
-          </label>
+        {(installedIds.size > 0 || store.installed.size > 0) && (
+          <div className="segmented pill-toggle" role="radiogroup" aria-label="Show">
+            <button role="radio" aria-checked={!onlyInstalled} className={onlyInstalled ? "" : "active"} onClick={() => set("installed", "")}>
+              Everything
+            </button>
+            <button role="radio" aria-checked={onlyInstalled} className={onlyInstalled ? "active" : ""} onClick={() => set("installed", "true")}>
+              <span className="installed-glyph" aria-hidden="true" /> {desktop ? "On this PC" : "Installed"}
+            </button>
+          </div>
         )}
         <ViewPicker prefs={prefs} onChange={setPrefs} />
       </div>
       {error && <p className="error">{error}</p>}
-      {oneStore ? null : shown === null ? <p className="muted">Loading…</p> : shown.length === 0 ? <p className="muted">No games match.</p> : (
+      {storesOnly ? null : shown === null ? <p className="muted">Loading…</p> : shown.length === 0 ? <p className="muted">No games match.</p> : (
         <>
           <p className="muted count">{shown.length} games</p>
           <GameCollection games={shown} prefs={prefs} isInstalled={(g) => installedIds.has(g.id)} aspect={shelf} />
         </>
       )}
-      {source !== "lootden" && store.games && <StoreSection games={store.games} installed={store.installed} scanned={store.scanned} search={search} store={oneStore} limit={oneStore ? undefined : 48} />}
+      {source !== "lootden" && store.games && <StoreSection games={store.games} installed={store.installed} scanned={store.scanned} search={search} store={oneStore} all={storesOnly} onlyInstalled={onlyInstalled} limit={storesOnly ? undefined : 48} />}
     </>
   );
 }

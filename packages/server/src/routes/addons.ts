@@ -135,6 +135,14 @@ export function addonRoutes(app: FastifyInstance, ctx: AppContext) {
     return ctx.storeDetails.detail(g.user.id, g.addon, g.externalId, ctx.addons.game(g.user.id, g.addon, g.externalId), g.title);
   });
 
+  /** Looks the game's match and details up again, for a wrong or out-of-date page. */
+  app.post<One>("/api/store-games/:addon/:externalId/refresh", async (req) => {
+    const g = one(req);
+    if (!g.game && !g.title) throw new HttpProblem(404, "No such game");
+    await fail(() => ctx.storeDetails.refresh(g.user.id, g.addon, g.externalId, g.title));
+    return ctx.storeDetails.detail(g.user.id, g.addon, g.externalId, g.game, g.title);
+  });
+
   /** Games to pick a match from. */
   app.get<One>("/api/store-games/:addon/:externalId/matches", async (req) => {
     const g = one(req);

@@ -46,6 +46,8 @@ export class MetadataService {
   readonly steam: SteamProvider;
   readonly pcgw: PcGamingWiki;
   private queue: string[] = [];
+  /** Queued games to look up again even though they have metadata (Refresh), not just the missing ones. */
+  private readonly refreshing = new Set<string>();
   /** Image downloads in progress, so simultaneous requests for one image share a download. */
   private readonly downloads = new Map<string, Promise<{ file: string; contentType: string } | null>>();
   /** Games already logged as having no usable artwork, so the log isn't repeated on every request. */
@@ -151,6 +153,16 @@ export class MetadataService {
     return this.enqueue(ids);
   }
 
+  /**
+   * Queues games to look up again from the current sources and their order: matched games
+   * too, so new keys or a new priority reach games matched before. Hand-picked matches keep
+   * their pick and just get its details fetched again.
+   */
+  queueRefresh(ids: string[]): number {
+    for (const id of ids) this.refreshing.add(id);
+    return this.enqueue(ids);
+  }
+
   enqueue(ids: string[]): number {
     const fresh = ids.filter((id) => !this.queue.includes(id));
     this.queue.push(...fresh);
@@ -165,7 +177,8 @@ export class MetadataService {
       while (this.queue.length) {
         const id = this.queue.shift()!;
         try {
-          await this.autoMatch(id);
+          if (this.refreshing.delete(id)) await this.refresh(id);
+          else await this.autoMatch(id);
         } catch (err) {
           this.recordAttempt(id, (err as Error).message);
           this.log.warn({ gameId: id, err: (err as Error).message }, "Metadata lookup failed");
@@ -277,6 +290,18 @@ export class MetadataService {
       }
     }
     return r;
+  }
+
+  /**
+   * Looks one game up again now. A hand-picked match is fetched again from its source; any
+   * other game is matched afresh with the current sources, keeping what it had if nothing
+   * matches this time.
+   */
+  async refresh(gameId: string): Promise<GameMetadata | null> {
+    const row = this.db.prepare("SELECT provider, provider_id, locked FROM metadata WHERE game_id = ?").get(gameId) as { provider: string; provider_id: string; locked: number } | undefined;
+    if (row?.locked) return this.apply(gameId, row.provider, row.provider_id);
+    this.db.prepare("DELETE FROM metadata_attempts WHERE game_id = ?").run(gameId);
+    return this.autoMatch(gameId);
   }
 
   /** Manual match by an admin; locks the result so automatic refreshes keep it. */

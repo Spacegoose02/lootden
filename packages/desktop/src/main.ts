@@ -1185,10 +1185,16 @@ function registerIpc(): void {
     fromLocal(e);
     const covers = await readdir(coversDir()).catch(() => [] as string[]);
     const games = await listInstalled(await searchDirs());
+    // Steam, Epic, GOG and the other launchers' games play offline too, through the launcher.
+    const { disabled, folders } = settings.get().storeScan;
+    const stores = await scanStoreGames(STORE_SCANNERS, process.platform, { disabled, folders }).catch(() => []);
     return {
       server: origin(),
       pendingPlays: settings.get().pendingPlays.length,
       theme: settings.get().offlineTheme ?? null,
+      stores: stores
+        .filter((g) => g.launchUrl && isStoreLaunchUrl(g.launchUrl))
+        .map((g) => ({ addon: g.addon, store: g.store ?? g.addon, externalId: g.externalId, title: g.title, launchUrl: g.launchUrl! })),
       games: await Promise.all(
         games.map(async (g) => ({
           gameId: g.gameId,
@@ -1205,6 +1211,12 @@ function registerIpc(): void {
   ipcMain.handle("gm:offline:play", async (e, gameId: string) => {
     fromLocal(e);
     return play(gameId);
+  });
+  /** A store game from the offline page, through its launcher. Only store launcher links open. */
+  ipcMain.handle("gm:offline:launchStore", async (e, url: string) => {
+    fromLocal(e);
+    if (typeof url !== "string" || !isStoreLaunchUrl(url)) throw new Error("That isn't a store launcher link");
+    await shell.openExternal(url);
   });
   ipcMain.handle("gm:offline:openFolder", async (e, gameId: string) => {
     fromLocal(e);

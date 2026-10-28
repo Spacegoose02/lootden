@@ -74,6 +74,22 @@ describe("store games: pages, covers and a person's changes", () => {
     assert.equal((await app.inject({ url: "/api/store-games/ubisoft/5266/cover?title=FarCry6" })).statusCode, 401, "signed-in people only");
   });
 
+  it("looks a store game up again on Refresh, keeping its match when nothing is found", async () => {
+    const { app, ctx, db } = await makeApp(root, {}, { fetchImpl: steamStore, addons: [fakeSteam], resolveHost: async () => ["93.184.216.34"] });
+    const kim = await signIn(app, ctx, "kim");
+    assert.equal((await app.inject({ url: "/api/store-games/ubisoft/5266?title=FarCry6", headers: kim })).json().info.name, "Far Cry® 6");
+    db.prepare("UPDATE store_game_info SET info = ? WHERE provider = 'steam' AND provider_id = '2369390'").run(JSON.stringify({ name: "Stale", summary: null }));
+    const before = searches.length;
+    const fresh = await app.inject({ method: "POST", url: "/api/store-games/ubisoft/5266/refresh?title=FarCry6", headers: kim });
+    assert.equal(fresh.statusCode, 200);
+    assert.equal(fresh.json().info.name, "Far Cry® 6", "details fetched again, not the month-old copy");
+    assert.equal(searches.length, before + 1, "matched by title again");
+
+    // A title nothing matches now: the earlier match stays.
+    const kept = await app.inject({ method: "POST", url: "/api/store-games/ubisoft/5266/refresh?title=Totally%20Different", headers: kim });
+    assert.equal(kept.json().info.name, "Far Cry® 6");
+  });
+
   it("lets each person rename a game, pick another match and set their own art", async () => {
     const { app, ctx } = await makeApp(root, {}, { fetchImpl: steamStore, addons: [fakeSteam], resolveHost: async () => ["93.184.216.34"] });
     const sam = await signIn(app, ctx, "sam");

@@ -223,10 +223,21 @@ export function AdminIntegrations({ onMessage }: { onMessage: (m: string) => voi
         <SourceOrder title="PC games" entries={s.metadataOrder.pc} ready={view.ready} onChange={(pc) => set("metadataOrder", { pc })} />
         <SourceOrder title="Emulated games" entries={s.metadataOrder.emulated} ready={view.ready} onChange={(emulated) => set("metadataOrder", { emulated })} />
       </div>
-      <button disabled={busy} onClick={() => run(async () => (await save(), "Source priority saved"))}>
-        Save priority
-      </button>
-      <p className="muted small">IGDB is throttled to about 3 requests a second, under its limit of 4. After adding keys or changing the order, use "Retry unmatched" under Library.</p>
+      <div className="inline">
+        <button disabled={busy} onClick={() => run(async () => (await save(), "Source priority saved"))}>
+          Save priority
+        </button>
+        <button className="secondary" disabled={busy} onClick={() => run(async () => (await save(), `Saved. Refreshing ${(await api.refreshAllMetadata("pc")).queued} PC games in the background`))}>
+          Save and refresh PC games
+        </button>
+        <button className="secondary" disabled={busy} onClick={() => run(async () => (await save(), `Saved. Refreshing ${(await api.refreshAllMetadata("emulated")).queued} emulated games in the background`))}>
+          Save and refresh emulated games
+        </button>
+      </div>
+      <p className="muted small">
+        A new order only changes games looked up from now on, so refresh to apply it to the games already matched. Hand-picked matches keep their pick. IGDB is throttled to
+        about 3 requests a second, under its limit of 4.
+      </p>
     </section>
   );
 }
