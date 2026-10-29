@@ -1,5 +1,6 @@
 import { desktop } from "./desktop";
 import type {
+  BrowserPolicy,
   AddonView,
   StoreGame,
   StoreGameDetail,
@@ -548,6 +549,8 @@ export const api = {
   refreshAllMetadata: (scope: string) => call<{ queued: number }>("POST", "/api/metadata/refresh", { scope }),
 
   users: () => call<User[]>("GET", "/api/users"),
+  userBrowser: (id: number) => call<BrowserPolicy>("GET", `/api/users/${id}/browser`),
+  saveUserBrowser: (id: number, p: Partial<BrowserPolicy>) => call<BrowserPolicy>("PUT", `/api/users/${id}/browser`, p),
   createUser: (u: { username: string; password?: string; displayName?: string; role?: string; kidMode?: boolean }) => call<User>("POST", "/api/users", u),
   updateUser: (id: number, patch: Partial<{ displayName: string; role: string; kidMode: boolean; password: string | null }>) =>
     call<User>("PATCH", `/api/users/${id}`, patch),
@@ -627,6 +630,10 @@ export const api = {
   saveWorkshop: (id: string, body: { appId: string | null; modsPath: string }) => call<WorkshopSettings>("PUT", `/api/games/${id}/workshop`, body),
   workshopItems: (id: string, q = "", page = 1) => call<{ items: WorkshopItem[]; total: number }>("GET", `/api/games/${id}/workshop/items?q=${encodeURIComponent(q)}&page=${page}`),
   workshopLinks: (id: string, links: string) => call<{ items: WorkshopItem[]; total: number }>("GET", `/api/games/${id}/workshop/items?ids=${encodeURIComponent(links)}`),
+  /** A game bought on Steam: browse its Workshop here, subscribe on Steam. */
+  steamWorkshop: (appId: string) => call<WorkshopSettings>("GET", `/api/store-games/steam/${appId}/workshop`),
+  steamWorkshopItems: (appId: string, q = "", page = 1) => call<{ items: WorkshopItem[]; total: number }>("GET", `/api/store-games/steam/${appId}/workshop/items?q=${encodeURIComponent(q)}&page=${page}`),
+  steamWorkshopLinks: (appId: string, links: string) => call<{ items: WorkshopItem[]; total: number }>("GET", `/api/store-games/steam/${appId}/workshop/items?ids=${encodeURIComponent(links)}`),
   testNexus: () => call<{ message: string }>("POST", "/api/mods/test"),
   sources: () => call<ReleaseSourceView[]>("GET", "/api/sources"),
   // Library add-ons: this person's store accounts and the games they own there.

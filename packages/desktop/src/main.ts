@@ -38,6 +38,9 @@ import {
   type PrepareStep,
   saveExecutable,
   scanStoreGames,
+  steamLibraryCover,
+  cleanPolicy,
+  type BrowserPolicy,
   STORE_SCANNERS,
   isStoreLaunchUrl,
   uninstallGame,
@@ -106,7 +109,7 @@ const BROWSER_PAGE = path.join(__dirname, "..", "setup", "browser.html");
 function openLink(url: string): void {
   const choice = settings.get().browserLinks ?? "auto";
   const inApp = choice === "on" || (choice === "auto" && handheldActive(settings.get()));
-  if (inApp && isBrowsable(url)) browser.open(url);
+  if (inApp && isBrowsable(url)) void browser.open(url);
   else if (isExternalLink(url)) void shell.openExternal(url);
 }
 /** The theme colours the offline page uses (see offlineTheme in the web UI's theme.ts). */
@@ -209,6 +212,29 @@ async function client(): Promise<GameServerClient> {
 }
 
 /**
+ * The web browser's rules for whoever is signed in to LootDen's window (else this computer's
+ * token). The last answer is kept, so a kid profile stays kid-safe while the server is away.
+ */
+async function browserPolicy(): Promise<BrowserPolicy | null> {
+  const s = settings.get();
+  const kept = s.browserPolicy ? cleanPolicy(s.browserPolicy) : null;
+  if (!origin()) return kept;
+  const [cookie] = await session.defaultSession.cookies.get({ url: s.serverUrl, name: "gm_session" }).catch(() => []);
+  const headers: Record<string, string> = cookie ? { Cookie: `gm_session=${cookie.value}` } : s.apiToken ? { Authorization: `Bearer ${s.apiToken}` } : {};
+  if (!Object.keys(headers).length) return kept;
+  const res = await net.fetch(`${origin()}/api/me/browser`, { headers, signal: AbortSignal.timeout(4000) }).catch(() => null);
+  // A server from before browser rules has none to give.
+  if (res?.status === 404) {
+    if (kept) settings.update({ browserPolicy: undefined });
+    return null;
+  }
+  if (!res?.ok) return kept;
+  const policy = cleanPolicy(await res.json().catch(() => null));
+  if (JSON.stringify(policy) !== JSON.stringify(s.browserPolicy)) settings.update({ browserPolicy: policy });
+  return policy;
+}
+
+/**
  * A client even when the server can't be reached to register this computer: calls through
  * it fail, which the offline paths expect.
  */
@@ -259,6 +285,55 @@ async function cacheCovers(gameIds: string[]): Promise<void> {
     if (file) await rm(path.join(coversDir(), file), { force: true });
     await writeFile(path.join(coversDir(), `${id}.${ext}`), new Uint8Array(await res.arrayBuffer()));
   }
+}
+
+/** A store game's name in the Covers folder, or null when it wouldn't make a safe file name. */
+const storeCoverId = (addon: string, externalId: string) => {
+  const id = `store-${addon}-${externalId}`.replace(/[^\w.-]/g, "_");
+  return cacheable(id) ? id : null;
+};
+
+/**
+ * Keeps a copy of each store game's cover as LootDen shows it (the person's own art, or the
+ * match from IGDB, RAWG or Steam), refreshed weekly, so the offline page has artwork for
+ * Steam, Epic, GOG and the rest too.
+ */
+async function cacheStoreCovers(games: Array<{ addon: string; externalId: string; title: string }>): Promise<void> {
+  const api = await client().catch(() => null);
+  if (!api) return;
+  await mkdir(coversDir(), { recursive: true });
+  const have = await readdir(coversDir()).catch(() => [] as string[]);
+  for (const g of games) {
+    const id = storeCoverId(g.addon, g.externalId);
+    if (!id) continue;
+    const file = have.find((f) => f.startsWith(`${id}.`));
+    const age = file ? Date.now() - (await stat(path.join(coversDir(), file))).mtimeMs : Infinity;
+    if (age < 7 * 86400_000) continue;
+    const at = `${origin()}/api/store-games/${encodeURIComponent(g.addon)}/${encodeURIComponent(g.externalId)}/cover?title=${encodeURIComponent(g.title)}`;
+    let res: Response | null = await fetch(at, { headers: api.headers(), redirect: "manual", signal: AbortSignal.timeout(15_000) }).catch(() => null);
+    // Most covers are a redirect to the image's own address, fetched without LootDen's token.
+    const to = res && res.status >= 300 && res.status < 400 ? res.headers.get("location") : null;
+    if (to) {
+      const url = new URL(to, origin());
+      res = /^https?:$/.test(url.protocol) ? await net.fetch(url.toString(), { signal: AbortSignal.timeout(15_000) }).catch(() => null) : null;
+    }
+    const ext = COVER_TYPES[(res?.headers.get("content-type") ?? "").split(";")[0]!.trim()];
+    if (!res?.ok || !ext) continue;
+    const data = new Uint8Array(await res.arrayBuffer());
+    if (data.byteLength > 8 * 1024 * 1024) continue;
+    if (file) await rm(path.join(coversDir(), file), { force: true });
+    await writeFile(path.join(coversDir(), `${id}.${ext}`), data);
+  }
+}
+
+/** A store game's cover for the offline page: the copy kept from the server, else Steam's own artwork cache. */
+async function storeCover(g: { addon: string; externalId: string }, files: string[]): Promise<string | null> {
+  const id = storeCoverId(g.addon, g.externalId);
+  const kept = id ? await cachedCover(id, files) : null;
+  if (kept || g.addon !== "steam") return kept;
+  const local = await steamLibraryCover(g.externalId).catch(() => null);
+  const data = local ? await readFile(local).catch(() => null) : null;
+  return data ? `data:image/jpeg;base64,${data.toString("base64")}` : null;
 }
 
 /** Ids that are safe as a file name in the cache folders. */
@@ -386,7 +461,7 @@ function refreshTray(): void {
     Menu.buildFromTemplate([
       { label: "Open LootDen", click: () => showWindow() },
       { label: "Installed games", click: () => showWindow("/library?tab=installed") },
-      { label: "Web browser", click: () => browser.open() },
+      { label: "Web browser", click: () => void browser.open() },
       { type: "separator" },
       u.state === "ready"
         ? { label: `Restart to update to ${u.version}`, click: () => void installNow() }
@@ -1134,7 +1209,9 @@ function registerIpc(): void {
   ipcMain.handle("gm:storeGames", async (e) => {
     fromServer(e);
     const { disabled, folders } = settings.get().storeScan;
-    return scanStoreGames(STORE_SCANNERS, process.platform, { disabled, folders });
+    const games = await scanStoreGames(STORE_SCANNERS, process.platform, { disabled, folders });
+    void cacheStoreCovers(games).catch(() => {});
+    return games;
   });
   /**
    * This PC's scanner settings: which launchers to look in, and folders picked to look in too.
@@ -1175,7 +1252,7 @@ function registerIpc(): void {
   /** The built-in web browser, on its start page or a web page. */
   ipcMain.handle("gm:openBrowser", (e, url?: string) => {
     fromServer(e);
-    browser.open(typeof url === "string" && isBrowsable(url) ? url : undefined);
+    return browser.open(typeof url === "string" && isBrowsable(url) ? url : undefined);
   });
 
   ipcMain.handle("gm:openFolder", async (e, gameId: string) => {
@@ -1258,9 +1335,11 @@ function registerIpc(): void {
       server: origin(),
       pendingPlays: settings.get().pendingPlays.length,
       theme: settings.get().offlineTheme ?? null,
-      stores: stores
-        .filter((g) => g.launchUrl && isStoreLaunchUrl(g.launchUrl))
-        .map((g) => ({ addon: g.addon, store: g.store ?? g.addon, externalId: g.externalId, title: g.title, launchUrl: g.launchUrl! })),
+      stores: await Promise.all(
+        stores
+          .filter((g) => g.launchUrl && isStoreLaunchUrl(g.launchUrl))
+          .map(async (g) => ({ addon: g.addon, store: g.store ?? g.addon, externalId: g.externalId, title: g.title, launchUrl: g.launchUrl!, cover: await storeCover(g, covers) })),
+      ),
       games: await Promise.all(
         games.map(async (g) => ({
           gameId: g.gameId,
@@ -1467,7 +1546,7 @@ app.on("second-instance", (_e, argv) => {
     void openDeepLink(link);
   } else if (!argv.includes("--browser")) showWindow();
   if (argv.includes("--fullscreen") && win && !win.isFullScreen()) win.setFullScreen(true);
-  if (argv.includes("--browser")) browser.open();
+  if (argv.includes("--browser")) void browser.open();
 });
 app.on("before-quit", () => (quitting = true));
 app.on("open-url", (e, url) => {
@@ -1493,6 +1572,8 @@ void app.whenReady().then(async () => {
     titlebarHeight: TITLEBAR_HEIGHT,
     zoom: HANDHELD_ZOOM,
     shellPage: BROWSER_PAGE,
+    blockedPage: path.join(__dirname, "..", "setup", "blocked.html"),
+    policy: browserPolicy,
     preload: path.join(__dirname, "browser-preload.cjs"),
     icon: path.join(__dirname, "..", "build", "icon.png"),
   });
@@ -1501,7 +1582,7 @@ void app.whenReady().then(async () => {
   applyLoginItem(settings.get());
   setJumpList();
   await createWindow();
-  if (launchBrowser) browser.open();
+  if (launchBrowser) void browser.open();
   // The copy replaced by the last update.
   const self = process.env.PORTABLE_EXECUTABLE_FILE ?? process.env.APPIMAGE;
   if (self) void rm(`${self}.old`, { force: true }).catch(() => {});

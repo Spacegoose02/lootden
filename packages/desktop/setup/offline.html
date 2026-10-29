@@ -128,7 +128,9 @@
           const cover = document.createElement("div");
           cover.className = "cover";
           if (g.kind === "store") {
-            cover.textContent = g.title;
+            // The cover kept from the server (or Steam's own), else the title on the launcher's colour.
+            if (g.cover) cover.append(Object.assign(document.createElement("img"), { src: g.cover, alt: "" }));
+            else cover.textContent = g.title;
             cover.append(Object.assign(document.createElement("span"), { className: "launcher", textContent: g.store }));
             const info = document.createElement("div");
             info.className = "info";

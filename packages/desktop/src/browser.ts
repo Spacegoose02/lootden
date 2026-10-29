@@ -1,5 +1,21 @@
 import { BaseWindow, dialog, ipcMain, session, shell, WebContentsView, type BrowserWindow, type IpcMainInvokeEvent, type Session, type WebContents } from "electron";
-import { addressToUrl, cleanBookmarks, DEFAULT_BOOKMARKS, isBrowsable, isStoreLaunchUrl, launcherShortcuts, SEARCH_ENGINES, siteName, type Bookmark, type SearchEngine } from "@lootden/client";
+import {
+  addressToUrl,
+  cleanBookmarks,
+  DEFAULT_BOOKMARKS,
+  isBrowsable,
+  isStoreLaunchUrl,
+  KID_BOOKMARKS,
+  KID_SEARCH,
+  launcherShortcuts,
+  safeSearchUrl,
+  SEARCH_ENGINES,
+  siteAllowed,
+  siteName,
+  type Bookmark,
+  type BrowserPolicy,
+  type SearchEngine,
+} from "@lootden/client";
 import type { SettingsStore } from "./settings.js";
 
 /**
@@ -11,6 +27,8 @@ import type { SettingsStore } from "./settings.js";
 
 /** Sites keep their sign-ins (YouTube, Discord ...) between visits, apart from the server's session. */
 export const BROWSER_PARTITION = "persist:lootden-browser";
+/** Kid-safe browsing keeps its own sign-ins, so a grown-up's accounts aren't signed in for a kid. */
+export const KIDS_PARTITION = "persist:lootden-browser-kids";
 
 interface Tab {
   id: number;
@@ -19,6 +37,8 @@ interface Tab {
   title: string;
   url: string;
   favicon: string;
+  /** The site the browser rules kept this tab from opening, while the tab shows why. */
+  blocked?: string;
   /** Where the controller's pointer is, in the page's pixels. */
   pointer: { x: number; y: number };
 }
@@ -31,7 +51,11 @@ export interface BrowserDeps {
   titlebarHeight: number;
   zoom: number;
   shellPage: string;
+  /** Shown in a tab instead of a site the browser rules don't allow. */
+  blockedPage: string;
   preload: string;
+  /** What the signed-in person may open (see BrowserPolicy), asked of the server each time the browser opens. */
+  policy: () => Promise<BrowserPolicy | null>;
   icon: string;
 }
 
@@ -68,7 +92,9 @@ export class WebBrowser {
   private wasFullscreen = false;
   /** Sites allowed the camera or microphone this session. */
   private mediaAllowed = new Set<string>();
-  private configured = false;
+  private configured = new Set<string>();
+  /** The signed-in person's browser rules; null lets everything through (an older server). */
+  private policy: BrowserPolicy | null = null;
 
   constructor(private readonly deps: BrowserDeps) {}
 
@@ -76,16 +102,36 @@ export class WebBrowser {
     return !!this.win && !this.win.isDestroyed();
   }
 
-  /** Opens the browser over LootDen, on a page or the start page. */
-  open(url?: string): void {
+  private get kids(): boolean {
+    return this.policy?.mode === "kids";
+  }
+
+  private get partition(): string {
+    return this.kids ? KIDS_PARTITION : BROWSER_PARTITION;
+  }
+
+  /** Opens the browser over LootDen, on a page or the start page, under the signed-in person's rules. */
+  async open(url?: string): Promise<void> {
     const target = url && isBrowsable(url) ? url : "";
+    const policy = await this.deps.policy().catch(() => null);
     if (this.isOpen) {
-      if (target) this.newTab(target);
-      this.win!.show();
-      this.win!.focus();
-      return;
+      if ((policy?.mode ?? "open") === (this.policy?.mode ?? "open")) {
+        this.policy = policy;
+        if (target) this.newTab(target);
+        this.win!.show();
+        this.win!.focus();
+        return;
+      }
+      // Someone else signed in meanwhile, with other rules: start over under theirs.
+      const closing = this.win!;
+      await new Promise<void>((done) => {
+        closing.once("closed", () => done());
+        closing.close();
+      });
     }
-    this.configureSession();
+    if (this.isOpen) return;
+    this.policy = policy;
+    this.configureSession(this.partition);
     const main = this.deps.mainWindow();
     const fullscreen = !!main?.isFullScreen() || this.deps.handheld();
     const bounds = main && !main.isDestroyed() ? main.getBounds() : undefined;
@@ -188,7 +234,7 @@ export class WebBrowser {
   /** The address bar: a web address, a site name or a search. */
   navigate(text: string): void {
     const tab = this.tab;
-    const url = addressToUrl(text, this.settings().browserSearch);
+    const url = addressToUrl(text, this.settings().browserSearch, this.kids ? KID_SEARCH : undefined);
     if (tab && url) this.load(tab, url);
   }
 
@@ -210,6 +256,8 @@ export class WebBrowser {
       if (this.tab === tab) this.win?.contentView.addChildView(tab.view, 0);
       this.layout();
     }
+    if (!siteAllowed(url, this.policy)) return this.showBlocked(tab, url);
+    tab.blocked = undefined;
     tab.url = url;
     tab.title = siteName(url);
     void tab.view.webContents.loadURL(url).catch(() => {});
@@ -217,12 +265,26 @@ export class WebBrowser {
     this.push();
   }
 
+  /** The tab says the site isn't allowed, instead of opening it. */
+  private showBlocked(tab: Tab, url: string): void {
+    const wc = tab.view?.webContents;
+    if (!wc || wc.isDestroyed()) return;
+    tab.blocked = siteName(url);
+    tab.url = url;
+    tab.title = `${tab.blocked} is blocked`;
+    tab.favicon = "";
+    void wc.loadFile(this.deps.blockedPage, { query: { site: tab.blocked, kids: this.kids ? "1" : "" } }).catch(() => {});
+    this.push();
+  }
+
   private createView(tab: Tab): WebContentsView {
-    const view = new WebContentsView({ webPreferences: { partition: BROWSER_PARTITION, contextIsolation: true, sandbox: true, nodeIntegration: false, webviewTag: false, safeDialogs: true } });
+    const view = new WebContentsView({ webPreferences: { partition: this.partition, contextIsolation: true, sandbox: true, nodeIntegration: false, webviewTag: false, safeDialogs: true } });
     view.setBackgroundColor("#ffffff");
     const wc = view.webContents;
     const update = () => {
-      if (wc.isDestroyed()) return;
+      // The blocked page keeps the address that was asked for.
+      if (wc.isDestroyed() || (tab.blocked && wc.getURL().startsWith("file:"))) return;
+      tab.blocked = undefined;
       tab.url = wc.getURL();
       tab.title = wc.getTitle() || siteName(tab.url);
       this.push();
@@ -270,6 +332,8 @@ export class WebBrowser {
 
   /** A link out of the web: a store launcher (after asking) or mail. Anything else is ignored. */
   private async external(url: string): Promise<void> {
+    // Kid-safe browsing stays inside the browser.
+    if (this.kids) return;
     if (/^mailto:/i.test(url)) return void shell.openExternal(url);
     if (!isStoreLaunchUrl(url) || !this.win) return;
     const scheme = url.split(":")[0];
@@ -330,6 +394,7 @@ export class WebBrowser {
   }
 
   private bookmarks(): Bookmark[] {
+    if (this.kids) return KID_BOOKMARKS.filter((b) => siteAllowed(b.url, this.policy));
     const saved = this.settings().browserBookmarks;
     return saved ? cleanBookmarks(saved) : DEFAULT_BOOKMARKS;
   }
@@ -337,14 +402,15 @@ export class WebBrowser {
   state() {
     const wc = this.tab?.view?.webContents;
     return {
-      tabs: this.tabs.map((t) => ({ id: t.id, title: t.title, url: t.url, favicon: t.favicon, start: !t.view, loading: !!t.view && t.view.webContents.isLoading() })),
+      tabs: this.tabs.map((t) => ({ id: t.id, title: t.title, url: t.url, favicon: t.favicon, start: !t.view, loading: !!t.view && t.view.webContents.isLoading(), blocked: !!t.blocked })),
       active: this.tab?.id ?? 0,
       canGoBack: !!wc?.navigationHistory.canGoBack(),
       canGoForward: !!wc?.navigationHistory.canGoForward(),
       bookmarks: this.bookmarks(),
-      launchers: launcherShortcuts(process.platform),
-      search: this.settings().browserSearch ?? "google",
-      engines: Object.entries(SEARCH_ENGINES).map(([id, e]) => ({ id, name: e.name })),
+      launchers: this.kids ? [] : launcherShortcuts(process.platform),
+      search: this.kids ? "kiddle" : (this.settings().browserSearch ?? "google"),
+      engines: this.kids ? [{ id: "kiddle", name: "Kiddle" }] : Object.entries(SEARCH_ENGINES).map(([id, e]) => ({ id, name: e.name })),
+      kids: this.kids,
       theme: this.settings().offlineTheme ?? null,
       frame: { custom: this.deps.customFrame, fullscreen: !!this.win?.isFullScreen(), height: this.deps.titlebarHeight, handheld: this.deps.handheld() },
     };
@@ -398,10 +464,26 @@ export class WebBrowser {
 
   // ---- Session and IPC ----------------------------------------------------------------
 
-  private configureSession(): void {
-    if (this.configured) return;
-    this.configured = true;
-    const ses: Session = session.fromPartition(BROWSER_PARTITION);
+  private configureSession(partition: string): void {
+    if (this.configured.has(partition)) return;
+    this.configured.add(partition);
+    const ses: Session = session.fromPartition(partition);
+    // The browser rules, for every page and frame, redirects included: blocked sites don't load,
+    // and kid-safe browsing gets the search engines' safe search.
+    ses.webRequest.onBeforeRequest({ urls: ["http://*/*", "https://*/*"] }, (details, callback) => {
+      const frame = details.resourceType === "mainFrame" || details.resourceType === "subFrame";
+      if (!frame || !this.policy) return callback({});
+      // Frames inside a page (videos, games) only answer to the blocked list; whole pages to all the rules.
+      const allowed = siteAllowed(details.url, details.resourceType === "subFrame" ? { ...this.policy, mode: "open" } : this.policy);
+      if (!allowed) {
+        callback({ cancel: true });
+        const tab = details.resourceType === "mainFrame" ? this.tabs.find((t) => t.view?.webContents.id === details.webContentsId) : undefined;
+        if (tab) setImmediate(() => this.showBlocked(tab, details.url));
+        return;
+      }
+      const safe = this.kids ? safeSearchUrl(details.url) : null;
+      callback(safe ? { redirectURL: safe } : {});
+    });
     ses.setPermissionRequestHandler((wc, permission, callback, details) => {
       if (SITE_PERMISSIONS.has(permission)) return callback(true);
       if (permission !== "media" || !this.win) return callback(false);
@@ -453,17 +535,19 @@ export class WebBrowser {
     on("stepTab", (by: unknown) => (by === 1 || by === -1) && this.step(by));
     on("open", (url: unknown) => typeof url === "string" && isBrowsable(url) && this.tab && this.load(this.tab, url));
     on("bookmarks", (list: unknown) => {
+      if (this.kids) return;
       this.deps.settings().update({ browserBookmarks: cleanBookmarks(list) });
       this.push();
     });
     on("resetBookmarks", () => {
+      if (this.kids) return;
       this.deps.settings().update({ browserBookmarks: undefined });
       this.push();
     });
     /** The star in the address bar: adds the page, or takes it off again. */
     on("toggleBookmark", () => {
       const tab = this.tab;
-      if (!tab?.view || !isBrowsable(tab.url)) return;
+      if (this.kids || !tab?.view || !isBrowsable(tab.url) || tab.blocked) return;
       const list = this.bookmarks();
       const href = new URL(tab.url).toString();
       const next = list.some((b) => b.url === href) ? list.filter((b) => b.url !== href) : [...list, { title: tab.title || siteName(href), url: href }];
@@ -475,6 +559,7 @@ export class WebBrowser {
       this.push();
     });
     on("launch", async (id: unknown) => {
+      if (this.kids) return;
       const l = launcherShortcuts(process.platform).find((x) => x.id === id);
       if (l) await shell.openExternal(l.url);
     });

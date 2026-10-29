@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
+import { RequestButton } from "./Requests";
 import { api, formatBytes, type WishItem, type WishlistState } from "../api";
 import { useAuth } from "../auth";
 import { FindDownloads } from "../components/FindDownloads";
@@ -15,10 +16,14 @@ const when = (w: WishItem) => {
   return w.dateText ?? null;
 };
 
-/** Games the household wants: the Steam wishlist, list feeds and anything added by hand, one entry per game. */
+/**
+ * Games the household wants: the Steam wishlist, list feeds and anything added by hand, one entry
+ * per game. Everyone but admins can request a game from here; kid profiles see it but don't change it.
+ */
 export function Wishlist() {
   const { me } = useAuth();
   const isAdmin = me?.role === "admin";
+  const kid = !!me?.user?.kidMode;
   const [data, setData] = useState<WishlistState | null>(null);
   const [msg, setMsg] = useState<{ text: string; error?: boolean } | null>(null);
   const [busy, setBusy] = useState(false);
@@ -71,9 +76,11 @@ export function Wishlist() {
               Steam ID &amp; feeds
             </Link>
           )}
-          <button className="primary" disabled={busy || noSources} onClick={() => void run(() => api.syncWishlist(), "Synced")}>
-            {busy ? "Working…" : "Sync now"}
-          </button>
+          {!kid && (
+            <button className="primary" disabled={busy || noSources} onClick={() => void run(() => api.syncWishlist(), "Synced")}>
+              {busy ? "Working…" : "Sync now"}
+            </button>
+          )}
         </span>
       </div>
 
@@ -82,12 +89,15 @@ export function Wishlist() {
           Add your Steam ID in <Link to="/settings/steam">Settings, Steam &amp; wishlist</Link> to bring in your Steam wishlist, or add list feeds there.
         </p>
       )}
-      {data && !isAdmin && noSources && <p className="muted">An admin can link a Steam wishlist or add list feeds here. You can add games by hand below.</p>}
+      {data && !isAdmin && !kid && noSources && <p className="muted">An admin can link a Steam wishlist or add list feeds here. You can add games by hand below.</p>}
+      {!isAdmin && <p className="muted small">See something you'd like to play? Request it, and an admin can add it to the library.</p>}
 
-      <form className="panel inline" onSubmit={add}>
-        <input placeholder="Add a game by name" value={title} onChange={(e) => setTitle(e.target.value)} style={{ flex: 1 }} />
-        <button disabled={busy || !title.trim()}>Add</button>
-      </form>
+      {!kid && (
+        <form className="panel inline" onSubmit={add}>
+          <input placeholder="Add a game by name" value={title} onChange={(e) => setTitle(e.target.value)} style={{ flex: 1 }} />
+          <button disabled={busy || !title.trim()}>Add</button>
+        </form>
+      )}
       {msg && <p className={msg.error ? "error" : "notice"}>{msg.text}</p>}
 
       {data && (
@@ -141,9 +151,12 @@ export function Wishlist() {
                     All results
                   </button>
                 )}
-                <button className="ghost small" disabled={busy} title="Removed games stay off when syncing" onClick={() => void run(() => api.removeWish(w.id))}>
-                  Remove
-                </button>
+                {!isAdmin && !w.libraryId && <RequestButton game={{ name: w.title, url: w.url, coverUrl: w.image, steamAppId: w.steamAppId }} small />}
+                {!kid && (
+                  <button className="ghost small" disabled={busy} title="Removed games stay off when syncing" onClick={() => void run(() => api.removeWish(w.id))}>
+                    Remove
+                  </button>
+                )}
               </span>
             </div>
           </div>

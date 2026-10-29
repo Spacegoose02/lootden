@@ -1,7 +1,10 @@
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { HttpProblem, requireAdmin, requireUser, type AppContext } from "../context.js";
 
-/** The household wishlist. Everyone (but kid profiles) can add and remove games; admins pick the sources. */
+/**
+ * The household wishlist. Everyone sees it (kid profiles too, to request games from it); everyone
+ * but kid profiles can add and remove games; admins pick the sources.
+ */
 export function wishlistRoutes(app: FastifyInstance, ctx: AppContext) {
   const grownUp = (req: FastifyRequest) => {
     if (requireUser(req).kidMode) throw new HttpProblem(403, "Not available on kid profiles");
@@ -16,7 +19,7 @@ export function wishlistRoutes(app: FastifyInstance, ctx: AppContext) {
   const state = () => ({ items: ctx.wishlist.list(), steam: ctx.wishlist.steam(), feeds: ctx.wishlist.feeds() });
 
   app.get("/api/wishlist", async (req) => {
-    grownUp(req);
+    requireUser(req);
     return state();
   });
   app.post<{ Body: { title?: string; url?: string } }>("/api/wishlist", async (req) => {

@@ -91,6 +91,7 @@
         <input id="q" type="text" spellcheck="false" autocomplete="off" placeholder="Search the web or type an address" aria-label="Search the web" />
         <button class="primary" type="submit">Go</button>
       </form>
+      <p class="muted" id="kidNote" hidden>Kid-safe browsing: only sites made for kids, and ones a grown-up has added, open here.</p>
       <h2>Sites <button class="ghost" id="edit" type="button">Edit</button></h2>
       <div class="sites" id="sites"></div>
       <form class="add" id="add" hidden>
@@ -198,6 +199,11 @@
       }
 
       function renderStart() {
+        // Kid-safe browsing has a fixed start page.
+        $("kidNote").hidden = !state.kids;
+        $("edit").hidden = !!state.kids;
+        $("star").hidden = !!state.kids;
+        if (state.kids) editing = false;
         const sites = $("sites");
         sites.replaceChildren();
         for (const b of state.bookmarks) {

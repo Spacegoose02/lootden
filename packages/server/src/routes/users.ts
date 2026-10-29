@@ -1,5 +1,5 @@
 import type { FastifyInstance } from "fastify";
-import type { ActivityEvent, Role } from "@lootden/shared";
+import { cleanPolicy, cleanSites, type ActivityEvent, type BrowserPolicy, type Role } from "@lootden/shared";
 import { verifyPassword } from "../auth/crypto.js";
 import { SESSION_COOKIE } from "../auth/service.js";
 import { HttpProblem, requireAdmin, requirePerson, type AppContext } from "../context.js";
@@ -7,6 +7,19 @@ import { avatarSvg, randomAvatarSeed } from "../users/avatars.js";
 import { publicUser } from "../users/repo.js";
 
 export function userRoutes(app: FastifyInstance, ctx: AppContext) {
+  /** What the person may open in the desktop app's browser; kid profiles are kid-safe unless an admin says otherwise. */
+  const browserPolicy = (userId: number, kidMode: boolean): BrowserPolicy => {
+    const row = ctx.db.prepare("SELECT mode, allowed, blocked FROM browser_policy WHERE user_id = ?").get(userId) as { mode: string | null; allowed: string; blocked: string } | undefined;
+    const parse = (t: string | undefined) => {
+      try {
+        return JSON.parse(t ?? "[]") as unknown;
+      } catch {
+        return [];
+      }
+    };
+    return cleanPolicy({ mode: row?.mode ?? undefined, allowed: parse(row?.allowed), blocked: parse(row?.blocked) }, kidMode);
+  };
+
   app.get<{ Params: { seed: string } }>("/api/avatars/:seed", async (req, reply) => {
     const seed = req.params.seed.replace(/\.svg$/, "").slice(0, 64);
     reply.header("Content-Type", "image/svg+xml").header("Cache-Control", "public, max-age=31536000, immutable");
@@ -37,6 +50,12 @@ export function userRoutes(app: FastifyInstance, ctx: AppContext) {
     // Other browsers signed in with the old password are signed out; this one stays.
     ctx.auth.endUserSessions(me.id, req.cookies[SESSION_COOKIE]);
     return { ok: true };
+  });
+
+  /** The desktop app asks before opening its browser. */
+  app.get("/api/me/browser", async (req) => {
+    const me = requirePerson(req);
+    return browserPolicy(me.id, me.kidMode);
   });
 
   app.get("/api/me/tokens", async (req) => ctx.users.listTokens(requirePerson(req).id));
@@ -107,6 +126,30 @@ export function userRoutes(app: FastifyInstance, ctx: AppContext) {
       return publicUser(updated);
     },
   );
+
+  /** Admin: a person's web browser in the desktop app, kid-safe or open, and the sites they may or may not open. */
+  app.get<{ Params: { id: string } }>("/api/users/:id/browser", async (req) => {
+    requireAdmin(req);
+    const user = ctx.users.byId(Number(req.params.id));
+    if (!user) throw new HttpProblem(404, "No such user");
+    return browserPolicy(user.id, user.kidMode);
+  });
+
+  app.put<{ Params: { id: string }; Body: Partial<BrowserPolicy> }>("/api/users/:id/browser", async (req) => {
+    requireAdmin(req);
+    const user = ctx.users.byId(Number(req.params.id));
+    if (!user) throw new HttpProblem(404, "No such user");
+    const b = req.body ?? {};
+    if (b.mode !== undefined && b.mode !== "open" && b.mode !== "kids") throw new HttpProblem(400, "The browser is kids or open");
+    const bad = [...(Array.isArray(b.allowed) ? b.allowed : []), ...(Array.isArray(b.blocked) ? b.blocked : [])].filter((x) => String(x ?? "").trim() && !cleanSites([x]).length);
+    if (bad.length) throw new HttpProblem(400, `${String(bad[0])} isn't a site name, like youtube.com`);
+    const cur = browserPolicy(user.id, user.kidMode);
+    const next = cleanPolicy({ mode: b.mode ?? cur.mode, allowed: b.allowed ?? cur.allowed, blocked: b.blocked ?? cur.blocked }, user.kidMode);
+    ctx.db
+      .prepare("INSERT INTO browser_policy (user_id, mode, allowed, blocked) VALUES (?, ?, ?, ?) ON CONFLICT(user_id) DO UPDATE SET mode = excluded.mode, allowed = excluded.allowed, blocked = excluded.blocked")
+      .run(user.id, next.mode, JSON.stringify(next.allowed), JSON.stringify(next.blocked));
+    return next;
+  });
 
   app.delete<{ Params: { id: string } }>("/api/users/:id", async (req) => {
     const p = requireAdmin(req);

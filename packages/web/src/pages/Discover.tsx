@@ -7,8 +7,9 @@ import { FindDownloads } from "../components/FindDownloads";
 import { FreeGames } from "../components/FreeGames";
 import { ListingCard } from "../components/Listing";
 import { SourceReleases } from "../components/SourceReleases";
+import { RequestButton } from "./Requests";
 
-/** Find games that aren't in the library yet; admins can send them straight to the downloaders. */
+/** Find games that aren't in the library yet; admins send them straight to the downloaders, everyone else (kids too) requests them. */
 export function Discover() {
   const { me } = useAuth();
   const isAdmin = me?.role === "admin";
@@ -77,7 +78,9 @@ export function Discover() {
                       <button className="small" onClick={() => setFinding(r)}>
                         Find downloads
                       </button>
-                    ) : null
+                    ) : (
+                      <RequestButton game={r} small />
+                    )
                   }
                 />
               ))}
@@ -99,7 +102,7 @@ export function Discover() {
           {recent.items.length ? (
             <div className="listing-grid">
               {recent.items.map((r) => (
-                <ListingCard key={`${r.provider}:${r.providerId}`} item={r} />
+                <ListingCard key={`${r.provider}:${r.providerId}`} item={r} action={!isAdmin && !r.libraryId ? <RequestButton game={r} small /> : undefined} />
               ))}
             </div>
           ) : (

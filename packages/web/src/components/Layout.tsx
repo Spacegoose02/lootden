@@ -125,18 +125,20 @@ export function Layout() {
   const { me, logout } = useAuth();
   const navigate = useNavigate();
   const user = me?.user;
-  const kid = !!me?.user?.kidMode;
   const admin = me?.role === "admin";
   const links: NavItem[] = [
     { to: "/", label: "Home", end: true },
     { to: "/library", label: "Library" },
     { to: "/updates", label: "Updates" },
     { to: "/emulation", label: "Emulation" },
-    ...(kid ? [] : [{ to: "/discover", label: "Discover" }, { to: "/wishlist", label: "Wishlist" }, { to: "/calendar", label: "Calendar" }]),
+    // Kids too: they ask for games from these, and an admin approves.
+    { to: "/discover", label: "Discover" },
+    { to: "/wishlist", label: "Wishlist" },
+    { to: "/calendar", label: "Calendar" },
     { to: "/requests", label: "Requests" },
     { to: "/news", label: "News" },
-    // The desktop app's built-in web browser, for handhelds and the Xbox full screen experience. Not for kids.
-    ...(desktop?.openBrowser && !kid ? [{ to: "/browser", label: "Browser", state: { open: true } }] : []),
+    // The desktop app's built-in web browser, for handhelds and the Xbox full screen experience. Kid-safe on kid profiles.
+    ...(desktop?.openBrowser ? [{ to: "/browser", label: "Browser", state: { open: true } }] : []),
     // Inside the desktop app the page is still there (Profile links to it for the Playnite extension), just not in the menu.
     ...(desktop ? [] : [{ to: "/apps", label: "Get the app" }]),
     ...(admin ? [{ to: "/downloads", label: "Downloads" }] : []),

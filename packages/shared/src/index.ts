@@ -2,6 +2,7 @@
 // Keep this package dependency-free so both sides can import it anywhere.
 
 export * from "./addons.js";
+export * from "./browser.js";
 export * from "./emulators.js";
 export * from "./packages.js";
 import type { KindReason, PackageKind } from "./packages.js";

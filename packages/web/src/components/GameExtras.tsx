@@ -203,11 +203,17 @@ export function ModsPanel({ gameId, title }: { gameId: string; title: string }) 
   );
 }
 
+/** Opens a steam:// link: through the desktop app, or the browser's own handler. */
+const openSteam = (url: string) => (desktop?.launchStore ? desktop.launchStore(url) : Promise.resolve(void (window.location.href = url)));
+
 /**
  * Steam Workshop items for a PC game with a Steam app id: popular items and search (with a
  * Steam Web API key), or items from pasted links, installed into the game's mods folder by the app.
+ * For a game bought on Steam (steamAppId), Steam downloads the items itself: Subscribe opens
+ * the item in Steam instead.
  */
-export function WorkshopPanel({ gameId, isAdmin, installedHere }: { gameId: string; isAdmin: boolean; installedHere: boolean }) {
+export function WorkshopPanel({ gameId = "", steamAppId, isAdmin, installedHere }: { gameId?: string; steamAppId?: string; isAdmin: boolean; installedHere: boolean }) {
+  const onSteam = !!steamAppId;
   const [w, setW] = useState<WorkshopSettings | null>(null);
   const [items, setItems] = useState<WorkshopItem[] | null>(null);
   const [total, setTotal] = useState(0);
@@ -220,15 +226,15 @@ export function WorkshopPanel({ gameId, isAdmin, installedHere }: { gameId: stri
   const [error, setError] = useState("");
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState({ appId: "", modsPath: "" });
-  const canInstall = !!desktop?.installWorkshopItem && installedHere && !!w?.modsPath;
+  const canInstall = !onSteam && !!desktop?.installWorkshopItem && installedHere && !!w?.modsPath;
 
   const loadMine = () => {
-    if (desktop?.workshopItems && installedHere) void desktop.workshopItems(gameId).then(setMine, () => setMine([]));
+    if (!onSteam && desktop?.workshopItems && installedHere) void desktop.workshopItems(gameId).then(setMine, () => setMine([]));
   };
   const load = async (query: string, p: number) => {
     setError("");
     try {
-      const r = await api.workshopItems(gameId, query, p);
+      const r = onSteam ? await api.steamWorkshopItems(steamAppId!, query, p) : await api.workshopItems(gameId, query, p);
       setItems(p === 1 ? r.items : [...(items ?? []), ...r.items]);
       setTotal(r.total);
       setPage(p);
@@ -240,11 +246,11 @@ export function WorkshopPanel({ gameId, isAdmin, installedHere }: { gameId: stri
     setW(null);
     setItems(null);
     setMine([]);
-    api.workshop(gameId).then((x) => {
+    (onSteam ? api.steamWorkshop(steamAppId!) : api.workshop(gameId)).then((x) => {
       setW(x);
       setDraft({ appId: x.appId ?? "", modsPath: x.modsPath });
     }, () => setW(null));
-  }, [gameId]);
+  }, [gameId, steamAppId]);
   useEffect(() => {
     if (w?.appId && w.canBrowse) void load("", 1);
     if (w?.modsPath) loadMine();
@@ -297,7 +303,12 @@ export function WorkshopPanel({ gameId, isAdmin, installedHere }: { gameId: stri
               Open on Steam
             </a>
           )}
-          {isAdmin && (
+          {onSteam && (
+            <button className="ghost small" onClick={() => void openSteam(`steam://url/SteamWorkshopPage/${w.appId}`).catch((e) => setError(bridgeError(e)))}>
+              Open in Steam
+            </button>
+          )}
+          {isAdmin && !onSteam && (
             <button className="ghost small" onClick={() => setEditing(!editing)}>
               {editing ? "Cancel" : "Set up"}
             </button>
@@ -366,7 +377,7 @@ export function WorkshopPanel({ gameId, isAdmin, installedHere }: { gameId: stri
                 e.preventDefault();
                 if (!links.trim()) return;
                 setError("");
-                api.workshopLinks(gameId, links).then((r) => (setItems(r.items), setTotal(r.total), setPage(1)), (err: Error) => setError(err.message));
+                (onSteam ? api.steamWorkshopLinks(steamAppId!, links) : api.workshopLinks(gameId, links)).then((r) => (setItems(r.items), setTotal(r.total), setPage(1)), (err: Error) => setError(err.message));
               }}
             >
               <input placeholder="Paste Workshop links or ids" value={links} onChange={(e) => setLinks(e.target.value)} style={{ flex: 1 }} />
@@ -376,9 +387,15 @@ export function WorkshopPanel({ gameId, isAdmin, installedHere }: { gameId: stri
             </form>
           </div>
           {!w.canBrowse && <p className="muted small">Paste links to items, or save a Steam Web API key under Integrations to browse and search here.</p>}
-          {desktop && !installedHere && <p className="muted small">Install the game on this PC to add Workshop items to it.</p>}
-          {desktop && installedHere && !w.modsPath && <p className="muted small">{isAdmin ? "Set" : "An admin needs to set"} the game's mods folder before items can be added.</p>}
-          {!desktop && <p className="muted small">The LootDen app adds Workshop items to games installed on your PC.</p>}
+          {onSteam ? (
+            <p className="muted small">Subscribe to an item and Steam downloads it into the game, and keeps it up to date.</p>
+          ) : (
+            <>
+              {desktop && !installedHere && <p className="muted small">Install the game on this PC to add Workshop items to it.</p>}
+              {desktop && installedHere && !w.modsPath && <p className="muted small">{isAdmin ? "Set" : "An admin needs to set"} the game's mods folder before items can be added.</p>}
+              {!desktop && <p className="muted small">The LootDen app adds Workshop items to games installed on your PC.</p>}
+            </>
+          )}
           {line && <p className="muted small workshop-line">{line}</p>}
           {error && <p className="error small">{error}</p>}
           {items && !items.length && <p className="muted small">Nothing found.</p>}
@@ -403,6 +420,11 @@ export function WorkshopPanel({ gameId, isAdmin, installedHere }: { gameId: stri
                           {busy === m.id ? "Adding…" : "Add to game"}
                         </button>
                       ))}
+                    {onSteam && (
+                      <button className="small" onClick={() => void openSteam(`steam://url/CommunityFilePage/${m.id}`).catch((e) => setError(bridgeError(e)))}>
+                        Subscribe in Steam
+                      </button>
+                    )}
                     <a className="small" href={m.url} target="_blank" rel="noreferrer">
                       Steam page
                     </a>

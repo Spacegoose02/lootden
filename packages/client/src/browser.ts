@@ -33,6 +33,20 @@ export const DEFAULT_BOOKMARKS: Bookmark[] = [
   { title: "Reddit", url: "https://www.reddit.com/" },
 ];
 
+/** The start page in kid-safe mode, which can't be changed there. */
+export const KID_BOOKMARKS: Bookmark[] = [
+  { title: "Kiddle", url: "https://www.kiddle.co/" },
+  { title: "PBS Kids", url: "https://pbskids.org/" },
+  { title: "Nat Geo Kids", url: "https://kids.nationalgeographic.com/" },
+  { title: "Scratch", url: "https://scratch.mit.edu/" },
+  { title: "Code.org", url: "https://code.org/" },
+  { title: "Khan Academy", url: "https://www.khanacademy.org/" },
+  { title: "ABCya", url: "https://www.abcya.com/" },
+  { title: "Starfall", url: "https://www.starfall.com/" },
+  { title: "LEGO", url: "https://www.lego.com/kids" },
+  { title: "NASA", url: "https://www.nasa.gov/" },
+];
+
 /** Most a person can keep, so a broken page can't grow the settings file without end. */
 export const MAX_BOOKMARKS = 60;
 
@@ -49,11 +63,11 @@ export function isBrowsable(url: string): boolean {
 /**
  * What the address bar opens for typed text: a full web address as it is, something that
  * looks like a site name ("youtube.com", "localhost:8080", "192.168.1.5") over https (http
- * for local names), and anything else as a search.
+ * for local names), and anything else as a search (on searchBase when given, Kiddle for kids).
  */
-export function addressToUrl(input: string, engine: SearchEngine = "google"): string {
+export function addressToUrl(input: string, engine: SearchEngine = "google", searchBase?: string): string {
   const text = input.trim();
-  const search = () => `${(SEARCH_ENGINES[engine] ?? SEARCH_ENGINES.google).url}${encodeURIComponent(text)}`;
+  const search = () => `${searchBase ?? (SEARCH_ENGINES[engine] ?? SEARCH_ENGINES.google).url}${encodeURIComponent(text)}`;
   if (!text) return "";
   if (/^https?:\/\//i.test(text)) return isBrowsable(text) ? new URL(text).toString() : search();
   // Any other scheme ("javascript:", "file:", "steam:") is searched for, never opened.

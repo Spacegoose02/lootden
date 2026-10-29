@@ -86,3 +86,19 @@ describe("Steam Workshop", () => {
     assert.ok(!calls.some((c) => c.includes("QueryFiles")));
   });
 });
+
+describe("Steam Workshop for games bought on Steam", () => {
+  it("looks items up by the game's Steam app id, with no mods folder", async () => {
+    const { app, ctx } = await makeApp(root, {}, { fetchImpl: steam });
+    const sam = await signIn(app, ctx, "sam2");
+    const kid = await signIn(app, ctx, "kiddo2", { kidMode: true });
+
+    assert.deepEqual((await app.inject({ url: "/api/store-games/steam/620/workshop", headers: sam })).json(), { appId: "620", modsPath: "", canBrowse: false });
+    assert.equal((await app.inject({ url: "/api/store-games/steam/620/workshop", headers: kid })).statusCode, 403);
+    assert.equal((await app.inject({ url: "/api/store-games/steam/abc/workshop", headers: sam })).statusCode, 404);
+    const found = (await app.inject({ url: "/api/store-games/steam/620/workshop/items?ids=111111", headers: sam })).json();
+    assert.deepEqual(found.items.map((i: { id: string }) => i.id), ["111111"]);
+    assert.equal((await app.inject({ url: "/api/store-games/steam/620/workshop/items?ids=777777", headers: sam })).statusCode, 400, "another game's item");
+    await app.close();
+  });
+});
