@@ -1,6 +1,6 @@
 {
   "name": "lootden",
-  "version": "0.18.0",
+  "version": "0.18.1",
   "private": true,
   "description": "Self-hosted library for DRM-free games: a Docker server that serves the library and clients that download, unpack and install games.",
   "license": "UNLICENSED",

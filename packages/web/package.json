@@ -1,6 +1,6 @@
 {
   "name": "@lootden/web",
-  "version": "0.18.0",
+  "version": "0.18.1",
   "private": true,
   "type": "module",
   "scripts": {
@@ -14,7 +14,7 @@
     "react-router-dom": "^7.6.0"
   },
   "devDependencies": {
-    "@lootden/shared": "0.18.0",
+    "@lootden/shared": "0.18.1",
     "@types/react": "^19.1.0",
     "@types/react-dom": "^19.1.0",
     "@vitejs/plugin-react": "^5.0.0",

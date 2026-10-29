@@ -130,7 +130,7 @@ vault can do it.
   Ready to play mixes LootDen and store installs; pill menu, clock in the app, controller
   button hints along the bottom while a pad is in use.
 
-## Other stores bugs (after 0.18.0)
+## Other stores bugs (0.18.1)
 
 - **Requests from Discover, Wishlist and Calendar**: `RequestButton` (`pages/Requests.tsx`) is on
   Discover cards, wishlist cards and calendar rows for everyone but admins, and knows what the
