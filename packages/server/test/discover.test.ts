@@ -58,7 +58,12 @@ describe("release calendar and discover", () => {
 
     const kid = await ctx.users.create({ username: "kiddo", password: "password1", kidMode: true });
     const asKid = { authorization: `Bearer ${ctx.auth.createApiToken(kid.id, "t").token}` };
-    assert.equal((await app.inject({ url: "/api/calendar", headers: asKid })).statusCode, 403);
+    // Kids look through the calendar to ask for games, but don't add dates or get the YouTube rows.
+    assert.equal((await app.inject({ url: "/api/calendar", headers: asKid })).statusCode, 200);
+    assert.equal((await app.inject({ url: "/api/wishlist", headers: asKid })).statusCode, 200);
+    assert.equal((await app.inject({ method: "POST", url: "/api/calendar/entries", headers: asKid, payload: { title: "Party", date: "2027-01-01" } })).statusCode, 403);
+    assert.equal((await app.inject({ method: "POST", url: "/api/wishlist", headers: asKid, payload: { title: "Doom" } })).statusCode, 403);
+    assert.equal((await app.inject({ url: "/api/videos", headers: asKid })).statusCode, 403);
     await app.close();
   });
 });
@@ -73,6 +78,8 @@ describe("discover game pages", () => {
     const fetchImpl = (async (input: string | URL | Request) => {
       const url = new URL(String(input));
       if (url.pathname === "/search/results/") return Response.json({ results_html: rows });
+      if (url.pathname === "/api/appdetails" && url.searchParams.get("appids") === "20")
+        return Response.json({ "20": { success: true, data: { name: "Gore Fest", steam_appid: 20, required_age: 18, short_description: "Not for kids." } } });
       if (url.pathname === "/api/appdetails")
         return Response.json({
           "10": {
@@ -92,7 +99,7 @@ describe("discover game pages", () => {
         });
       return new Response("nope", { status: 404 });
     }) as typeof fetch;
-    const { app } = await makeApp(root, { apiToken: "svc" }, { fetchImpl });
+    const { app, ctx } = await makeApp(root, { apiToken: "svc" }, { fetchImpl });
     const headers = { authorization: "Bearer svc" };
     const d = (await app.inject({ url: "/api/discover", headers })).json();
     assert.deepEqual(d.recent.items.map((i: { name: string }) => i.name), ["New Hit"], "old evergreen games are left out");
@@ -104,6 +111,14 @@ describe("discover game pages", () => {
     assert.equal(info.rating, 88);
     assert.deepEqual(info.developers, ["Studio"]);
     assert.equal((await app.inject({ url: "/api/discover/game/bogus/10", headers })).statusCode, 404);
+
+    // Kid profiles browse Discover to ask for games, but not pages rated for older players.
+    const kid = await ctx.users.create({ username: "kiddo", password: "password1", kidMode: true });
+    const asKid = { authorization: `Bearer ${ctx.auth.createApiToken(kid.id, "t").token}` };
+    assert.equal((await app.inject({ url: "/api/discover", headers: asKid })).statusCode, 200);
+    assert.equal((await app.inject({ url: "/api/discover/game/steam/10", headers: asKid })).statusCode, 200);
+    assert.equal((await app.inject({ url: "/api/discover/game/steam/20", headers })).statusCode, 200);
+    assert.equal((await app.inject({ url: "/api/discover/game/steam/20", headers: asKid })).statusCode, 403);
     await app.close();
   });
 });

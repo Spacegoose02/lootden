@@ -52,11 +52,9 @@ export function workshopRoutes(app: FastifyInstance, ctx: AppContext) {
   });
 
   /** Popular items, a search, or (with "ids") items from pasted links or ids. */
-  app.get<{ Params: { id: string }; Querystring: { q?: string; page?: string; ids?: string } }>("/api/games/:id/workshop/items", async (req) => {
-    const { p, g } = game(req);
-    const s = settings(g.id, g.metadata?.steamAppId ?? null, p.user?.id ?? null);
-    if (req.query.ids !== undefined) {
-      const ids = String(req.query.ids).split(/[\s,]+/).map(workshopId).filter((x): x is string => !!x);
+  const items = async (s: WorkshopSettings, userId: number | null, query: { q?: string; page?: string; ids?: string }) => {
+    if (query.ids !== undefined) {
+      const ids = String(query.ids).split(/[\s,]+/).map(workshopId).filter((x): x is string => !!x);
       if (!ids.length) throw new HttpProblem(400, "Paste a Workshop link, like steamcommunity.com/sharedfiles/filedetails/?id=123");
       const found = await fail(() => ctx.workshop.details(ids));
       // Items made for another game wouldn't download for this one.
@@ -65,6 +63,25 @@ export function workshopRoutes(app: FastifyInstance, ctx: AppContext) {
       return { items, total: items.length };
     }
     if (!s.appId) throw new HttpProblem(400, "Set this game's Steam app id first");
-    return fail(() => ctx.workshop.browse(s.appId!, ctx.addons.steamKey(p.user?.id ?? null), String(req.query.q ?? "").trim(), Number(req.query.page) || 1));
+    return fail(() => ctx.workshop.browse(s.appId!, ctx.addons.steamKey(userId), String(query.q ?? "").trim(), Number(query.page) || 1));
+  };
+  app.get<{ Params: { id: string }; Querystring: { q?: string; page?: string; ids?: string } }>("/api/games/:id/workshop/items", async (req) => {
+    const { p, g } = game(req);
+    return items(settings(g.id, g.metadata?.steamAppId ?? null, p.user?.id ?? null), p.user?.id ?? null, req.query);
+  });
+
+  // Games bought on Steam: Steam itself downloads the items a person subscribes to, so there's
+  // no mods folder, just browsing here and subscribing on Steam.
+  const steamGame = (req: FastifyRequest<{ Params: { appId: string } }>): { userId: number | null; s: WorkshopSettings } => {
+    const p = requireUser(req);
+    if (p.user?.kidMode) throw new HttpProblem(403, "Not available on kid profiles");
+    if (!/^\d{1,10}$/.test(req.params.appId)) throw new HttpProblem(404, "No such Steam game");
+    const userId = p.user?.id ?? null;
+    return { userId, s: { appId: req.params.appId, modsPath: "", canBrowse: !!ctx.addons.steamKey(userId) } };
+  };
+  app.get<{ Params: { appId: string } }>("/api/store-games/steam/:appId/workshop", async (req) => steamGame(req).s);
+  app.get<{ Params: { appId: string }; Querystring: { q?: string; page?: string; ids?: string } }>("/api/store-games/steam/:appId/workshop/items", async (req) => {
+    const { userId, s } = steamGame(req);
+    return items(s, userId, req.query);
   });
 }

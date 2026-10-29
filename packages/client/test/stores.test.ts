@@ -6,7 +6,7 @@ import { after, before, describe, it } from "node:test";
 import { scanStoreGames, type StoreScanner } from "../src/stores/index.js";
 import { epicFromHeroic, epicFromManifest } from "../src/stores/epic.js";
 import { gogFromHeroic, gogFromRegistry } from "../src/stores/gog.js";
-import { steamInstalled, steamLibraries } from "../src/stores/steam.js";
+import { steamInstalled, steamLibraries, steamLibraryCover } from "../src/stores/steam.js";
 import { parseRegQuery } from "../src/stores/windows.js";
 import { ubisoftFromRegistry, ubisoftNames } from "../src/stores/ubisoft.js";
 import { scanFolder } from "../src/stores/folders.js";
@@ -44,6 +44,23 @@ describe("store scanners", () => {
     const games = (await Promise.all(libs.map(steamInstalled))).flat();
     assert.deepEqual(games.map((g) => [g.externalId, g.title]).sort(), [["1145360", "Hades"], ["620", "Portal 2"]], "skips Proton and games still downloading");
     assert.equal(games.find((g) => g.externalId === "620")!.installDir, path.join(root, "steamapps", "common", "Portal 2"));
+  });
+
+  it("finds Steam's own cached covers, old and new layouts", async () => {
+    const root = path.join(work, "SteamArt");
+    const cache = path.join(root, "appcache", "librarycache");
+    await mkdir(path.join(cache, "620"), { recursive: true });
+    await mkdir(path.join(cache, "1145360", "a1b2c3"), { recursive: true });
+    await writeFile(path.join(cache, "570_library_600x900.jpg"), "jpg");
+    await writeFile(path.join(cache, "620", "header.jpg"), "jpg");
+    await writeFile(path.join(cache, "620", "library_600x900.jpg"), "jpg");
+    await writeFile(path.join(cache, "1145360", "a1b2c3", "library_600x900.jpg"), "jpg");
+    await writeFile(path.join(cache, "400_library_600x900.jpg"), "");
+    assert.equal(await steamLibraryCover("570", [root]), path.join(cache, "570_library_600x900.jpg"));
+    assert.equal(await steamLibraryCover("620", [root]), path.join(cache, "620", "library_600x900.jpg"), "the portrait cover before the wide header");
+    assert.equal(await steamLibraryCover("1145360", [root]), path.join(cache, "1145360", "a1b2c3", "library_600x900.jpg"));
+    assert.equal(await steamLibraryCover("400", [root]), null, "empty files don't count");
+    assert.equal(await steamLibraryCover("../620", [root]), null);
   });
 
   it("runs the scanners for this platform and ignores ones that fail", async () => {

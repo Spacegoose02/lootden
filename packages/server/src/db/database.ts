@@ -407,6 +407,15 @@ const MIGRATIONS: string[] = [
     mods_path TEXT NOT NULL DEFAULT ''
   );
   `,
+  `
+  -- The desktop app's web browser per person: kid-safe or open (NULL: kid-safe for kid profiles), and site lists as JSON.
+  CREATE TABLE browser_policy (
+    user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    mode TEXT,
+    allowed TEXT NOT NULL DEFAULT '[]',
+    blocked TEXT NOT NULL DEFAULT '[]'
+  );
+  `,
 ];
 
 export function openDatabase(file: string): Db {

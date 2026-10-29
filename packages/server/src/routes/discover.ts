@@ -2,8 +2,13 @@ import type { FastifyInstance, FastifyRequest } from "fastify";
 import type { GameListing } from "@lootden/shared";
 import { HttpProblem, requireAdmin, requireUser, type AppContext } from "../context.js";
 import { titleKey } from "../metadata/calendar.js";
+import { kidSafeFromRatings } from "../metadata/ratings.js";
 
-/** Release calendar, Discover and YouTube rows. Kid profiles don't get these: nothing here is age-rated. */
+/**
+ * Release calendar, Discover and YouTube rows. Kid profiles browse Discover and the calendar to
+ * ask for games (an admin approves every request), but a game page whose ratings say it isn't
+ * for kids stays closed to them, and they don't get the YouTube rows or add calendar dates.
+ */
 export function discoverRoutes(app: FastifyInstance, ctx: AppContext) {
   const grownUp = (req: FastifyRequest) => {
     if (requireUser(req).kidMode) throw new HttpProblem(403, "Not available on kid profiles");
@@ -18,7 +23,6 @@ export function discoverRoutes(app: FastifyInstance, ctx: AppContext) {
 
   app.get<{ Querystring: { days?: string; platform?: string; past?: string } }>("/api/calendar", async (req) => {
     const p = requireUser(req);
-    grownUp(req);
     const days = Math.min(Math.max(Number(req.query.days) || 120, 7), 365);
     const past = Math.min(Math.max(Number(req.query.past) || 0, 0), 365);
     const from = new Date(Date.now() - past * 86400_000).toISOString().slice(0, 10);
@@ -71,8 +75,7 @@ export function discoverRoutes(app: FastifyInstance, ctx: AppContext) {
   });
 
   // Free games to claim this week, from each store's own listings.
-  app.get("/api/discover/free", async (req) => {
-    grownUp(req);
+  app.get("/api/discover/free", async () => {
     return ctx.freeGames.list();
   });
   // Admin: download a free itch.io game straight into the library.
@@ -88,23 +91,21 @@ export function discoverRoutes(app: FastifyInstance, ctx: AppContext) {
     }
   });
 
-  app.get("/api/discover", async (req) => {
-    grownUp(req);
+  app.get("/api/discover", async () => {
     return { recent: await upstream(() => ctx.calendar.recent()) };
   });
 
   /** One game's page in Discover: details, screenshots and trailer from the service that listed it. */
   app.get<{ Params: { provider: string; id: string } }>("/api/discover/game/:provider/:id", async (req) => {
-    grownUp(req);
     if (!["igdb", "rawg", "steam"].includes(req.params.provider)) throw new HttpProblem(404, "Unknown source");
     const info = await upstream(() => ctx.calendar.info(req.params.provider, req.params.id));
     if (!info) throw new HttpProblem(404, "Game not found");
+    if (requireUser(req).kidMode && kidSafeFromRatings(info.ageRatings) === false) throw new HttpProblem(403, "This game is rated for older players");
     return info;
   });
 
   /** Any game the metadata services know, not just the library. */
   app.get<{ Querystring: { q?: string } }>("/api/discover/search", async (req) => {
-    grownUp(req);
     const q = req.query.q?.trim();
     if (!q) return [];
     const candidates = await upstream(() => ctx.metadata.search(q));

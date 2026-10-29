@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { addressToUrl, cleanBookmarks, DEFAULT_BOOKMARKS, isBrowsable, launcherShortcuts, MAX_BOOKMARKS, siteName } from "../src/browser.js";
-import { isStoreLaunchUrl } from "@lootden/shared";
+import { cleanPolicy, cleanSite, isStoreLaunchUrl, safeSearchUrl, siteAllowed } from "@lootden/shared";
 
 describe("built-in browser", () => {
   it("opens web addresses as they are", () => {
@@ -67,5 +67,49 @@ describe("built-in browser", () => {
     assert.ok(win.some((l) => l.id === "epic") && win.some((l) => l.id === "steam"));
     assert.deepEqual(linux.map((l) => l.id), ["steam", "heroic"]);
     for (const l of [...win, ...linux]) assert.ok(isStoreLaunchUrl(l.url), l.url);
+  });
+});
+
+describe("browser rules", () => {
+  it("reads site names the way admins type them", () => {
+    assert.equal(cleanSite("https://www.YouTube.com/watch?v=1"), "youtube.com");
+    assert.equal(cleanSite("*.roblox.com"), "roblox.com");
+    assert.equal(cleanSite("twitch.tv:443/x"), "twitch.tv");
+    assert.equal(cleanSite("192.168.1.5"), "192.168.1.5");
+    for (const bad of ["", "not a site", "javascript:alert(1)", "com", "-bad-.com"]) assert.equal(cleanSite(bad), null, bad);
+  });
+
+  it("blocks listed sites and their subdomains, and nothing else, when open", () => {
+    const p = cleanPolicy({ mode: "open", blocked: ["youtube.com"] });
+    assert.equal(siteAllowed("https://www.youtube.com/watch?v=1", p), false);
+    assert.equal(siteAllowed("https://m.youtube.com/", p), false);
+    assert.equal(siteAllowed("https://notyoutube.com/", p), true, "a lookalike isn't a subdomain");
+    assert.equal(siteAllowed("https://twitch.tv/", p), true);
+    assert.equal(siteAllowed("file:///C:/Windows", p), false);
+    assert.equal(siteAllowed("https://anything.example/", null), true);
+  });
+
+  it("opens only kid sites and the admin's extras in kid-safe mode", () => {
+    const p = cleanPolicy({ allowed: ["minecraft.net"], blocked: ["abcya.com"] }, true);
+    assert.equal(p.mode, "kids");
+    assert.equal(siteAllowed("https://pbskids.org/games", p), true);
+    assert.equal(siteAllowed("https://www.kiddle.co/s.php?q=cats", p), true);
+    assert.equal(siteAllowed("https://www.minecraft.net/", p), true);
+    assert.equal(siteAllowed("https://www.abcya.com/", p), false, "blocked beats the kid list");
+    assert.equal(siteAllowed("https://www.reddit.com/", p), false);
+    assert.equal(cleanPolicy({}, false).mode, "open");
+  });
+
+  it("searches Kiddle in kid-safe mode", () => {
+    assert.equal(addressToUrl("cute cats", "google", "https://www.kiddle.co/s.php?q="), "https://www.kiddle.co/s.php?q=cute%20cats");
+    assert.equal(addressToUrl("pbskids.org", "google", "https://www.kiddle.co/s.php?q="), "https://pbskids.org/");
+  });
+
+  it("turns safe search on", () => {
+    assert.equal(safeSearchUrl("https://www.google.com/search?q=cats"), "https://www.google.com/search?q=cats&safe=active");
+    assert.equal(safeSearchUrl("https://www.google.co.uk/search?q=cats&safe=active"), null);
+    assert.equal(safeSearchUrl("https://www.bing.com/search?q=cats"), "https://www.bing.com/search?q=cats&adlt=strict");
+    assert.equal(safeSearchUrl("https://duckduckgo.com/?q=cats"), "https://duckduckgo.com/?q=cats&kp=1");
+    assert.equal(safeSearchUrl("https://www.google.com/maps"), null);
   });
 });

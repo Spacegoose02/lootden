@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { Link, NavLink, Navigate, useParams } from "react-router-dom";
-import type { GameSummary, LibraryStats, User } from "@lootden/shared";
+import { KID_SITES, type BrowserPolicy, type GameSummary, type LibraryStats, type User } from "@lootden/shared";
 import { api, avatarUrl, formatBytes, type Connectors, type ReleaseSourceView, type SourceConfig, type WishlistState } from "../api";
 import { AdminApps } from "../components/AdminApps";
 import { AdminIntegrations } from "../components/AdminIntegrations";
@@ -177,6 +177,7 @@ function LibrarySection({ say }: { say: Msg }) {
 function Profiles({ say }: { say: Msg }) {
   const [users, setUsers] = useState<User[]>([]);
   const [newUser, setNewUser] = useState({ username: "", password: "", kidMode: false, role: "user" });
+  const [browserFor, setBrowserFor] = useState<number | null>(null);
   const load = () => void api.users().then(setUsers, () => {});
   useEffect(load, []);
   const { busy, act } = useAct(say, load);
@@ -198,10 +199,14 @@ function Profiles({ say }: { say: Msg }) {
                 <option value="user">User</option>
                 <option value="admin">Admin</option>
               </select>
+              <button className="ghost small" aria-expanded={browserFor === u.id} title="What they can open in the app's web browser" onClick={() => setBrowserFor(browserFor === u.id ? null : u.id)}>
+                Browser
+              </button>
               <button className="ghost small" onClick={() => confirm(`Delete ${u.username}?`) && act(() => api.deleteUser(u.id), "Deleted")}>
                 Delete
               </button>
             </span>
+            {browserFor === u.id && <BrowserRules user={u} say={say} />}
           </li>
         ))}
       </ul>
@@ -224,6 +229,76 @@ function Profiles({ say }: { say: Msg }) {
         <button disabled={busy}>Add profile</button>
       </form>
     </Card>
+  );
+}
+
+/**
+ * One person's web browser in the desktop app: kid-safe (only sites for kids, plus the ones
+ * added here) or open, and sites they can never open. Kid profiles start kid-safe.
+ */
+function BrowserRules({ user, say }: { user: User; say: Msg }) {
+  const [p, setP] = useState<BrowserPolicy | null>(null);
+  const [allowed, setAllowed] = useState("");
+  const [blocked, setBlocked] = useState("");
+  const [busy, setBusy] = useState(false);
+  const show = (x: BrowserPolicy) => {
+    setP(x);
+    setAllowed(x.allowed.join("\n"));
+    setBlocked(x.blocked.join("\n"));
+  };
+  useEffect(() => void api.userBrowser(user.id).then(show, (e: Error) => say(e.message, true)), [user.id]);
+  if (!p) return <p className="muted small browser-rules">Loading…</p>;
+  const lines = (t: string) => t.split(/[\n,]+/).map((x) => x.trim()).filter(Boolean);
+  const save = async (patch: Partial<BrowserPolicy>) => {
+    setBusy(true);
+    try {
+      show(await api.saveUserBrowser(user.id, patch));
+      say("Saved");
+    } catch (e) {
+      say((e as Error).message, true);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <form
+      className="browser-rules"
+      onSubmit={(e) => {
+        e.preventDefault();
+        void save({ allowed: lines(allowed), blocked: lines(blocked) });
+      }}
+    >
+      <div className="segmented" role="radiogroup" aria-label={`${user.displayName}'s browser`}>
+        {(
+          [
+            ["kids", "Kid-safe"],
+            ["open", "Open"],
+          ] as const
+        ).map(([mode, label]) => (
+          <button key={mode} type="button" role="radio" aria-checked={p.mode === mode} className={p.mode === mode ? "active" : ""} disabled={busy} onClick={() => void save({ mode })}>
+            {label}
+          </button>
+        ))}
+      </div>
+      <p className="muted small">
+        {p.mode === "kids"
+          ? `Only sites made for kids open (${KID_SITES.slice(1, 5).join(", ")} and more), searching uses Kiddle, and launchers and sign-ins stay apart from the grown-ups'.`
+          : "Every site opens except the blocked ones."}
+      </p>
+      <div className="inline wrap">
+        {p.mode === "kids" && (
+          <label className="field" style={{ flex: 1, minWidth: 220 }}>
+            <span className="field-label">Also allow, one site per line</span>
+            <textarea rows={4} placeholder="minecraft.net" value={allowed} onChange={(e) => setAllowed(e.target.value)} />
+          </label>
+        )}
+        <label className="field" style={{ flex: 1, minWidth: 220 }}>
+          <span className="field-label">Block, one site per line</span>
+          <textarea rows={4} placeholder="youtube.com" value={blocked} onChange={(e) => setBlocked(e.target.value)} />
+        </label>
+      </div>
+      <button disabled={busy}>Save sites</button>
+    </form>
   );
 }
 

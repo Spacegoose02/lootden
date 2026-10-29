@@ -4,6 +4,7 @@ import type { GameListing } from "@lootden/shared";
 import { api, type ListingResult } from "../api";
 import { useAuth } from "../auth";
 import { discoverPath } from "../components/Listing";
+import { RequestButton } from "./Requests";
 
 const RANGES = [30, 90, 180] as const;
 const PAST = [0, 30, 90] as const;
@@ -11,6 +12,7 @@ const PAST = [0, 30, 90] as const;
 /** Upcoming releases grouped by month, then by day. */
 export function Calendar() {
   const { me } = useAuth();
+  const canRequest = me?.role !== "admin";
   const [days, setDays] = useState<number>(90);
   const [platform, setPlatform] = useState<"pc" | "all">("pc");
   const [past, setPast] = useState<number>(0);
@@ -76,9 +78,11 @@ export function Calendar() {
               </button>
             ))}
           </div>
-          <button className="primary" onClick={() => setAdding(!adding)} aria-expanded={adding}>
-            Add a date
-          </button>
+          {!me?.user?.kidMode && (
+            <button className="primary" onClick={() => setAdding(!adding)} aria-expanded={adding}>
+              Add a date
+            </button>
+          )}
         </div>
       </div>
       {adding && (
@@ -118,7 +122,7 @@ export function Calendar() {
               </div>
               <div className="cal-games">
                 {items.map((i) => (
-                  <CalendarGame key={`${i.provider}:${i.providerId}`} item={i} onDelete={remove} />
+                  <CalendarGame key={`${i.provider}:${i.providerId}`} item={i} onDelete={remove} canRequest={canRequest} />
                 ))}
               </div>
             </div>
@@ -130,7 +134,7 @@ export function Calendar() {
           <h2>Date to be confirmed</h2>
           <div className="cal-games loose">
             {months.later.map((i) => (
-              <CalendarGame key={`${i.provider}:${i.providerId}`} item={i} onDelete={remove} />
+              <CalendarGame key={`${i.provider}:${i.providerId}`} item={i} onDelete={remove} canRequest={canRequest} />
             ))}
           </div>
         </section>
@@ -173,7 +177,7 @@ function AddEntry({ onAdded }: { onAdded: () => void }) {
   );
 }
 
-function CalendarGame({ item, onDelete }: { item: GameListing; onDelete: (id: string) => void }) {
+function CalendarGame({ item, onDelete, canRequest }: { item: GameListing; onDelete: (id: string) => void; canRequest: boolean }) {
   const image = item.coverUrl ?? item.imageUrl;
   if (item.provider === "custom") {
     return (
@@ -207,9 +211,17 @@ function CalendarGame({ item, onDelete }: { item: GameListing; onDelete: (id: st
   );
   const steamApp = item.provider === "wishlist" ? item.url?.match(/\/app\/(\d+)/)?.[1] : null;
   const to = item.libraryId ? `/games/${item.libraryId}` : item.provider === "wishlist" ? (steamApp ? `/discover/steam/${steamApp}` : "/wishlist") : discoverPath(item);
-  return (
+  const link = (
     <Link to={to} className="cal-game">
       {inner}
     </Link>
+  );
+  // Upcoming games can be asked for too: approved, they're searched for until they're out.
+  if (!canRequest || item.libraryId) return link;
+  return (
+    <div className="cal-game-line">
+      {link}
+      <RequestButton game={{ name: item.name, url: item.url, coverUrl: item.coverUrl ?? item.imageUrl, provider: item.provider, providerId: item.providerId }} small />
+    </div>
   );
 }

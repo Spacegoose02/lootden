@@ -4043,3 +4043,13 @@ html[data-lootden-frame] .lightbox {
     display: none;
   }
 }
+
+/* Requesting a game from a calendar row: the row and its button side by side. */
+.cal-game-line { display: flex; align-items: center; gap: 0.5rem; }
+.cal-game-line > .cal-game { flex: 1; min-width: 0; }
+
+/* A person's web browser rules, under their row in Settings, Profiles. */
+.users li:has(.browser-rules) { flex-wrap: wrap; }
+.browser-rules { flex-basis: 100%; display: grid; gap: 0.5rem; padding: 0.75rem 0 0.25rem; }
+.browser-rules textarea { width: 100%; font-family: inherit; }
+.browser-rules > button { justify-self: start; }

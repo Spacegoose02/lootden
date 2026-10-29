@@ -1,4 +1,4 @@
-import { readdir, readFile } from "node:fs/promises";
+import { readdir, readFile, stat } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import type { LocalStoreGame } from "@lootden/shared";
@@ -15,6 +15,33 @@ async function steamRoots(platform: NodeJS.Platform): Promise<string[]> {
   const home = os.homedir();
   return [path.join(home, ".steam", "steam"), path.join(home, ".local", "share", "Steam"), path.join(home, ".var", "app", "com.valvesoftware.Steam", ".local", "share", "Steam")];
 }
+
+/** Steam's own portrait artwork names, best first; "header" is the wide store image, a last resort. */
+const STEAM_ART = ["library_600x900_2x.jpg", "library_600x900.jpg", "library_capsule.jpg", "header.jpg"];
+
+/**
+ * A game's cover from Steam's own artwork cache, which works offline. Older clients keep
+ * appcache/librarycache/<appid>_library_600x900.jpg; newer ones a folder per game
+ * (<appid>/library_600x900.jpg), sometimes one level further down in a hashed folder.
+ */
+export async function steamLibraryCover(appId: string, roots?: string[]): Promise<string | null> {
+  if (!/^\d{1,10}$/.test(appId)) return null;
+  for (const root of roots ?? (await steamRoots(process.platform))) {
+    const cache = path.join(root, "appcache", "librarycache");
+    for (const name of STEAM_ART) {
+      const flat = path.join(cache, `${appId}_${name}`);
+      if (await isFile(flat)) return flat;
+    }
+    const dir = path.join(cache, appId);
+    const subdirs = (await readdir(dir, { withFileTypes: true }).catch(() => [])).filter((d) => d.isDirectory()).map((d) => path.join(dir, d.name));
+    for (const name of STEAM_ART) {
+      for (const d of [dir, ...subdirs]) if (await isFile(path.join(d, name))) return path.join(d, name);
+    }
+  }
+  return null;
+}
+
+const isFile = (p: string) => stat(p).then((s) => s.isFile() && s.size > 0, () => false);
 
 /** Every Steam library folder: the main one plus those in libraryfolders.vdf. */
 export async function steamLibraries(root: string): Promise<string[]> {

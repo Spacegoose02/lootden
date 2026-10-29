@@ -4,7 +4,9 @@ import type { GameListing, LocalStoreGame, StoreGame as StoreGameT, StoreGameDet
 import { api, formatPlaytime } from "../api";
 import { bridgeError, desktop } from "../desktop";
 import { ArtworkPicker } from "../components/ArtworkEditor";
+import { WorkshopPanel } from "../components/GameExtras";
 import { GameMedia } from "../components/GameMedia";
+import { useAuth } from "../auth";
 import { listingDate } from "../components/Listing";
 import { launchStoreGame, storeInstallUrl } from "../components/StoreGameCard";
 
@@ -13,6 +15,7 @@ const SOURCES: Record<string, string> = { igdb: "IGDB", rawg: "RAWG", steam: "St
 /** A game from another store: its details from IGDB, RAWG or Steam, Play through the store, and the person's own changes. */
 export function StoreGame() {
   const { addon = "", id = "" } = useParams();
+  const { me } = useAuth();
   const [params] = useSearchParams();
   // Games only found on this PC aren't on the server; their card sends the title along.
   const localTitle = params.get("title") ?? "";
@@ -103,6 +106,7 @@ export function StoreGame() {
       {editing && <StoreGameEditor addon={addon} id={id} title={localTitle} detail={detail} onChange={setDetail} />}
 
       {info && <GameMedia game={info} />}
+      {addon === "steam" && /^\d+$/.test(id) && !me?.user?.kidMode && <WorkshopPanel steamAppId={id} isAdmin={me?.role === "admin"} installedHere={!!local} />}
     </article>
   );
 }

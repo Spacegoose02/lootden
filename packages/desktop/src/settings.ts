@@ -1,7 +1,7 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import type { Bookmark, SearchEngine } from "@lootden/client";
+import type { Bookmark, BrowserPolicy, SearchEngine } from "@lootden/client";
 
 export interface DesktopSettings {
   serverUrl: string;
@@ -35,6 +35,8 @@ export interface DesktopSettings {
   /** The built-in browser's start page sites. Missing means the defaults. */
   browserBookmarks?: Bookmark[];
   browserSearch?: SearchEngine;
+  /** The browser rules the server last gave for the person signed in here, for when it can't be reached. */
+  browserPolicy?: BrowserPolicy;
   /** Links from LootDen's pages open in the built-in browser instead of the system one. "auto" does so in handheld mode. */
   browserLinks?: "auto" | "on" | "off";
 }

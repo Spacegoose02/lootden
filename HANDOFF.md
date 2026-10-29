@@ -130,6 +130,27 @@ vault can do it.
   Ready to play mixes LootDen and store installs; pill menu, clock in the app, controller
   button hints along the bottom while a pad is in use.
 
+## Other stores bugs (after 0.18.0)
+
+- **Requests from Discover, Wishlist and Calendar**: `RequestButton` (`pages/Requests.tsx`) is on
+  Discover cards, wishlist cards and calendar rows for everyone but admins, and knows what the
+  person already asked for. Kid profiles now get Discover, Wishlist and Calendar (read-only:
+  no adding dates or wishlist games, no YouTube rows); a Discover page whose ratings say it
+  isn't for kids is a 403 for them.
+- **Workshop on Steam store games**: `/api/store-games/steam/:appId/workshop(/items)`; the
+  store game page reuses `WorkshopPanel` with `steamAppId`, and Subscribe opens the item in
+  Steam (`steam://url/CommunityFilePage/<id>`), which downloads it.
+- **Browser rules per person** (`browser_policy` table, `shared/src/browser.ts`): kid-safe
+  (only `KID_SITES` plus the admin's extras, Kiddle search, safe search forced, no launchers,
+  its own `persist:lootden-browser-kids` sign-ins) or open, plus a blocked list either way.
+  Kid profiles default to kid-safe. Admins set it in Settings, Profiles, Browser
+  (`/api/users/:id/browser`); the app asks `/api/me/browser` each time the browser opens,
+  keeps the last answer for offline, and checks every page and frame in `onBeforeRequest`.
+  Blocked pages show `setup/blocked.html`.
+- **Store covers offline**: the app keeps each store game's cover from the server
+  (`Covers/store-<addon>-<id>.*`, weekly, when the library's store games are scanned) and
+  falls back to Steam's own `appcache/librarycache` art (`steamLibraryCover`).
+
 ## Glow themes, feed names, Home posters (0.17.0)
 
 - **Glow theme group** (50 themes in all): Laser Grid in six colours, Nuclear plus Cherenkov,

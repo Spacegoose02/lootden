@@ -150,26 +150,49 @@ export function Requests() {
   );
 }
 
-/** "Request it" for a game that isn't in the library, from its Discover page. */
-export function RequestButton({ game }: { game: { name: string; url: string | null; coverUrl: string | null; provider: string; providerId: string } }) {
+/** This person's requests, loaded once a page so every Request button knows what's already asked for. */
+let mine: Promise<GameRequest[]> | null = null;
+const myRequests = () => (mine ??= api.requests().catch(() => []));
+const sameGame = (a: string, b: string) => a.toLowerCase().replace(/[^a-z0-9]+/g, "") === b.toLowerCase().replace(/[^a-z0-9]+/g, "");
+
+/**
+ * "Request it" for a game that isn't in the library: on its Discover page, Discover and
+ * calendar cards and the wishlist. Shows "Requested" once this person has asked for it.
+ */
+export function RequestButton({ game, small }: { game: { name: string; url: string | null; coverUrl: string | null; provider?: string; providerId?: string; steamAppId?: number | null }; small?: boolean }) {
   const [state, setState] = useState<GameRequest | null>(null);
   const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    let live = true;
+    void myRequests().then((list) => live && setState(list.find((r) => r.status !== "declined" && sameGame(r.title, game.name)) ?? null));
+    return () => void (live = false);
+  }, [game.name]);
+  const size = small ? " small" : "";
   if (state)
     return (
-      <Link className="button secondary" to="/requests" title={STATUS[state.status]}>
+      <Link className={`button secondary${size}`} to="/requests" title={STATUS[state.status]}>
         ✓ Requested
       </Link>
     );
+  const steamAppId = game.steamAppId ?? (game.provider === "steam" && game.providerId && /^\d+$/.test(game.providerId) ? Number(game.providerId) : null);
+  const ask = async () => {
+    setBusy(true);
+    setError("");
+    try {
+      const made = await api.requestGame({ title: game.name, url: game.url, image: game.coverUrl, steamAppId });
+      const list = await myRequests();
+      mine = Promise.resolve([made, ...list]);
+      setState(made);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
   return (
     <>
-      <button
-        className="secondary"
-        onClick={() =>
-          api
-            .requestGame({ title: game.name, url: game.url, image: game.coverUrl, steamAppId: game.provider === "steam" && /^\d+$/.test(game.providerId) ? Number(game.providerId) : null })
-            .then(setState, (e: Error) => setError(e.message))
-        }
-      >
+      <button className={`secondary${size}`} disabled={busy} onClick={() => void ask()}>
         Request it
       </button>
       {error && <span className="error small">{error}</span>}
