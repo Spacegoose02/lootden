@@ -183,11 +183,15 @@ export class MetadataService {
           this.recordAttempt(id, (err as Error).message);
           this.log.warn({ gameId: id, err: (err as Error).message }, "Metadata lookup failed");
         }
+        this.onLookedUp();
       }
     } finally {
       this.running = false;
     }
   }
+
+  /** Called after each game's lookup, matched or not. */
+  onLookedUp: () => void = () => {};
 
   /** Waits for the queue to empty (tests, CLI). */
   async idle(): Promise<void> {

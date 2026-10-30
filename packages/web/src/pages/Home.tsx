@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import type { GameListing, GameSummary } from "@lootden/shared";
 import { api, formatPlaytime, type HomeData, type NewsItem, type Video } from "../api";
+import { useLive } from "../live";
 import { useAuth } from "../auth";
 import { Badges } from "../components/Badges";
 import { Cover } from "../components/Cover";
@@ -37,6 +38,8 @@ export function Home() {
   const store = useStoreGames();
   const storeRecent = (store.games ?? []).filter((g) => g.lastPlayedAt && !(desktop && store.installed.has(storeKey(g)))).sort((a, b) => Date.parse(b.lastPlayedAt!) - Date.parse(a.lastPlayedAt!)).slice(0, 20);
 
+  // New games and freshly found covers appear without a reload.
+  useLive("library", () => void api.home().then(setData, () => {}));
   useEffect(() => {
     api.home().then(setData, (e: Error) => setError(e.message));
     if (desktop) void desktop.installed().then(setLocal, () => setLocal([]));

@@ -59,6 +59,8 @@ import type { LibraryAddon } from "./addons/types.js";
 import { addonRoutes } from "./routes/addons.js";
 import { DirectDownloads } from "./direct/manager.js";
 import { directRoutes } from "./routes/direct.js";
+import { liveRoutes } from "./routes/live.js";
+import { LiveEvents } from "./live.js";
 
 export const VERSION = "0.19.0";
 
@@ -117,8 +119,16 @@ export function buildContext(config: ServerConfig, db: Db, log: Log, opts: Build
   };
   const wanted = new WantedService(db, wishlist, downloads, notifier);
   const direct = new DirectDownloads(db, library, downloads, log, opts.fetchImpl);
+  const live = new LiveEvents();
+  library.onScanned(() => live.publish("library"));
+  metadata.onLookedUp = () => live.publish("library");
+  notifier.onSent = () => live.publish("alerts", true);
+  direct.onChange = () => live.publish("downloads", true);
   direct.onEvent = (e) => void notifier.send("failed", `Couldn't download ${e.title}`, e.message ?? null, "/downloads?tab=links");
-  downloads.onEvent = (e) => void notifier.send(e.kind, e.kind === "grabbed" ? `Sent ${e.title} to the download client` : `Couldn't download ${e.title}`, e.message ?? null, "/downloads");
+  downloads.onEvent = (e) => {
+    live.publish("downloads", true);
+    void notifier.send(e.kind, e.kind === "grabbed" ? `Sent ${e.title} to the download client` : `Couldn't download ${e.title}`, e.message ?? null, "/downloads");
+  };
   return {
     config,
     db,
@@ -151,6 +161,7 @@ export function buildContext(config: ServerConfig, db: Db, log: Log, opts: Build
     addons: new AddonRegistry(db, library, opts.fetchImpl, opts.addons, opts.resolveHost, Vault.open(config.dataDir, config.secretKey)),
     storeDetails: new StoreGameDetails(db, metadata, config.dataDir, log),
     steamSignIn: new SteamSignIn(opts.fetchImpl),
+    live,
     timeToBeat: timeToBeat(metadata.igdb, new HowLongToBeat(opts.fetchImpl), () => settings().hltb.enabled !== false),
   };
 }
@@ -224,6 +235,9 @@ export function buildApp(config: ServerConfig, db: Db, opts: BuildOptions = {}):
   sourceRoutes(app, ctx);
   addonRoutes(app, ctx);
   directRoutes(app, ctx);
+  liveRoutes(app, ctx);
+  // Open event streams would hold shutdown up.
+  app.addHook("preClose", async () => ctx.live.close());
 
   const webDir = opts.webDir;
   if (webDir && existsSync(path.join(webDir, "index.html"))) {

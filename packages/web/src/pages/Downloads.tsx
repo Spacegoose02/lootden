@@ -4,6 +4,7 @@ import { PLATFORMS } from "@lootden/shared";
 import { api, formatBytes, type DownloadRecord, type ScanRecord, type FolderItem, type ImportProgress, type LiveDownload, type SearchResult } from "../api";
 import { DownloadResults } from "../components/DownloadResults";
 import { LinkDownloads } from "../components/LinkDownloads";
+import { useLive } from "../live";
 
 const eta = (s: number | null) => (s == null ? "" : s < 60 ? `${s}s` : s < 3600 ? `${Math.round(s / 60)} min` : `${(s / 3600).toFixed(1)} h`);
 
@@ -17,6 +18,8 @@ export function Downloads() {
   const [busy, setBusy] = useState(false);
 
   const load = () => api.downloads().then(setList, (e: Error) => setMsg(e.message));
+  // Grabs, failures and imports show at once; the timer keeps the download clients' progress moving.
+  useLive("downloads", () => void load());
   useEffect(() => {
     void load();
     const t = setInterval(load, 5000);

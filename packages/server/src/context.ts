@@ -31,6 +31,7 @@ import type { DirectDownloads } from "./direct/manager.js";
 import type { AddonRegistry } from "./addons/registry.js";
 import type { StoreGameDetails } from "./addons/details.js";
 import type { SteamSignIn } from "./addons/steam-signin.js";
+import type { LiveEvents } from "./live.js";
 
 /** Everything route modules need, built once in buildApp. */
 export interface AppContext {
@@ -67,6 +68,8 @@ export interface AppContext {
   addons: AddonRegistry;
   storeDetails: StoreGameDetails;
   steamSignIn: SteamSignIn;
+  /** Tells open pages what changed (GET /api/events). */
+  live: LiveEvents;
   timeToBeat: (providerId: string | null, title: string) => Promise<TimeToBeat | null>;
 }
 
