@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { platformFor, type GameSummary, type UserGameState } from "@lootden/shared";
 import { api } from "../api";
+import { useLive } from "../live";
 import { desktop } from "../desktop";
 import { InstalledGames } from "../components/InstalledGames";
 import { StoreSection } from "../components/StoreGames";
@@ -81,6 +82,9 @@ function AllGames() {
   // What's installed: this PC's copies in the app, else installs on any of this person's devices.
   const [installedIds, setInstalledIds] = useState<Set<string>>(new Set());
   const [states, setStates] = useState<UserGameState[]>([]);
+  // Bumped when the server's library changes, so the list fetches again.
+  const [revision, setRevision] = useState(0);
+  useLive("library", () => setRevision((r) => r + 1));
 
   const set = (key: string, value: string) => {
     const next = new URLSearchParams(params);
@@ -114,7 +118,7 @@ function AllGames() {
         }, (e: Error) => setError(e.message));
     }, 200);
     return () => clearTimeout(t);
-  }, [search, genre, controller, kidSafe, sort, system]);
+  }, [search, genre, controller, kidSafe, sort, system, revision]);
 
   const shown = useMemo(() => {
     if (!games) return null;

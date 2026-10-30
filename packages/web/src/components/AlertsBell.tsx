@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { api, type Alert } from "../api";
+import { useLive } from "../live";
 
 const ICON: Record<Alert["kind"], string> = { released: "🎉", found: "🔎", grabbed: "⬇️", imported: "✅", updates: "🔄", flagged: "🛡️", sources: "📰", failed: "⚠️", test: "🔔" };
 
@@ -15,9 +16,11 @@ export function AlertsBell() {
   const [open, setOpen] = useState(false);
   const box = useRef<HTMLDivElement>(null);
   const load = () => void api.alerts().then(setData, () => {});
+  useLive("alerts", load);
   useEffect(() => {
     load();
-    const t = setInterval(load, 60_000);
+    // New alerts arrive live; this only catches anything a dropped connection missed.
+    const t = setInterval(load, 5 * 60_000);
     return () => clearInterval(t);
   }, []);
   useEffect(() => {

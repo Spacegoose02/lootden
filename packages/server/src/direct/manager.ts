@@ -244,8 +244,12 @@ export class DirectDownloads {
     while (this.current) await this.current;
   }
 
+  /** Called when a package changes status. */
+  onChange: () => void = () => {};
+
   private setStatus(id: number, status: PackageStatus, error: string | null = null): void {
     this.db.prepare("UPDATE direct_packages SET status = ?, error = ? WHERE id = ?").run(status, error, id);
+    this.onChange();
   }
 
   private async resolve(url: string): Promise<ResolvedLink> {
@@ -286,6 +290,7 @@ export class DirectDownloads {
       const source = pkg.platform && names.length === 1 ? path.join(dir, names[0]!) : dir;
       const target = await this.downloads.importDownloaded(source, pkg.name, pkg.platform, 2_000_000_000 + pkg.id, (p) => this.importing.set(pkg.id, p));
       this.db.prepare("UPDATE direct_packages SET status = 'imported', imported_path = ?, finished_at = ?, error = NULL WHERE id = ?").run(target, now(), pkg.id);
+      this.onChange();
       await rm(this.staging(pkg.id), { recursive: true, force: true });
       this.log.info({ name: pkg.name, target }, "Imported direct download");
     } catch (err) {

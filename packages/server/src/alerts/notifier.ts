@@ -27,10 +27,14 @@ export class Notifier {
     private readonly log: { warn: (o: object, m: string) => void } = { warn: () => {} },
   ) {}
 
+  /** Called after an alert is recorded. */
+  onSent: () => void = () => {};
+
   /** Records an alert and sends it on when that kind is switched on. Never throws. */
   async send(kind: AlertKind, title: string, body: string | null = null, link: string | null = null): Promise<void> {
     this.db.prepare("INSERT INTO notifications (kind, title, body, link, created_at) VALUES (?, ?, ?, ?, ?)").run(kind, title, body, link, now());
     this.db.prepare("DELETE FROM notifications WHERE id NOT IN (SELECT id FROM notifications ORDER BY id DESC LIMIT 200)").run();
+    this.onSent();
     const s = this.settings();
     const wanted = kind === "test" || kind === "failed" || (s as unknown as Record<string, boolean>)[kind];
     if (!s.appriseUrl || !wanted) return;

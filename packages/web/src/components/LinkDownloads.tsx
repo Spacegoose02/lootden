@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { PLATFORMS } from "@lootden/shared";
 import { api, formatBytes, type DirectPackage, type LinkCheck } from "../api";
 import { ImportMeter } from "../pages/Downloads";
+import { useLive } from "../live";
 
 const STATUS: Record<DirectPackage["status"], { label: string; tone: "go" | "wait" | "ok" | "bad" | "muted" }> = {
   queued: { label: "Queued", tone: "wait" },
@@ -33,6 +34,7 @@ export function LinkDownloads({ onMessage }: { onMessage: (m: string) => void })
       },
       (e: Error) => onMessage(e.message),
     );
+  useLive("downloads", () => void load());
   useEffect(() => {
     void load();
     const t = setInterval(load, 2000);
