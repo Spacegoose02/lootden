@@ -70,6 +70,11 @@ is a commented copy for Docker Compose.
 | `LOOTDEN_CONFIG` | CLI: config file location |
 | `LOOTDEN_TOOLS_DIR` | CLI: where emulators and BIOS files go |
 
+The desktop app updates itself from the server's Get the app page, but only installs a build
+whose SHA-256 matches the `SHA256SUMS` file on that version's GitHub release, so a server
+can't hand PCs a file of its own. To install your own builds, or on a PC with no internet,
+set `"allowUnverifiedUpdates": true` in the app's `settings.json` (in its user data folder).
+
 ## Settings in the web UI
 
 | Section | What's there |
