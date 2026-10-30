@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useState, type CSSProperties } from "react";
 import type { GameSummary } from "@lootden/shared";
+import { vividColor } from "../tint";
 
 /** How far (as a ratio) art may be from the card's shape and still be cropped to fill it. */
 const FILL_SLACK = 1.2;
@@ -19,6 +20,9 @@ export function Cover({ game, size = "card" }: { game: CoverGame; size?: "card" 
   // a sliver, instead of sitting between thin blurred bars that make neighbouring cards look uneven.
   const [fills, setFills] = useState<ReadonlySet<string>>(new Set());
   const measure = (url: string, img: HTMLImageElement) => {
+    // The card glows in the cover's own colour on hover (fx.css).
+    const tint = vividColor(img);
+    if (tint) img.parentElement?.style.setProperty("--tint", tint);
     if (!img.naturalWidth || !img.naturalHeight || !img.clientWidth || !img.clientHeight) return;
     const off = img.naturalWidth / img.naturalHeight / (img.clientWidth / img.clientHeight);
     if (off > 1 / FILL_SLACK && off < FILL_SLACK) setFills((s) => (s.has(url) ? s : new Set(s).add(url)));
@@ -44,7 +48,10 @@ export function Cover({ game, size = "card" }: { game: CoverGame; size?: "card" 
   for (const c of game.id) hash = (hash * 31 + c.charCodeAt(0)) >>> 0;
   const hue = hash % 360;
   return (
-    <div className={`cover cover-${size} cover-placeholder`} style={{ background: `linear-gradient(150deg, hsl(${hue} 55% 32%), hsl(${(hue + 50) % 360} 60% 18%))` }}>
+    <div
+      className={`cover cover-${size} cover-placeholder`}
+      style={{ background: `linear-gradient(150deg, hsl(${hue} 55% 32%), hsl(${(hue + 50) % 360} 60% 18%))`, "--tint": `hsl(${hue} 70% 55%)` } as CSSProperties}
+    >
       <span>{game.title}</span>
     </div>
   );

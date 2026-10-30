@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { useEffect, useState, type CSSProperties } from "react";
+import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { browserRomFile, platformFor, type GameDetail as Game } from "@lootden/shared";
 import { api, formatBytes, type ApiError, type Candidate } from "../api";
 import { useAuth } from "../auth";
@@ -17,6 +17,10 @@ import { LocalGame } from "../components/LocalGame";
 import { launchStoreGame, storeKey, useStoreGames } from "../components/StoreGameCard";
 import { KindBadge, UpdateActions, useInstalled, versionLabel } from "../components/UpdateActions";
 import type { GameSummary } from "@lootden/shared";
+import { useImageTint } from "../tint";
+
+/** What a game card passes along, so the page can show the cover at once while the rest loads. */
+type Preview = Pick<GameSummary, "id" | "title" | "coverUrl">;
 
 export function GameDetail() {
   const { id = "" } = useParams();
@@ -26,6 +30,11 @@ export function GameDetail() {
   const [copied, setCopied] = useState(false);
   const [params] = useSearchParams();
   const [installed, refreshInstalled] = useInstalled();
+  const preview = (useLocation().state as { preview?: Preview } | null)?.preview;
+  const shown = game ?? (preview?.id === id ? preview : null);
+  // The page takes on the cover's colour: the glow behind it and the hero's tint (fx.css).
+  const tint = useImageTint(shown?.coverUrl);
+  const tintStyle = tint ? ({ "--tint": tint } as CSSProperties) : undefined;
 
   /** This PC's copy, when the server doesn't have the game any more (or can't be reached). */
   const [local, setLocal] = useState<{ copy: LocalGameCopy; removed: boolean } | null>(null);
@@ -43,13 +52,26 @@ export function GameDetail() {
 
   if (local) return <LocalGame copy={local.copy} removed={local.removed} />;
   if (error) return <p className="error">{error}</p>;
+  if (!game && shown)
+    return (
+      <article className="detail detail-loading" style={tintStyle}>
+        <div className="detail-bg" style={shown.coverUrl ? { backgroundImage: `url(${shown.coverUrl})` } : undefined} />
+        <div className="detail-head">
+          <Cover game={shown} size="hero" />
+          <div className="detail-info">
+            <h1>{shown.title}</h1>
+            <p className="muted">Loading…</p>
+          </div>
+        </div>
+      </article>
+    );
   if (!game) return <p className="muted">Loading…</p>;
   const m = game.metadata;
   const command = `lootden install ${game.id}`;
   const isAddon = game.kind !== "game";
 
   return (
-    <article className="detail">
+    <article className="detail" style={tintStyle}>
       <div className={`detail-bg${game.backgroundUrl ? " wide" : ""}`} style={game.backgroundUrl || game.coverUrl ? { backgroundImage: `url(${game.backgroundUrl ?? game.coverUrl})` } : undefined} />
       <div className="detail-head">
         <Cover game={game} size="hero" />
