@@ -22,6 +22,8 @@ export interface DesktopSettings {
   closeToTray: boolean;
   /** Download new app versions from the server and install them when the app is idle. */
   autoUpdate: boolean;
+  /** Install app updates that don't match a GitHub release's SHA256SUMS (your own builds, PCs without internet). Settings file only. */
+  allowUnverifiedUpdates?: boolean;
   /** Start with the computer (in the tray). */
   openAtLogin: boolean;
   /** The "still running in the tray" hint was shown once. */

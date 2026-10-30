@@ -52,7 +52,7 @@ import {
 import { isExternalLink, isFile, onOrigin, permissionAllowed } from "./links.js";
 import { SettingsStore, type DesktopSettings } from "./settings.js";
 import { WebBrowser } from "./browser.js";
-import { downloadUpdate, installKind, launchUpdate, pickUpdate, type AvailableUpdate } from "./updater.js";
+import { downloadUpdate, installKind, launchUpdate, pickUpdate, verifyUpdate, type AvailableUpdate } from "./updater.js";
 
 /** Emulators live in the app's data folder unless the user moved them. */
 const toolsDir = () => settings.get().toolsDir || path.join(app.getPath("userData"), "Emulators");
@@ -620,6 +620,7 @@ async function fetchUpdate(found: AvailableUpdate): Promise<void> {
       last = Date.now();
       setUpdate({ ...update, state: "downloading", received, total: total || found.size });
     });
+    if (!settings.get().allowUnverifiedUpdates) await verifyUpdate((u, i) => net.fetch(u, i), found, target);
     setUpdate({ ...update, state: "ready", version: found.version, file: target, received: found.size });
     if (!win?.isVisible() && !busy() && settings.get().autoUpdate) await installNow();
     else if (Notification.isSupported() && !win?.isVisible()) new Notification({ title: "LootDen update ready", body: `Version ${found.version} installs when you quit, or choose Restart to update.` }).show();

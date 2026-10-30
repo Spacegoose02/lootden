@@ -94,7 +94,11 @@ jobs:
         with:
           path: dist
           pattern: "{desktop-*,playnite}"
+      # The desktop apps check updates against this before installing them (updater.ts).
+      - run: find dist -type f -exec sha256sum {} + | sed 's#  .*/#  #' | sort -k2 > SHA256SUMS
       - uses: softprops/action-gh-release@v2
         with:
-          files: dist/**/*
+          files: |
+            dist/**/*
+            SHA256SUMS
           generate_release_notes: true

@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
-import { createWriteStream } from "node:fs";
+import { createHash } from "node:crypto";
+import { createReadStream, createWriteStream } from "node:fs";
 import { chmod, mkdir, rename, rm } from "node:fs/promises";
 import path from "node:path";
 import { Readable } from "node:stream";
@@ -74,6 +75,58 @@ export async function downloadUpdate(
   });
   await pipeline(body, createWriteStream(`${target}.part`));
   await rename(`${target}.part`, target);
+}
+
+/** The GitHub repository whose releases build this app. Its SHA256SUMS file vouches for updates. */
+export const RELEASE_REPO = "Spacegoose02/lootden";
+
+/** "hash  name" lines (sha256sum's format) to a map of file name to lower-case hash. */
+export function parseChecksums(text: string): Map<string, string> {
+  const sums = new Map<string, string>();
+  for (const line of text.split(/\r?\n/)) {
+    const m = line.trim().match(/^([0-9a-f]{64}) [ *]?(.+)$/i);
+    if (m) sums.set(m[2]!.trim(), m[1]!.toLowerCase());
+  }
+  return sums;
+}
+
+export async function fileSha256(file: string): Promise<string> {
+  const hash = createHash("sha256");
+  await pipeline(createReadStream(file), hash);
+  return hash.digest("hex");
+}
+
+/**
+ * Checks a downloaded update against the SHA256SUMS published with that version's GitHub
+ * release, so the LootDen server alone can't make every PC run a file of its choosing.
+ * Throws (and deletes the file) unless the hash matches.
+ */
+export async function verifyUpdate(
+  fetchImpl: (url: string, init?: RequestInit) => Promise<Response>,
+  update: AvailableUpdate,
+  downloaded: string,
+  repo = RELEASE_REPO,
+): Promise<void> {
+  const url = `https://github.com/${repo}/releases/download/v${update.version}/SHA256SUMS`;
+  let expected: string | undefined;
+  try {
+    let res: Response;
+    try {
+      res = await fetchImpl(url, { signal: AbortSignal.timeout(20_000) });
+    } catch {
+      throw new Error("Couldn't reach GitHub to check the update, so it wasn't installed. Try again when this PC is online.");
+    }
+    if (res.status === 404) throw new Error(`LootDen ${update.version} has no checksums on GitHub, so the update wasn't installed`);
+    if (!res.ok) throw new Error(`Checking the update failed: GitHub answered ${res.status}`);
+    expected = parseChecksums(await res.text()).get(update.file);
+    if (!expected) throw new Error(`${update.file} isn't in LootDen ${update.version}'s checksums, so it wasn't installed`);
+    if ((await fileSha256(downloaded)) !== expected) {
+      throw new Error(`${update.file} doesn't match the official LootDen ${update.version} build, so it wasn't installed`);
+    }
+  } catch (err) {
+    await rm(downloaded, { force: true });
+    throw err;
+  }
 }
 
 /**
