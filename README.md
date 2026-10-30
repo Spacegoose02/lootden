@@ -229,4 +229,4 @@ GitHub release.
 Only add games you own or have the right to use. LootDen doesn't include any game source;
 the download tools only talk to indexers and clients you set up yourself.
 
-No licence has been chosen yet, so all rights are reserved for now (see [LICENSE](LICENSE)).
+LootDen is released under the [MIT licence](LICENSE).
