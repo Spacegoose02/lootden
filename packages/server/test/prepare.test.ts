@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
-import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import { after, before, describe, it } from "node:test";
 import { setupKindOf } from "@lootden/shared";
+import { findServerSevenZip } from "../src/connectors/tidy.js";
 import { makeApp } from "./helpers.js";
 
 const execFileAsync = promisify(execFile);
@@ -136,11 +136,12 @@ describe("deleting games", () => {
   });
 });
 
-describe("installers packed in archives", () => {
+const serverSevenZip = await findServerSevenZip();
+
+describe("installers packed in archives", { skip: !serverSevenZip && "7-Zip isn't installed" }, () => {
   let dir: string;
-  let sevenZip: string;
   before(async () => {
-    sevenZip = (createRequire(import.meta.url)("7zip-bin") as { path7za: string }).path7za;
+    const sevenZip = serverSevenZip!.path;
     dir = await mkdtemp(path.join(os.tmpdir(), "gm-peek-"));
     const stage = await mkdtemp(path.join(os.tmpdir(), "gm-peek-stage-"));
     await mkdir(path.join(stage, "repack", "Packed Repack"), { recursive: true });
@@ -154,7 +155,7 @@ describe("installers packed in archives", () => {
     await zip(path.join(stage, "portable"), path.join(dir, "Portable Game", "portable.zip"));
     await rm(stage, { recursive: true, force: true });
   });
-  after(() => rm(dir, { recursive: true, force: true }));
+  after(() => dir && rm(dir, { recursive: true, force: true }));
 
   it("marks an archive holding a setup program as an installer before anyone unpacks it", async () => {
     const { app, ctx } = await makeApp(dir, { apiToken: "svc" });
