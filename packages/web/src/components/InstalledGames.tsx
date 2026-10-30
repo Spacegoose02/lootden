@@ -68,6 +68,7 @@ export function stub(local: InstalledGame): GameSummary {
     fromVersion: null,
     baseGameId: null,
     kindReason: null,
+    latestVersion: null,
   };
 }
 

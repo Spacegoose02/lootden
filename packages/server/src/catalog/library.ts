@@ -5,7 +5,9 @@ import { compareVersion, contentHint, FULL_GAME_SIZE_RATIO, PC_PLATFORM, setupKi
 import { json, now, type Db } from "../db/database.js";
 import { kidSafeFromRatings } from "../metadata/ratings.js";
 import { cleanTitle, titleSimilarity } from "../metadata/titles.js";
-import { gameIdFor, scanLibrary, type ScannedGame } from "./scanner.js";
+import { findServerSevenZip } from "../connectors/tidy.js";
+import { archivesToPeek, peekArchive, type PeekResult } from "./peek.js";
+import { gameIdFor, resolveGameFile, scanLibrary, type ScannedGame } from "./scanner.js";
 
 export interface GameQuery {
   search?: string;
@@ -107,8 +109,12 @@ export class Library {
   private lastScanMs: number | null = null;
   private scanning: Promise<void> | null = null;
   private listeners: Array<(games: ScannedGame[]) => void> = [];
+  /** Looking inside archives for installers after a scan; scans don't wait for it. */
+  private peeking: Promise<void> | null = null;
+  private sevenZip: Promise<string | null> | null = null;
   /** What each entry is and which game each update or DLC belongs to; rebuilt after scans, overrides and metadata changes (and at most every few seconds). */
   private baseCache: { at: number; map: Map<string, PackageVerdict> } | null = null;
+  private latestCache: { from: Map<string, PackageVerdict>; map: Map<string, string> } | null = null;
 
   constructor(
     private readonly db: Db,
@@ -126,6 +132,7 @@ export class Library {
       const started = Date.now();
       try {
         const games = await scanLibrary(this.gamesDir);
+        this.applyPeeks(games);
         this.sync(games);
         this.scanned = new Map(games.map((g) => [g.id, g]));
         this.baseCache = null;
@@ -136,8 +143,83 @@ export class Library {
       }
       const games = [...this.scanned.values()];
       for (const l of this.listeners) l(games);
+      void this.peekArchives();
     })();
     return this.scanning;
+  }
+
+  /** Resolves once every packed game from the last scan has been checked for an installer inside. */
+  async archivesChecked(): Promise<void> {
+    while (this.scanning || this.peeking) await (this.scanning ?? this.peeking);
+  }
+
+  /** PC games whose installer could be inside an archive the scanner can't see into. */
+  private peekable(g: ScannedGame): boolean {
+    return g.platform === PC_PLATFORM && g.kind === "game" && g.needsSetup === null && g.packed;
+  }
+
+  private peekRow(full: string, size: number, modifiedAt: string): PeekResult | undefined {
+    const row = this.db.prepare("SELECT size, modified_at, result FROM archive_peeks WHERE path = ?").get(full) as { size: number; modified_at: string; result: PeekResult } | undefined;
+    return row && row.size === size && row.modified_at === modifiedAt ? row.result : undefined;
+  }
+
+  /** Marks packed games as installers from what earlier peeks found, so a rescan doesn't lose it. */
+  private applyPeeks(games: ScannedGame[]): void {
+    for (const g of games) {
+      if (!this.peekable(g)) continue;
+      for (const f of archivesToPeek(g.files)) {
+        const r = this.peekRow(resolveGameFile(this.gamesDir, g, f), f.size, f.modifiedAt);
+        if (r === "disc" || r === "installer") {
+          g.needsSetup = r;
+          break;
+        }
+      }
+    }
+  }
+
+  /**
+   * Lists the archives of packed games with 7-Zip (a few at a time, each one once) to find the
+   * ones that are really installers or disc images, so "Install here and upload" shows before
+   * anyone has downloaded or unpacked them.
+   */
+  private peekArchives(): Promise<void> {
+    this.peeking ??= (async () => {
+      try {
+        this.sevenZip ??= findServerSevenZip().then((z) => z?.path ?? null);
+        const bin = await this.sevenZip;
+        if (!bin) return;
+        const todo = [...this.scanned.values()].filter((g) => this.peekable(g));
+        const save = this.db.prepare("INSERT INTO archive_peeks (path, size, modified_at, result) VALUES (?, ?, ?, ?) ON CONFLICT(path) DO UPDATE SET size = excluded.size, modified_at = excluded.modified_at, result = excluded.result");
+        let changed = false;
+        const work = async () => {
+          for (let g = todo.shift(); g; g = todo.shift()) {
+            for (const f of archivesToPeek(g.files)) {
+              const full = resolveGameFile(this.gamesDir, g, f);
+              let r = this.peekRow(full, f.size, f.modifiedAt);
+              if (r === undefined) {
+                r = await peekArchive(bin, full);
+                save.run(full, f.size, f.modifiedAt, r);
+              }
+              if (r === "disc" || r === "installer") {
+                // The scan may have been replaced meanwhile; mark whichever copy is current.
+                const current = this.scanned.get(g.id);
+                if (current) current.needsSetup = r;
+                g.needsSetup = r;
+                changed = true;
+                break;
+              }
+            }
+          }
+        };
+        await Promise.all([work(), work(), work()]);
+        if (changed) this.baseCache = null;
+      } catch (err) {
+        console.warn(`Couldn't look inside archives: ${(err as Error).message}`);
+      } finally {
+        this.peeking = null;
+      }
+    })();
+    return this.peeking;
   }
 
   private sync(games: ScannedGame[]): void {
@@ -257,6 +339,22 @@ export class Library {
     return map;
   }
 
+  /** Newest version on the server per game: its own name's, or the highest of its updates'. */
+  private latestVersions(): Map<string, string> {
+    const verdicts = this.packages();
+    if (this.latestCache?.from === verdicts) return this.latestCache.map;
+    const map = new Map<string, string>();
+    for (const g of this.scanned.values()) {
+      const v = verdicts.get(g.id);
+      const owner = v?.kind === "update" ? v.baseGameId : (v?.kind ?? g.kind) === "game" ? g.id : null;
+      if (!owner || !g.version) continue;
+      const best = map.get(owner);
+      if (!best || compareVersion(g.version, best) > 0) map.set(owner, g.version);
+    }
+    this.latestCache = { from: verdicts, map };
+    return map;
+  }
+
   private verdict(g: ScannedGame): PackageVerdict {
     return this.packages().get(g.id) ?? { kind: g.kind, baseGameId: null, lookalike: null, reason: null };
   }
@@ -289,6 +387,7 @@ export class Library {
       fromVersion: kind === "update" ? g.fromVersion : null,
       baseGameId,
       kindReason: reason,
+      latestVersion: kind === "game" ? (this.latestVersions().get(g.id) ?? null) : null,
       // A full game named as an update was skipped by the scanner's setup check.
       needsSetup: kind !== "game" ? null : (g.needsSetup ?? (g.kind !== "game" && g.platform === PC_PLATFORM ? setupKindOf(files) : null)),
       files,
