@@ -107,6 +107,17 @@ can be set once by an admin on the add-on's card (`PUT /api/addons/:id/shared`, 
 like accounts, never sent back); a person's own value wins. `Integrations` (IGDB and other admin keys in the settings table) aren't encrypted yet; the
 vault can do it.
 
+## Bugs board fixes (0.19.0)
+
+- **Installers inside archives**: `catalog/peek.ts` lists a zip/rar/7z's entries with 7-Zip
+  (`l -slt -ba -p`, no password prompt, 60 s timeout) and runs `setupKindOf` on them, so
+  "Install here and upload" shows before anything is unpacked. Packed PC games are checked
+  in the background after each scan (3 at a time) and cached in `archive_peeks` (path, size,
+  date).
+- **Versions on covers**: `GameSummary.latestVersion`; `VersionTag` on cards, cover wall tiles
+  and list rows (green when up to date, amber `old → new` when an update is waiting).
+- **Format filter**: Library `?format=` (installers and disc images, ready folders, archives).
+
 ## Every launcher in Library, requests, Workshop, Console home (0.18.0)
 
 - **Library tabs**: Installed (default in the app), All, Backlog, Stats. Other stores is gone;
