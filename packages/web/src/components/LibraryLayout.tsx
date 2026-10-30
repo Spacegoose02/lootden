@@ -6,6 +6,7 @@ import { useAuth } from "../auth";
 import { Badges } from "./Badges";
 import { Cover } from "./Cover";
 import { GameCard } from "./GameCard";
+import { VersionTag } from "./VersionTag";
 
 export type ViewMode = "grid" | "compact" | "covers" | "list";
 export type GroupBy = "none" | "genre" | "platform" | "installed" | "letter";
@@ -155,6 +156,7 @@ export function GameCollection<T extends GameSummary>({
                   <Badges game={g} compact />
                   <span className="muted small num">{formatBytes(g.sizeBytes)}</span>
                   <span className="game-list-aside">
+                    <VersionTag game={g} inline />
                     {isInstalled(g) && (
                       <span className="badge badge-kid">
                         <span className="installed-glyph" aria-hidden="true" /> Installed
@@ -170,6 +172,7 @@ export function GameCollection<T extends GameSummary>({
               {list.map((g) => (
                 <Link key={g.id} to={`/games/${g.id}`} className={`cover-tile${isInstalled(g) ? " is-installed" : ""}`} aria-label={g.title} title={g.title}>
                   <Cover game={g} />
+                  <VersionTag game={g} />
                   <span className="cover-tile-name">{g.title}</span>
                 </Link>
               ))}

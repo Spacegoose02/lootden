@@ -416,6 +416,16 @@ const MIGRATIONS: string[] = [
     blocked TEXT NOT NULL DEFAULT '[]'
   );
   `,
+  `
+  -- What's inside packed games: whether an archive holds an installer or disc image, so the
+  -- library can say so without unpacking. Re-checked when the file's size or date changes.
+  CREATE TABLE archive_peeks (
+    path TEXT PRIMARY KEY,
+    size INTEGER NOT NULL,
+    modified_at TEXT NOT NULL,
+    result TEXT NOT NULL
+  );
+  `,
 ];
 
 export function openDatabase(file: string): Db {

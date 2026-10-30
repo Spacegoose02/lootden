@@ -2847,6 +2847,55 @@ label.field {
 :root[data-nav="pad"] .cover-tile:focus .cover-tile-name {
   opacity: 1;
 }
+/* The game's version on its cover: green when it's the newest on the server, amber when an update is waiting. */
+.card {
+  position: relative;
+}
+.version-tag {
+  --version-color: var(--good, #59ff9a);
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35em;
+  max-width: calc(100% - 24px);
+  padding: 0.2em 0.55em 0.2em 0.45em;
+  border-radius: 999px;
+  font-size: 0.68rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: #fff;
+  background: rgba(8, 10, 14, 0.72);
+  border: 1px solid color-mix(in srgb, var(--version-color) 60%, transparent);
+  backdrop-filter: blur(6px);
+  pointer-events: none;
+}
+.version-outdated {
+  --version-color: var(--warn, #ffd166);
+}
+.version-dot {
+  flex: none;
+  width: 0.55em;
+  height: 0.55em;
+  border-radius: 50%;
+  background: var(--version-color);
+  box-shadow: 0 0 8px var(--version-color);
+}
+.cover-tile .version-tag {
+  top: 5px;
+  left: 5px;
+  font-size: 0.62rem;
+}
+.version-tag.version-inline {
+  position: static;
+  color: var(--text);
+  background: transparent;
+}
 .cover-tile.is-installed::after {
   content: "";
   position: absolute;

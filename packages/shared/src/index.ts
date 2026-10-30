@@ -74,6 +74,11 @@ export interface GameSummary {
   baseGameId: string | null;
   /** Why it counts as this kind; null for an ordinary game. */
   kindReason: KindReason | null;
+  /**
+   * Games: the newest version on the server, from the game's own name or its update
+   * packages. Higher than version means an update is waiting. Null when nothing says.
+   */
+  latestVersion: string | null;
 }
 
 export interface GameMetadata {

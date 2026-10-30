@@ -50,6 +50,12 @@ export function Library() {
   );
 }
 
+/** How a game sits on the server: still to set up, unpacked and ready, or in archives. */
+function formatOf(g: GameSummary): "setup" | "folder" | "packed" {
+  if (g.needsSetup) return "setup";
+  return g.packed ? "packed" : "folder";
+}
+
 function AllGames() {
   const [params, setParams] = useSearchParams();
   const [games, setGames] = useState<GameSummary[] | null>(null);
@@ -62,6 +68,8 @@ function AllGames() {
   const sort = params.get("sort") ?? "title";
   const system = params.get("system") ?? "pc";
   const onlyInstalled = params.get("installed") === "true";
+  // Installers and disc images still to set up, games already unpacked into a folder, or archives.
+  const format = params.get("format") ?? "";
   // Which libraries: everything (LootDen, then the other stores), LootDen only, every other store, or one store.
   const source = params.get("source") ?? "";
   const store = useStoreGames();
@@ -111,13 +119,14 @@ function AllGames() {
   const shown = useMemo(() => {
     if (!games) return null;
     let out = onlyInstalled ? games.filter((g) => installedIds.has(g.id)) : games;
+    if (format) out = out.filter((g) => formatOf(g) === format);
     if (sort === "played") {
       const last = new Map<string, string>();
       for (const s of states) if (s.lastPlayedAt && (last.get(s.gameId) ?? "") < s.lastPlayedAt) last.set(s.gameId, s.lastPlayedAt);
       out = [...out].sort((a, b) => (last.get(b.id) ?? "").localeCompare(last.get(a.id) ?? "") || a.title.localeCompare(b.title));
     }
     return out;
-  }, [games, onlyInstalled, installedIds, sort, states]);
+  }, [games, onlyInstalled, installedIds, sort, states, format]);
   const shelf = system !== "all" && system !== "pc" ? platformFor(system).coverAspect : undefined;
 
   return (
@@ -162,6 +171,12 @@ function AllGames() {
           <option value="any">Full or partial controller support</option>
           <option value="full">Full controller support</option>
           <option value="partial">Partial controller support</option>
+        </select>
+        <select value={format} onChange={(e) => set("format", e.target.value)} aria-label="Format">
+          <option value="">Any format</option>
+          <option value="setup">Installers and disc images</option>
+          <option value="folder">Ready game folders</option>
+          <option value="packed">Archives</option>
         </select>
         <select value={sort} onChange={(e) => set("sort", e.target.value)} aria-label="Sort">
           {SORTS.map(([v, label]) => (

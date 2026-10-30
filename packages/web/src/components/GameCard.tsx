@@ -3,11 +3,13 @@ import { Link } from "react-router-dom";
 import type { GameSummary } from "@lootden/shared";
 import { Badges } from "./Badges";
 import { Cover } from "./Cover";
+import { VersionTag } from "./VersionTag";
 
 export function GameCard({ game }: { game: GameSummary }) {
   return (
     <Link to={`/games/${game.id}`} className="card" aria-label={game.title}>
       <Cover game={game} />
+      <VersionTag game={game} />
       <div className="card-body">
         <div className="card-title">{game.title}</div>
         <div className="card-meta">

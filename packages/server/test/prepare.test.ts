@@ -1,10 +1,15 @@
 import assert from "node:assert/strict";
+import { execFile } from "node:child_process";
 import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
+import { promisify } from "node:util";
 import { after, before, describe, it } from "node:test";
 import { setupKindOf } from "@lootden/shared";
 import { makeApp } from "./helpers.js";
+
+const execFileAsync = promisify(execFile);
 
 let root: string;
 before(async () => {
@@ -127,6 +132,40 @@ describe("deleting games", () => {
     assert.deepEqual((await readdir(dir)).sort(), [".deleted", "Keep Me"]);
     assert.equal((await app.inject({ method: "DELETE", url: `/api/games/${binned}`, headers: admin })).statusCode, 404);
     assert.deepEqual(ctx.library.list({}).map((g) => g.source), ["Keep Me"]);
+    await app.close();
+  });
+});
+
+describe("installers packed in archives", () => {
+  let dir: string;
+  let sevenZip: string;
+  before(async () => {
+    sevenZip = (createRequire(import.meta.url)("7zip-bin") as { path7za: string }).path7za;
+    dir = await mkdtemp(path.join(os.tmpdir(), "gm-peek-"));
+    const stage = await mkdtemp(path.join(os.tmpdir(), "gm-peek-stage-"));
+    await mkdir(path.join(stage, "repack", "Packed Repack"), { recursive: true });
+    await writeFile(path.join(stage, "repack", "Packed Repack", "setup.exe"), "exe");
+    await writeFile(path.join(stage, "repack", "Packed Repack", "fg-01.bin"), "bin");
+    await mkdir(path.join(stage, "portable", "Portable Game", "bin"), { recursive: true });
+    await writeFile(path.join(stage, "portable", "Portable Game", "bin", "game.exe"), "exe");
+    const zip = (from: string, to: string) => execFileAsync(sevenZip, ["a", "-tzip", "-bd", "-y", to, "*"], { cwd: from });
+    await zip(path.join(stage, "repack"), path.join(dir, "Packed.Repack.zip"));
+    await mkdir(path.join(dir, "Portable Game"));
+    await zip(path.join(stage, "portable"), path.join(dir, "Portable Game", "portable.zip"));
+    await rm(stage, { recursive: true, force: true });
+  });
+  after(() => rm(dir, { recursive: true, force: true }));
+
+  it("marks an archive holding a setup program as an installer before anyone unpacks it", async () => {
+    const { app, ctx } = await makeApp(dir, { apiToken: "svc" });
+    await ctx.library.archivesChecked();
+    const bySource = new Map(ctx.library.list({}).map((g) => [g.source, g]));
+    assert.equal(bySource.get("Packed.Repack.zip")!.needsSetup, "installer");
+    assert.equal(bySource.get("Portable Game")!.needsSetup, null);
+    // A rescan remembers what was inside without listing it again.
+    await ctx.library.rescan();
+    assert.equal(ctx.library.list({}).find((g) => g.source === "Packed.Repack.zip")!.needsSetup, "installer");
+    await ctx.library.archivesChecked();
     await app.close();
   });
 });

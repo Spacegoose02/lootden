@@ -75,6 +75,12 @@ describe("update packages in the library", () => {
     const cyberpunk = games.find((g) => g.title === "Cyberpunk 2077") as unknown as { id: string };
     const stardew = games.find((g) => g.title === "Stardew Valley v1 5") as unknown as { id: string };
     assert.equal(byTitle.get("Cyberpunk 2077 Update v2.1")?.baseGameId, cyberpunk.id);
+    // Covers say whether an update is waiting: the newest version among the game and its updates.
+    const latest = new Map((full as unknown as Array<{ title: string; version: string | null; latestVersion: string | null }>).map((g) => [g.title, g]));
+    assert.equal(latest.get("Cyberpunk 2077")!.latestVersion, "2.21");
+    assert.equal(latest.get("Stardew Valley v1 5")!.version, "1.5");
+    assert.match(latest.get("Stardew Valley v1 5")!.latestVersion ?? "", /^1\.6/);
+    assert.equal(latest.get("Stardew Valley v1.6.9")!.latestVersion, "1.6.9", "no updates: its own version");
     assert.equal(byTitle.get("Stardew Valley v1.5 to v1.6 Patch")?.baseGameId, stardew.id);
     assert.equal(byTitle.get("Stardew Valley v1.5 to v1.6 Patch")?.fromVersion, "1.5");
     assert.equal(byTitle.get("Stardew Valley v1.5 to v1.6 Patch")?.version, "1.6");
