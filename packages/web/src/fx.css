@@ -1,0 +1,170 @@
+/* ---------- Motion and depth ------------------------------------------------
+   Loaded after styles.css. Cards tilt toward the mouse and glow in their cover's colour
+   (--tint, set by Cover.tsx), game pages open with the cover morphing out of its card
+   (View Transitions) under the game's own art, and everything holds still for people who
+   ask their system for less motion. */
+
+body {
+  /* The game page's art runs the full width of the window. clip, unlike hidden, keeps the
+     sticky top bar working. */
+  overflow-x: clip;
+}
+
+/* ---- Cards ---- */
+
+.card .cover {
+  transition: box-shadow 0.25s ease, transform 0.25s ease;
+}
+.card:hover .cover,
+.card:focus-visible .cover,
+:root[data-nav="pad"] .card:focus .cover {
+  box-shadow:
+    0 14px 34px -10px color-mix(in srgb, var(--tint, var(--accent)) 75%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--tint, var(--accent)) 45%, transparent);
+}
+.card:hover .card-title,
+.card:focus-visible .card-title {
+  color: color-mix(in srgb, var(--tint, var(--accent)) 35%, var(--text));
+}
+
+/* Light that follows the pointer across the cover. */
+.card .cover-frame::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(circle at var(--mx, 50%) var(--my, 0%), rgba(255, 255, 255, 0.28), transparent 55%);
+  opacity: 0;
+  transition: opacity 0.25s ease;
+  mix-blend-mode: soft-light;
+}
+.card:hover .cover-frame::after {
+  opacity: 1;
+}
+
+@media (hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference) {
+  .card {
+    transition: transform 0.18s ease-out, background 0.15s;
+    transform-style: preserve-3d;
+  }
+  .card:hover {
+    transform: perspective(900px) rotateX(var(--rx, 0deg)) rotateY(var(--ry, 0deg)) translateY(-4px) scale(1.03);
+  }
+}
+
+/* ---- Game page ---- */
+
+.detail {
+  --tint: var(--accent);
+}
+.detail-bg,
+.detail-bg.wide {
+  position: absolute;
+  z-index: 0;
+  top: -1.25rem;
+  left: 50%;
+  width: 100vw;
+  height: min(72vh, 680px);
+  transform: translateX(-50%);
+  opacity: 1;
+  filter: blur(36px) saturate(1.4) brightness(0.6);
+  -webkit-mask-image: linear-gradient(to bottom, #000 30%, transparent);
+  mask-image: linear-gradient(to bottom, #000 30%, transparent);
+  pointer-events: none;
+}
+.detail-bg.wide {
+  filter: saturate(1.1) brightness(0.72);
+  background-position: center 25%;
+}
+/* The game's colour rising from below the art. */
+.detail::before {
+  content: "";
+  position: absolute;
+  z-index: 0;
+  top: 0;
+  left: 50%;
+  width: 100vw;
+  height: min(80vh, 760px);
+  transform: translateX(-50%);
+  background:
+    radial-gradient(700px 380px at 22% 75%, color-mix(in srgb, var(--tint) 30%, transparent), transparent 70%),
+    linear-gradient(to bottom, transparent 40%, color-mix(in srgb, var(--bg) 70%, transparent));
+  pointer-events: none;
+  transition: background 0.6s ease;
+}
+.detail > * {
+  position: relative;
+  z-index: 1;
+}
+.detail > .detail-bg {
+  position: absolute;
+  z-index: 0;
+}
+/* While loading, room is kept for the art most games have, so the page doesn't jump. */
+.detail-loading .detail-head,
+.detail:has(> .detail-bg.wide) .detail-head {
+  padding-top: clamp(5rem, 22vh, 13rem);
+}
+@media (max-width: 700px) {
+  .detail-loading .detail-head,
+  .detail:has(> .detail-bg.wide) .detail-head {
+    padding-top: 4rem;
+  }
+}
+.detail-head .cover-hero {
+  view-transition-name: game-cover;
+  box-shadow:
+    0 30px 70px -18px color-mix(in srgb, var(--tint) 65%, transparent),
+    0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+.detail-head h1 {
+  font-size: clamp(2rem, 4.2vw, 3.4rem);
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+  text-shadow: 0 2px 24px rgba(0, 0, 0, 0.55), 0 0 40px color-mix(in srgb, var(--tint) 35%, transparent);
+}
+:root[data-scheme="light"] .detail-head h1 {
+  text-shadow: 0 1px 18px color-mix(in srgb, var(--bg) 80%, transparent);
+}
+/* Light themes: the art is a soft wash, so dark text stays readable over it. */
+:root[data-scheme="light"] .detail-bg {
+  opacity: 0.4;
+  filter: blur(36px) saturate(1.2);
+}
+:root[data-scheme="light"] .detail-bg.wide {
+  opacity: 0.45;
+  filter: saturate(1.05) brightness(1.1);
+}
+
+/* ---- Page changes ---- */
+
+.topbar {
+  view-transition-name: topbar;
+}
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 0.22s;
+}
+::view-transition-group(game-cover) {
+  animation-duration: 0.42s;
+  animation-timing-function: cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+::view-transition-old(game-cover),
+::view-transition-new(game-cover) {
+  /* Covers of different shapes morph without stretching. */
+  height: 100%;
+  object-fit: cover;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation: none !important;
+  }
+  .card .cover,
+  .card .cover-frame::after,
+  .detail::before {
+    transition: none;
+  }
+}
