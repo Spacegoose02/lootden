@@ -107,6 +107,17 @@ can be set once by an admin on the add-on's card (`PUT /api/addons/:id/shared`, 
 like accounts, never sent back); a person's own value wins. `Integrations` (IGDB and other admin keys in the settings table) aren't encrypted yet; the
 vault can do it.
 
+## Updates made outside LootDen, Roblox on old apps (0.22.1)
+
+- `client/src/exeversion.ts` reads the game exe's version resource; `effectiveVersion` uses it
+  when it is newer than LootDen's record and its first two numbers match, so an update made
+  outside LootDen shows "Already on v…" instead of being offered again.
+- Patch names like `1.0.141.3207 to 1.0.141.13368` (or the tidied spaced form) parse as
+  from/to versions; existing entries pick this up on the next library scan.
+- Update staging no longer renames the wrapper folder (Windows EPERM); full installs retry the
+  rename and fall back to leaving the game nested.
+- An app older than 0.22.0 that refuses a `roblox:` link now says to update the app.
+
 ## Roblox games an admin picks (0.22.0)
 
 - Settings, Roblox: an admin pastes a roblox.com link or place ID; `server/src/roblox/catalog.ts`
