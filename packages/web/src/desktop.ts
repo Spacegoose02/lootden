@@ -57,6 +57,8 @@ export type Progress =
   | { gameId: string; type: "workshop"; itemId: string; line: string }
   | { gameId: string; type: "saves"; backupId?: number; size?: number; error?: string }
   | { gameId: string; type: "prepare"; message: string; done?: boolean; error?: boolean; newId?: string }
+  /** Play time heads-ups and time's up (shown by FunLayer, not on the game's page). */
+  | { gameId: string; type: "limit"; title: string; message: string }
   | ({ gameId: "lootden-app"; type: "appUpdate" } & AppUpdate);
 
 /** The desktop app's own updates, from the server's Get the app page. */
@@ -194,7 +196,7 @@ export function useDesktopGame(gameId: string) {
     if (!desktop) return;
     void refresh();
     return desktop.onProgress((p) => {
-      if (p.gameId !== gameId) return;
+      if (p.gameId !== gameId || p.type === "limit") return;
       setProgress(p);
       if (p.type === "done" || p.type === "stopped" || (p.type === "prepare" && p.done)) void refresh();
     });

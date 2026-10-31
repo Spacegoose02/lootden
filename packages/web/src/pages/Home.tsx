@@ -13,6 +13,10 @@ import { VideoRow } from "../components/Videos";
 import { StoreGameCard, storeKey, useStoreGames } from "../components/StoreGameCard";
 import { bridgeError, desktop, type InstalledGame } from "../desktop";
 import { usePosterSize } from "../theme";
+import { PlayTimeCard } from "../components/PlayTime";
+import { WeekStrip } from "../components/Family";
+import { GameOfTheDay } from "../components/Roulette";
+import { HomeShelves } from "../components/Shelves";
 
 const NOTES: Record<string, string> = {
   setup:
@@ -133,7 +137,28 @@ export function Home() {
         </div>
       </section>,
     );
+  blocks.push(<GameOfTheDay key="gotd" />);
   blocks.push(row(take("continue")));
+  const together = take("together")?.games ?? [];
+  if (together.length)
+    blocks.push(
+      <section className="row" key="together">
+        <div className="row-head">
+          <h2>👥 Play together</h2>
+          <span className="muted small row-sub">Couch co-op, split screen and party games</span>
+          <Link to="/library?tab=all&together=any" className="muted small">
+            All of them
+          </Link>
+        </div>
+        <div className="row-track">
+          {together.slice(0, 20).map((g) => (
+            <GameCard key={g.id} game={g} />
+          ))}
+        </div>
+      </section>,
+    );
+  blocks.push(<WeekStrip key="week" />);
+  blocks.push(<HomeShelves key="shelves" />);
   if (storeRecent.length)
     blocks.push(
       <section className="row" key="stores">
@@ -165,6 +190,7 @@ export function Home() {
   const resume = data.resume && poster !== "off" ? data.resume : null;
   return (
     <>
+      <PlayTimeCard compact />
       {resume && <ResumeHero game={resume} installedHere={!!local?.some((l) => l.gameId === resume.id)} />}
       {!resume && hero && poster !== "off" && (
         <section className={`hero hero-${poster}`}>

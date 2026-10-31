@@ -4,6 +4,8 @@
 export * from "./addons.js";
 export * from "./browser.js";
 export * from "./emulators.js";
+export * from "./family.js";
+import type { TogetherTag } from "./family.js";
 export * from "./packages.js";
 import type { KindReason, PackageKind } from "./packages.js";
 export * from "./platforms.js";
@@ -79,6 +81,8 @@ export interface GameSummary {
    * packages. Higher than version means an update is waiting. Null when nothing says.
    */
   latestVersion: string | null;
+  /** Ways to play it together (couch co-op, split screen...), from metadata or an admin. Missing from older servers. */
+  together?: TogetherTag[];
 }
 
 export interface GameMetadata {
@@ -113,6 +117,8 @@ export interface GameDetail extends GameSummary {
     controllerSupport: ControllerSupport | null;
     cover: string | null;
     background: string | null;
+    /** Play-together tags an admin set; null means worked out from metadata. */
+    together: TogetherTag[] | null;
   };
   /**
    * Where the game keeps saves on a player's PC, for save sync. Uses %APPDATA%,

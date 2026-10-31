@@ -1,5 +1,5 @@
 import type { FastifyInstance } from "fastify";
-import { cleanPolicy, cleanSites, type ActivityEvent, type BrowserPolicy, type Role } from "@lootden/shared";
+import { cleanPolicy, cleanSites, lockedPart, parseRaccoonSeed, type ActivityEvent, type BrowserPolicy, type Role } from "@lootden/shared";
 import { verifyPassword } from "../auth/crypto.js";
 import { SESSION_COOKIE } from "../auth/service.js";
 import { HttpProblem, requireAdmin, requirePerson, type AppContext } from "../context.js";
@@ -38,6 +38,11 @@ export function userRoutes(app: FastifyInstance, ctx: AppContext) {
   app.patch<{ Body: { displayName?: string; avatar?: string } }>("/api/me", async (req) => {
     const me = requirePerson(req);
     const avatar = req.body?.avatar === "random" ? randomAvatarSeed() : req.body?.avatar?.replace(/[^\w-]/g, "").slice(0, 64);
+    // Built raccoons: parts past the starter set unlock with levels.
+    const built = avatar ? parseRaccoonSeed(avatar) : null;
+    if (avatar?.startsWith("b-") && !built) throw new HttpProblem(400, "That raccoon has parts that don't exist");
+    const locked = built ? lockedPart(built, ctx.family.level(me.id).level) : null;
+    if (locked) throw new HttpProblem(403, `The ${locked.name} unlocks at level ${locked.level}`);
     return publicUser(await ctx.users.update(me.id, { displayName: req.body?.displayName, avatar: avatar || undefined }));
   });
 
@@ -71,7 +76,7 @@ export function userRoutes(app: FastifyInstance, ctx: AppContext) {
   });
 
   /** Installs, uninstalls and playtime reported by clients. */
-  app.post<{ Body: { gameId: string; device: string; event: ActivityEvent; installPath?: string; seconds?: number } }>(
+  app.post<{ Body: { gameId: string; device: string; event: ActivityEvent; installPath?: string; seconds?: number; endedAt?: string } }>(
     "/api/me/activity",
     async (req) => {
       const me = requirePerson(req);
@@ -80,6 +85,7 @@ export function userRoutes(app: FastifyInstance, ctx: AppContext) {
         throw new HttpProblem(400, "gameId, device and event (installed, uninstalled, played) are required");
       }
       ctx.users.recordActivity(me.id, { ...b, device: b.device.slice(0, 100) });
+      if (b.event === "played") ctx.family.recordSession(me.id, b.gameId, b.device, Number(b.seconds) || 0, typeof b.endedAt === "string" ? b.endedAt : undefined);
       return { ok: true };
     },
   );

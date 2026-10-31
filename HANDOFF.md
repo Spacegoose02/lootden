@@ -107,6 +107,48 @@ can be set once by an admin on the add-on's card (`PUT /api/addons/:id/shared`, 
 like accounts, never sent back); a person's own value wins. `Integrations` (IGDB and other admin keys in the settings table) aren't encrypted yet; the
 vault can do it.
 
+## Family fun pack (unreleased)
+
+Shared rules live in `packages/shared/src/family.ts`; the server side is `users/family.ts`
+(`FamilyService`), `users/shelves.ts` and `routes/family.ts`; tests in `server/test/family.test.ts`
+and `client/test/family.test.ts`.
+
+- **Play sessions** (`play_sessions`): every "played" report is also a dated session (the app
+  sends `endedAt`, so offline play lands on the right day). Days, weeks and bedtimes follow the
+  household time zone (Settings, Library, Family; blank uses the server's `TZ`).
+- **Play time limits and bedtime** per profile (`play_limits`, Settings, Profiles, Play time).
+  `GET /api/me/allowance` is today's state. The desktop app checks it before starting a game,
+  keeps the last answer for offline (`keptAllowance`), and `watchPlayTime` (client
+  `playtime.ts`) gives heads-ups at 10, 5 and 1 minute, then time's up; with "close the game"
+  on, `launchAndTrack`'s stop signal closes it a minute later (`taskkill /T` on Windows).
+  Emulated games only get heads-ups. Store games launched through Steam etc. aren't counted.
+- **Bonus time** (`time_requests`): kids ask on Requests or Profile, admins answer on Requests
+  (yes, half, no) or give time from the Play time editor.
+- **Profile tokens in the app**: `client()` in `desktop/src/main.ts` now keeps one device token
+  per profile (`profileTokens`), picked by who is signed in to the window, so play time, limits
+  and saves follow the person instead of whoever signed in first on that PC.
+- **Save slots** (client `saveslots.ts`, household setting, on by default): before a game with
+  a save location starts, the last player's save folder moves to
+  `<userData>/SaveSlots/<game>/<profile>` and this player's comes back (or their newest server
+  backup). Nothing is deleted; a replaced slot is kept as `.old`.
+- **Achievements, XP and levels**: `ACHIEVEMENTS` in shared, worked out from stats on
+  `GET /api/me/progress` and recorded in `achievements`. Levels unlock raccoon parts:
+  built avatars are seeds like `b-<fur>-<palette>-<eyes>-<mouth>-<gear>`; random seeds still
+  only use the starter parts, so existing avatars look the same. `PATCH /api/me` refuses
+  locked parts.
+- **Celebrations** (`GET /api/me/celebrations`, `FunLayer.tsx`): new badges, bonus time and
+  requested games that arrived ("Wish granted"). Requests from before this are marked
+  `legacy` and settled quietly on first look.
+- **Weekly recap** (`GET /api/family/recap`, Library, Family, and a strip on Home): leaderboard,
+  top game, busiest day, and a shareable PNG drawn on a canvas. Kids see "A grown-up game"
+  instead of titles they couldn't open.
+- **Game of the day and roulette** (`Roulette.tsx`): a daily pick per person on Home, and a
+  slot-machine reel with filters. Spins count toward a badge (`POST /api/me/roulette`).
+- **Play together tags**: `GameSummary.together` from IGDB game modes and genres, or an admin's
+  pick on the game page (`games.together_override`). Library filter, Home row.
+- **Shelves** (`shelves`, `shelf_games`): personal or household (admins), shown in Library,
+  Shelves and as Home rows; "Add to shelf" on game pages.
+
 ## Bugs board fixes (0.19.0)
 
 - **Installers inside archives**: `catalog/peek.ts` lists a zip/rar/7z's entries with 7-Zip

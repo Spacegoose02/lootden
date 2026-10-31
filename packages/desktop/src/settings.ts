@@ -1,12 +1,19 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import type { Bookmark, BrowserPolicy, SearchEngine } from "@lootden/client";
+import type { Bookmark, BrowserPolicy, KeptAllowance, SearchEngine } from "@lootden/client";
 
 export interface DesktopSettings {
   serverUrl: string;
   /** Personal API token for this computer, created after the first sign-in. */
   apiToken: string;
+  /** Whose profile apiToken belongs to, and every profile's own token on this PC, so play time goes to whoever is signed in. */
+  apiTokenUser?: number;
+  profileTokens?: Record<string, string>;
+  /** Today's play time allowance as the server last gave it, for limits while offline. */
+  keptAllowance?: KeptAllowance;
+  /** Whose saves are in each game's save folder now (game id to profile id), for save slots. */
+  saveOwners?: Record<string, number>;
   /** Where games go by default. */
   installDir: string;
   /** Every folder games have been installed to, so they can be found again. */

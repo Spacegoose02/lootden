@@ -61,8 +61,9 @@ export async function saveExecutable(dir: string, rel: string): Promise<void> {
 /**
  * Starts the game and resolves with how long it ran, for play tracking.
  * Windows .exe files on Linux run through wine when it is installed.
+ * Aborting `stop` closes the game (play time limits), with everything it started on Windows.
  */
-export function launchAndTrack(dir: string, rel: string, platform: NodeJS.Platform = process.platform): Promise<number> {
+export function launchAndTrack(dir: string, rel: string, platform: NodeJS.Platform = process.platform, stop?: AbortSignal): Promise<number> {
   // Absolute when the installer put the game somewhere else.
   const full = path.resolve(dir, rel);
   let cmd = full;
@@ -81,5 +82,10 @@ export function launchAndTrack(dir: string, rel: string, platform: NodeJS.Platfo
       reject(cmd === "wine" ? new Error("This is a Windows game; install Wine (or use Proton through Lutris/Heroic) to run it on Linux") : err),
     );
     child.on("exit", () => resolve(Math.round((Date.now() - started) / 1000)));
+    stop?.addEventListener("abort", () => {
+      if (child.exitCode !== null || !child.pid) return;
+      if (platform === "win32") spawn("taskkill", ["/pid", String(child.pid), "/T", "/F"], { stdio: "ignore", windowsHide: true }).on("error", () => child.kill());
+      else child.kill("SIGTERM");
+    });
   });
 }

@@ -1,4 +1,4 @@
-import type { ActivityEvent, GameDetail, GameSummary, HealthResponse, LibraryStats, SaveBackup, User } from "@lootden/shared";
+import type { ActivityEvent, Allowance, GameDetail, PlayLimits, GameSummary, HealthResponse, LibraryStats, SaveBackup, User } from "@lootden/shared";
 import type { ClientConfig } from "./config.js";
 
 export class ApiError extends Error {
@@ -83,13 +83,17 @@ export class GameServerClient {
    * Install/uninstall/playtime reports; ignored for the service token, which has no profile.
    * Never throws: false means the server couldn't be reached, so the caller can keep it for later.
    */
-  async reportActivity(a: { gameId: string; device: string; event: ActivityEvent; installPath?: string; seconds?: number }): Promise<boolean> {
+  async reportActivity(a: { gameId: string; device: string; event: ActivityEvent; installPath?: string; seconds?: number; endedAt?: string }): Promise<boolean> {
     const res = await fetch(`${this.base}/api/me/activity`, {
       method: "POST",
       headers: this.headers({ "Content-Type": "application/json" }),
       body: JSON.stringify(a),
     }).catch(() => undefined);
     return !!res;
+  }
+  /** Today's play time and limits for the person this token belongs to (404 on servers from before limits). */
+  allowance() {
+    return this.json<Allowance & { limits: PlayLimits; separateSaves: boolean; userId: number }>("/api/me/allowance");
   }
   listSaves(gameId: string) {
     return this.json<SaveBackup[]>(`/api/games/${encodeURIComponent(gameId)}/saves`);

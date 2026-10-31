@@ -8,6 +8,8 @@ import { bridgeError, desktop, type InstalledGame } from "../desktop";
 import { POSTER_SIZES, THEMES, usePosterSize, useTheme } from "../theme";
 import { GameLibraries } from "../components/GameLibraries";
 import { StoreScan } from "../components/StoreScan";
+import { AchievementsGrid, HoloCard, RaccoonBuilder, useProgress } from "../components/Progress";
+import { PlayTimeCard } from "../components/PlayTime";
 
 export function Profile() {
   const { me, refresh } = useAuth();
@@ -23,6 +25,8 @@ export function Profile() {
   const [games, setGames] = useState<Map<string, GameSummary>>(new Map());
   const [pw, setPw] = useState({ current: "", next: "" });
   const [msg, setMsg] = useState("");
+  const [progress] = useProgress();
+  const [raccoonMode, setRaccoonMode] = useState<"random" | "build">("build");
 
   useEffect(() => {
     if (!user) return;
@@ -80,6 +84,10 @@ export function Profile() {
 
       {user && (
         <>
+          <div className="profile-hero">
+            {progress && <HoloCard name={user.displayName} avatar={user.avatar} level={progress.level} badges={progress.achievements} kid={user.kidMode} stats={progress.stats} />}
+            <PlayTimeCard />
+          </div>
           <section className="panel profile-card">
             <img src={avatarUrl(user.avatar)} alt="" width={112} height={112} className="avatar" />
             <div>
@@ -87,16 +95,34 @@ export function Profile() {
                 <input value={name} onChange={(e) => setName(e.target.value)} aria-label="Display name" />
                 <button onClick={() => act(async () => { await api.updateMe({ displayName: name }); await refresh(); }, "Name saved")}>Save name</button>
               </div>
-              <RaccoonPicker
-                current={user.avatar}
-                onPick={(seed) => act(async () => { await api.updateMe({ avatar: seed }); await refresh(); }, "New raccoon!")}
-              />
+              <div className="segmented" role="tablist" aria-label="Raccoon">
+                <button role="tab" aria-selected={raccoonMode === "build"} className={raccoonMode === "build" ? "active" : ""} onClick={() => setRaccoonMode("build")}>
+                  🛠️ Build your raccoon
+                </button>
+                <button role="tab" aria-selected={raccoonMode === "random"} className={raccoonMode === "random" ? "active" : ""} onClick={() => setRaccoonMode("random")}>
+                  🎲 Surprise me
+                </button>
+              </div>
+              {raccoonMode === "build" ? (
+                <RaccoonBuilder
+                  current={user.avatar}
+                  level={progress?.level.level ?? 1}
+                  onSave={(seed) => act(async () => { await api.updateMe({ avatar: seed }); await refresh(); }, "Looking sharp!")}
+                />
+              ) : (
+                <RaccoonPicker
+                  current={user.avatar}
+                  onPick={(seed) => act(async () => { await api.updateMe({ avatar: seed }); await refresh(); }, "New raccoon!")}
+                />
+              )}
               <p className="muted small">
                 @{user.username} · {user.role}
                 {user.kidMode ? " · kid profile" : ""}
               </p>
             </div>
           </section>
+
+          {progress && <AchievementsGrid achievements={progress.achievements} />}
 
           <section className="panel">
             <h2>My games</h2>

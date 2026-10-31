@@ -32,6 +32,8 @@ import type { AddonRegistry } from "./addons/registry.js";
 import type { StoreGameDetails } from "./addons/details.js";
 import type { SteamSignIn } from "./addons/steam-signin.js";
 import type { LiveEvents } from "./live.js";
+import type { FamilyService } from "./users/family.js";
+import type { ShelfStore } from "./users/shelves.js";
 
 /** Everything route modules need, built once in buildApp. */
 export interface AppContext {
@@ -70,6 +72,9 @@ export interface AppContext {
   steamSignIn: SteamSignIn;
   /** Tells open pages what changed (GET /api/events). */
   live: LiveEvents;
+  /** Play time limits, bonus time, achievements, the weekly recap and celebrations. */
+  family: FamilyService;
+  shelves: ShelfStore;
   timeToBeat: (providerId: string | null, title: string) => Promise<TimeToBeat | null>;
 }
 

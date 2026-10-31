@@ -5,7 +5,7 @@ import path from "node:path";
 import type { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import type { FastifyInstance, FastifyRequest } from "fastify";
-import { PC_PLATFORM, safeFolderName, type ControllerSupport, type GameSummary, type PackageKind } from "@lootden/shared";
+import { cleanTogether, PC_PLATFORM, safeFolderName, type ControllerSupport, type GameSummary, type PackageKind } from "@lootden/shared";
 import type { GameQuery } from "../catalog/library.js";
 import { resolveGameFile } from "../catalog/scanner.js";
 import { HttpProblem, requireAdmin, requireUser, type AppContext } from "../context.js";
@@ -139,6 +139,8 @@ export function gameRoutes(app: FastifyInstance, ctx: AppContext) {
     add("emulation", "New on the Emulation shelf", ctx.library.list({ kidSafe, platform: "emulated", sort: "added", order: "desc", limit: 20 }));
     add("top", "Top rated", all.filter((g) => g.rating != null).sort((a, b) => b.rating! - a.rating!));
     add("controller", "Great with a controller", all.filter((g) => g.controllerSupport === "full"));
+    // Couch co-op, split screen and party games, for family night.
+    add("together", "Play together", all.filter((g) => g.together?.some((t) => t === "couch" || t === "split" || t === "party")));
     if (!kidSafe) add("kids", "Family friendly", all.filter((g) => g.kidSafe === true));
     for (const { name } of ctx.library.genres(kidSafe, PC_PLATFORM).slice(0, 6)) add(`genre:${name}`, name, all.filter((g) => g.genres.includes(name)));
     const featured = all
@@ -341,7 +343,7 @@ export function gameRoutes(app: FastifyInstance, ctx: AppContext) {
 
   // ---- Admin: overrides and metadata matching ---------------------------------
 
-  app.patch<{ Params: { id: string }; Body: { title?: string | null; kidSafe?: boolean | null; controllerSupport?: ControllerSupport | null } }>(
+  app.patch<{ Params: { id: string }; Body: { title?: string | null; kidSafe?: boolean | null; controllerSupport?: ControllerSupport | null; together?: string[] | null } }>(
     "/api/games/:id",
     async (req) => {
       requireAdmin(req);
@@ -350,7 +352,8 @@ export function gameRoutes(app: FastifyInstance, ctx: AppContext) {
       if (b.controllerSupport != null && !["full", "partial", "none"].includes(b.controllerSupport)) {
         throw new HttpProblem(400, "controllerSupport is full, partial, none or null");
       }
-      ctx.library.setOverrides(req.params.id, { title: b.title, kidSafe: b.kidSafe, controller: b.controllerSupport });
+      if (b.together != null && !Array.isArray(b.together)) throw new HttpProblem(400, "together is a list of tags or null");
+      ctx.library.setOverrides(req.params.id, { title: b.title, kidSafe: b.kidSafe, controller: b.controllerSupport, together: b.together === undefined ? undefined : b.together === null ? null : cleanTogether(b.together) });
       return ctx.library.get(req.params.id);
     },
   );

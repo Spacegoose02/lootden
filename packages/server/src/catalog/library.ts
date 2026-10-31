@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { mkdir, rename, rm, statfs } from "node:fs/promises";
 import path from "node:path";
-import { compareVersion, contentHint, FULL_GAME_SIZE_RATIO, PC_PLATFORM, setupKindOf, type KindReason, PLATFORMS, type ControllerSupport, type GameDetail, type GameMetadata, type GameSummary, type LibraryStats, type PackageKind } from "@lootden/shared";
+import { cleanTogether, compareVersion, contentHint, togetherFromMetadata, type TogetherTag, FULL_GAME_SIZE_RATIO, PC_PLATFORM, setupKindOf, type KindReason, PLATFORMS, type ControllerSupport, type GameDetail, type GameMetadata, type GameSummary, type LibraryStats, type PackageKind } from "@lootden/shared";
 import { json, now, type Db } from "../db/database.js";
 import { kidSafeFromRatings } from "../metadata/ratings.js";
 import { cleanTitle, titleSimilarity } from "../metadata/titles.js";
@@ -56,6 +56,7 @@ interface GameRow {
   save_path: string | null;
   kind_override: string | null;
   base_game_override: string | null;
+  together_override: string | null;
 }
 
 interface MetadataRow {
@@ -251,7 +252,7 @@ export class Library {
 
   private rows(): { games: Map<string, GameRow>; meta: Map<string, MetadataRow> } {
     const games = new Map(
-      (this.db.prepare("SELECT id, added_at, title_override, kid_safe_override, controller_override, cover_override, background_override, save_path, kind_override, base_game_override FROM games").all() as unknown as GameRow[]).map(
+      (this.db.prepare("SELECT id, added_at, title_override, kid_safe_override, controller_override, cover_override, background_override, save_path, kind_override, base_game_override, together_override FROM games").all() as unknown as GameRow[]).map(
         (r) => [r.id, r],
       ),
     );
@@ -388,6 +389,7 @@ export class Library {
       baseGameId,
       kindReason: reason,
       latestVersion: kind === "game" ? (this.latestVersions().get(g.id) ?? null) : null,
+      together: row?.together_override != null ? cleanTogether(json(row.together_override, [])) : togetherFromMetadata(metadata?.gameModes ?? [], metadata?.genres ?? []),
       // A full game named as an update was skipped by the scanner's setup check.
       needsSetup: kind !== "game" ? null : (g.needsSetup ?? (g.kind !== "game" && g.platform === PC_PLATFORM ? setupKindOf(files) : null)),
       files,
@@ -398,6 +400,7 @@ export class Library {
         controllerSupport: (row?.controller_override as ControllerSupport | null) ?? null,
         cover: row?.cover_override ?? null,
         background: row?.background_override ?? null,
+        together: row?.together_override != null ? cleanTogether(json(row.together_override, [])) : null,
       },
       savePath: row?.save_path ?? null,
       addons: [],
@@ -413,7 +416,7 @@ export class Library {
   get(id: string, related = true): GameDetail | undefined {
     const g = this.scanned.get(id);
     if (!g) return undefined;
-    const row = this.db.prepare("SELECT id, added_at, title_override, kid_safe_override, controller_override, cover_override, background_override, save_path, kind_override, base_game_override FROM games WHERE id = ?").get(id) as
+    const row = this.db.prepare("SELECT id, added_at, title_override, kid_safe_override, controller_override, cover_override, background_override, save_path, kind_override, base_game_override, together_override FROM games WHERE id = ?").get(id) as
       | GameRow
       | undefined;
     const meta = this.db.prepare("SELECT * FROM metadata WHERE game_id = ?").get(id) as MetadataRow | undefined;
@@ -511,12 +514,12 @@ export class Library {
     try {
       this.db
         .prepare(
-          `INSERT INTO games (id, source, added_at, title_override, kid_safe_override, controller_override, cover_override, background_override, save_path, kind_override, base_game_override)
-           SELECT ?, ?, added_at, title_override, kid_safe_override, controller_override, cover_override, background_override, save_path, kind_override, base_game_override FROM games WHERE id = ?
+          `INSERT INTO games (id, source, added_at, title_override, kid_safe_override, controller_override, cover_override, background_override, save_path, kind_override, base_game_override, together_override)
+           SELECT ?, ?, added_at, title_override, kid_safe_override, controller_override, cover_override, background_override, save_path, kind_override, base_game_override, together_override FROM games WHERE id = ?
            ON CONFLICT(id) DO NOTHING`,
         )
         .run(newId, newSource, oldId);
-      for (const table of ["metadata", "metadata_attempts", "user_games", "saves"]) {
+      for (const table of ["metadata", "metadata_attempts", "user_games", "saves", "play_sessions", "shelf_games"]) {
         this.db.prepare(`UPDATE OR IGNORE ${table} SET game_id = ? WHERE game_id = ?`).run(newId, oldId);
       }
       this.db.exec("COMMIT");
@@ -553,7 +556,8 @@ export class Library {
     this.db.prepare("UPDATE games SET save_path = ? WHERE id = ?").run(savePath || null, id);
   }
 
-  setOverrides(id: string, o: { title?: string | null; kidSafe?: boolean | null; controller?: ControllerSupport | null }): void {
+  setOverrides(id: string, o: { title?: string | null; kidSafe?: boolean | null; controller?: ControllerSupport | null; together?: TogetherTag[] | null }): void {
+    if (o.together !== undefined) this.db.prepare("UPDATE games SET together_override = ? WHERE id = ?").run(o.together === null ? null : JSON.stringify(cleanTogether(o.together)), id);
     if (o.title !== undefined) this.db.prepare("UPDATE games SET title_override = ? WHERE id = ?").run(o.title || null, id);
     if (o.kidSafe !== undefined) this.db.prepare("UPDATE games SET kid_safe_override = ? WHERE id = ?").run(o.kidSafe === null ? null : o.kidSafe ? 1 : 0, id);
     if (o.controller !== undefined) this.db.prepare("UPDATE games SET controller_override = ? WHERE id = ?").run(o.controller, id);

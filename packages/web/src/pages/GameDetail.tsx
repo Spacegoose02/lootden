@@ -9,6 +9,8 @@ import { ArtworkEditor } from "../components/ArtworkEditor";
 import { DesktopInstall } from "../components/DesktopInstall";
 import { ReleaseLookup } from "../components/ReleaseLookup";
 import { SavesPanel } from "../components/SavesPanel";
+import { ShelfButton } from "../components/Shelves";
+import { TOGETHER_TAGS } from "@lootden/shared";
 import { UpdatesPanel } from "../components/UpdatesPanel";
 import { PreparePanel } from "../components/PreparePanel";
 import { JournalPanel, ModsPanel, WorkshopPanel, VersionBanner } from "../components/GameExtras";
@@ -100,6 +102,7 @@ export function GameDetail() {
             </p>
           )}
           <Badges game={game} />
+          {me?.user && !isAddon && <ShelfButton gameId={game.id} />}
           <AlsoOnStores gameId={game.id} />
           {game.platform === "pc" && !isAddon && <VersionBanner gameId={game.id} isAdmin={me?.role === "admin"} />}
           {m?.ageRatings.length ? (
@@ -321,6 +324,33 @@ function AdminTools({ game, onChange }: { game: Game; onChange: (g: Game) => voi
           </select>
         </label>
       </div>
+      <fieldset className="together-edit">
+        <legend>
+          Play together{" "}
+          <small className="muted">
+            {game.overrides.together === null ? "(automatic from metadata)" : "(set by hand) "}
+            {game.overrides.together !== null && (
+              <button type="button" className="ghost small" disabled={busy} onClick={() => run(async () => onChange(await api.setTogether(game.id, null)))}>
+                Back to automatic
+              </button>
+            )}
+          </small>
+        </legend>
+        {TOGETHER_TAGS.map(([tag, label]) => {
+          const on = (game.together ?? []).includes(tag);
+          return (
+            <label key={tag} className="check">
+              <input
+                type="checkbox"
+                checked={on}
+                disabled={busy}
+                onChange={() => run(async () => onChange(await api.setTogether(game.id, on ? (game.together ?? []).filter((t) => t !== tag) : [...(game.together ?? []), tag])))}
+              />
+              {label}
+            </label>
+          );
+        })}
+      </fieldset>
       <ArtworkEditor game={game} onChange={onChange} />
       <DeleteGame game={game} />
     </section>
