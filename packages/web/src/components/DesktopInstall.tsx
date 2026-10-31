@@ -92,7 +92,7 @@ export function DesktopInstall({ game, autoFocus }: { game: GameDetail; autoFocu
     return (
       <div className="install panel">
         <div className="inline">
-          <button ref={button} className="primary" disabled={p?.type === "playing"} onClick={() => run(() => bridge.play(game.id))}>
+          <button ref={button} className="primary" disabled={busy || p?.type === "playing"} onClick={() => run(() => bridge.play(game.id))}>
             {p?.type === "playing" ? "Playing…" : emulatorName ? `▶ Play in ${emulatorName}` : "▶ Play"}
           </button>
           <button className="secondary" onClick={() => run(() => bridge.openFolder(game.id))}>

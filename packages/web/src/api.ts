@@ -700,7 +700,8 @@ export const api = {
   progress: () => call<Progress>("GET", "/api/me/progress"),
   playerCard: (id: number) => call<PlayerCard>("GET", `/api/users/${id}/card`),
   celebrations: () => call<Celebrations>("GET", "/api/me/celebrations"),
-  celebrated: () => call("POST", "/api/me/celebrations/seen"),
+  /** Marks the celebrations a screen showed as seen (ids), so ones that arrived meanwhile still get theirs. */
+  celebrated: (c: Celebrations) => call("POST", "/api/me/celebrations/seen", { achievements: c.achievements.map((a) => a.id), wishes: c.wishes.map((w) => w.id), bonus: c.bonus.map((b) => b.id) }),
   spun: () => call<{ spins: number }>("POST", "/api/me/roulette"),
   recap: (weeksAgo = 0) => call<WeeklyRecap>("GET", `/api/family/recap${qs({ weeksAgo: weeksAgo || undefined })}`),
   shelves: () => call<Shelf[]>("GET", "/api/shelves"),

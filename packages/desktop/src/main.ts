@@ -272,10 +272,23 @@ async function browserPolicy(): Promise<BrowserPolicy | null> {
  */
 const clientOrOffline = () => client().catch(() => new GameServerClient({ serverUrl: settings.get().serverUrl, apiToken: "" }));
 
-/** Play time goes to the server; while it's out of reach it waits in the settings until the app is back online. */
-async function recordPlay(api: GameServerClient, gameId: string, seconds: number): Promise<boolean> {
+/** The profile whose token is in use on this PC: who is playing (undefined before profile tokens). */
+const currentPlayer = () => settings.get().apiTokenUser;
+
+/** A client with this profile's own token, so play time reaches the person who played. */
+function clientFor(userId: number | undefined): GameServerClient | null {
+  const s = settings.get();
+  const token = userId === undefined ? s.apiToken : (s.profileTokens?.[userId] ?? (s.apiTokenUser === userId ? s.apiToken : undefined));
+  return token ? new GameServerClient({ serverUrl: s.serverUrl, apiToken: token }) : null;
+}
+
+/**
+ * Play time goes to the server; while it's out of reach it waits in the settings, with who
+ * played, until the app is back online.
+ */
+async function recordPlay(api: GameServerClient, gameId: string, seconds: number, userId: number | undefined): Promise<boolean> {
   if (await api.reportActivity({ gameId, device: os.hostname(), event: "played", seconds, endedAt: new Date().toISOString() })) return true;
-  settings.update({ pendingPlays: [...settings.get().pendingPlays, { gameId, seconds, playedAt: new Date().toISOString() }] });
+  settings.update({ pendingPlays: [...settings.get().pendingPlays, { gameId, seconds, playedAt: new Date().toISOString(), userId }] });
   return false;
 }
 
@@ -292,10 +305,27 @@ async function todaysAllowance(api: GameServerClient): Promise<TodayInfo | null>
     settings.update({ keptAllowance: { allowance: a, limits: a.limits, at: new Date().toISOString() } });
     return a;
   } catch (err) {
-    if (typeof (err as { status?: number }).status === "number") return null;
+    // Only a server from before limits (404) means there are none; anything else (offline, a
+    // token that stopped working) goes by the last answer, so limits can't be dodged that way.
+    if ((err as { status?: number }).status === 404) return null;
     const s = settings.get();
-    return s.keptAllowance ? offlineAllowance(s.keptAllowance, s.pendingPlays) : null;
+    if (!s.keptAllowance) return null;
+    const kept = s.keptAllowance.allowance as TodayInfo;
+    // Only this person's sessions count against their time.
+    const mine = s.pendingPlays.filter((p) => p.userId === undefined || p.userId === s.apiTokenUser);
+    return { ...offlineAllowance(s.keptAllowance, mine), userId: s.apiTokenUser ?? kept.userId, separateSaves: kept.separateSaves };
   }
+}
+
+/**
+ * Other stores' games start in their own launchers, out of LootDen's sight: at least nobody
+ * starts one when today's play time is used up or it's bedtime.
+ */
+async function checkPlayTime(url: string): Promise<void> {
+  // Store pages, installs and Workshop items aren't playing.
+  if (/^steam:\/\/(url|install|store|open)\//i.test(url) || /[?&]action=install\b/i.test(url)) return;
+  const today = await todaysAllowance(await clientOrOffline());
+  if (today && !today.canPlay) throw new Error(today.reason ?? "No play time left today");
 }
 
 /** Play time heads-ups: in the app, and as a Windows notification because the game is in front. */
@@ -323,7 +353,8 @@ function guardPlay(api: GameServerClient, gameId: string, title: string, today: 
  */
 async function useSaveSlot(api: GameServerClient, gameId: string, installDir: string, today: TodayInfo | null): Promise<void> {
   if (!today?.separateSaves || today.userId === undefined) return;
-  const detail = await api.getGame(gameId).catch(() => null);
+  // Offline, the details kept for the offline page say where the saves are.
+  const detail = (await api.getGame(gameId).catch(() => cachedDetails(gameId))) as { savePath?: string | null } | null;
   if (!detail?.savePath) return;
   const dir = await expandSavePath(detail.savePath, installDir);
   const owners = settings.get().saveOwners ?? {};
@@ -349,8 +380,10 @@ async function flushPendingPlays(): Promise<void> {
   if (flushing || !settings.get().pendingPlays.length) return;
   flushing = true;
   try {
-    const api = await client();
+    const current = await client();
     for (const p of settings.get().pendingPlays) {
+      // Each session goes to whoever played it, not whoever is signed in now.
+      const api = clientFor(p.userId) ?? current;
       if (!(await api.reportActivity({ gameId: p.gameId, device: os.hostname(), event: "played", seconds: p.seconds, endedAt: p.playedAt }))) return;
       settings.update({ pendingPlays: settings.get().pendingPlays.filter((x) => x.playedAt !== p.playedAt || x.gameId !== p.gameId) });
     }
@@ -869,8 +902,22 @@ function registerIpc(): void {
     return play(gameId);
   });
 
-  /** Starts an installed game. Works offline: play time waits until the server is back. */
+  /** Games between Play and running: a second press while the first is still starting. */
+  const launching = new Set<string>();
+
+  /** Starts an installed game, once: a second Play while it starts or runs does nothing new. */
   async function play(gameId: string) {
+    if (playing.has(gameId) || launching.has(gameId)) throw new Error("That game is already running");
+    launching.add(gameId);
+    try {
+      return await startGame(gameId);
+    } finally {
+      launching.delete(gameId);
+    }
+  }
+
+  /** Starts an installed game. Works offline: play time waits until the server is back. */
+  async function startGame(gameId: string) {
     const game = await findInstalled(gameId);
     if (game.platform && game.platform !== "pc") return playEmulatedGame(gameId, game.dir, game.platform);
     if (game.needsSetup && !game.installedDir) throw new Error(`${game.title} is still ${game.needsSetup === "disc" ? "a disc image" : "an installer"}. Use Run installer first.`);
@@ -884,19 +931,20 @@ function registerIpc(): void {
     if (exe !== game.executable) await saveExecutable(game.dir, exe);
     // Play time limits and bedtime, then this person's own saves.
     const live = await clientOrOffline();
+    const player = currentPlayer();
     const today = await todaysAllowance(live);
     if (today && !today.canPlay) throw new Error(today.reason ?? "No play time left today");
     await useSaveSlot(live, gameId, game.dir, today).catch((err: Error) => send({ gameId, type: "warning", message: `Couldn't switch saves: ${err.message}` }));
     const stop = new AbortController();
     const unwatch = guardPlay(live, gameId, game.title, today, today?.hardStop ? stop : undefined);
     send({ gameId, type: "playing" });
-    void launchAndTrack(game.dir, exe, process.platform, stop.signal).then(
+    void launchAndTrack(game.dir, exe, process.platform, stop.signal, { watchDirs: [home] }).then(
       async (seconds) => {
         unwatch();
         send({ gameId, type: "stopped", seconds });
-        const api = await clientOrOffline();
+        const api = clientFor(player) ?? (await clientOrOffline());
         // Offline: no save backup this time; the next session online backs the folder up.
-        if (!(await recordPlay(api, gameId, seconds))) return;
+        if (!(await recordPlay(api, gameId, seconds, player))) return;
         // Save sync: back up after every session when the game has a save location.
         const saved = await syncSaves(api, gameId, game.dir).catch((err: Error) => ({ error: err.message }));
         if (saved) send({ gameId, type: "saves", ...saved });
@@ -912,6 +960,7 @@ function registerIpc(): void {
   /** Emulated games: restore newer saves, run the emulator, back up what changed. */
   async function playEmulatedGame(gameId: string, dir: string, platform: string) {
     const api = await clientOrOffline();
+    const player = currentPlayer();
     const today = await todaysAllowance(api);
     if (today && !today.canPlay) throw new Error(today.reason ?? "No play time left today");
     // Emulators can't be closed from here, so limits only warn.
@@ -933,7 +982,7 @@ function registerIpc(): void {
       async (r) => {
         unwatch();
         send({ gameId, type: "stopped", seconds: r.seconds });
-        await recordPlay(api, gameId, r.seconds);
+        await recordPlay(api, gameId, r.seconds, player);
         if (r.backup) send({ gameId, type: "saves", backupId: r.backup.id, size: r.backup.size });
       },
       (err: Error) => {
@@ -1364,6 +1413,7 @@ function registerIpc(): void {
   ipcMain.handle("gm:launchStore", async (e, url: string) => {
     fromServer(e);
     if (typeof url !== "string" || !isStoreLaunchUrl(url)) throw new Error("That isn't a store launcher link");
+    await checkPlayTime(url);
     await shell.openExternal(url);
   });
 
@@ -1479,6 +1529,7 @@ function registerIpc(): void {
   ipcMain.handle("gm:offline:launchStore", async (e, url: string) => {
     fromLocal(e);
     if (typeof url !== "string" || !isStoreLaunchUrl(url)) throw new Error("That isn't a store launcher link");
+    await checkPlayTime(url);
     await shell.openExternal(url);
   });
   ipcMain.handle("gm:offline:openFolder", async (e, gameId: string) => {

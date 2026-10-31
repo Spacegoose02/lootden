@@ -314,16 +314,25 @@ export class FamilyService {
     return { achievements: achievements.filter((a) => a.unlockedAt && unseen.has(a.id)), wishes, bonus };
   }
 
-  /** Marks everything celebrated so it isn't shown again. */
-  celebrated(userId: number): void {
+  /**
+   * Marks celebrations seen so they aren't shown again: the ones the screen showed, or (without
+   * `shown`, older apps) everything. Something that arrived while the screen was open waits for the next one.
+   */
+  celebrated(userId: number, shown?: { achievements?: unknown; wishes?: unknown; bonus?: unknown }): void {
     const t = now();
-    this.db.prepare("UPDATE achievements SET seen_at = ? WHERE user_id = ? AND seen_at IS NULL").run(t, userId);
+    const list = <T>(x: unknown, ok: (v: unknown) => v is T): T[] | null => (shown ? (Array.isArray(x) ? x.filter(ok) : []) : null);
+    const achievements = list(shown?.achievements, (v): v is string => typeof v === "string");
+    const wishes = list(shown?.wishes, (v): v is number => Number.isInteger(v));
+    const bonus = list(shown?.bonus, (v): v is number => Number.isInteger(v));
+    if (achievements) for (const a of achievements) this.db.prepare("UPDATE achievements SET seen_at = ? WHERE user_id = ? AND achievement = ? AND seen_at IS NULL").run(t, userId, a);
+    else this.db.prepare("UPDATE achievements SET seen_at = ? WHERE user_id = ? AND seen_at IS NULL").run(t, userId);
     const ready = this.requests()
       .list(userId)
-      .filter((r) => r.status === "ready")
+      .filter((r) => r.status === "ready" && (!wishes || wishes.includes(r.id)))
       .map((r) => r.id);
     for (const id of ready) this.db.prepare("UPDATE game_requests SET celebrated_at = ? WHERE id = ? AND celebrated_at IS NULL").run(t, id);
-    this.db.prepare("UPDATE time_requests SET seen_at = ? WHERE user_id = ? AND state = 'approved' AND seen_at IS NULL").run(t, userId);
+    if (bonus) for (const id of bonus) this.db.prepare("UPDATE time_requests SET seen_at = ? WHERE id = ? AND user_id = ? AND state = 'approved' AND seen_at IS NULL").run(t, id, userId);
+    else this.db.prepare("UPDATE time_requests SET seen_at = ? WHERE user_id = ? AND state = 'approved' AND seen_at IS NULL").run(t, userId);
   }
 
   // ---- Weekly recap ----------------------------------------------------------------------

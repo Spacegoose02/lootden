@@ -8,6 +8,7 @@ import { AppUpdateBanner } from "./AppOptions";
 import { desktop } from "../desktop";
 import { SECTION_EVENT } from "../gamepad";
 import { FunLayer } from "./FunLayer";
+import { useScrollMemory } from "../scrollMemory";
 
 interface NavItem {
   to: string;
@@ -124,6 +125,8 @@ function MainNav({ items, onSignOut }: { items: NavItem[]; onSignOut: () => void
 
 export function Layout() {
   const { me, logout } = useAuth();
+  // Back lands where you were on the page before (the library's spot and selected game).
+  useScrollMemory();
   const navigate = useNavigate();
   const user = me?.user;
   const admin = me?.role === "admin";

@@ -62,17 +62,24 @@ function formatOf(g: GameSummary): "setup" | "folder" | "packed" {
   return g.packed ? "packed" : "folder";
 }
 
+/**
+ * The last lists shown, so coming back to the library (Back from a game) draws it at once and
+ * lands on the same spot, then refreshes quietly.
+ */
+const shownBefore = { lists: new Map<string, GameSummary[]>(), installed: null as Set<string> | null, states: null as UserGameState[] | null };
+
 function AllGames() {
   const [params, setParams] = useSearchParams();
-  const [games, setGames] = useState<GameSummary[] | null>(null);
-  const [genres, setGenres] = useState<Array<{ name: string; count: number }>>([]);
-  const [error, setError] = useState("");
   const search = params.get("search") ?? "";
   const genre = params.get("genre") ?? "";
   const controller = params.get("controller") ?? "";
   const kidSafe = params.get("kidSafe") === "true";
   const sort = params.get("sort") ?? "title";
   const system = params.get("system") ?? "pc";
+  const listKey = JSON.stringify({ search, genre, controller, kidSafe, sort, system });
+  const [games, setGames] = useState<GameSummary[] | null>(() => shownBefore.lists.get(listKey) ?? null);
+  const [genres, setGenres] = useState<Array<{ name: string; count: number }>>([]);
+  const [error, setError] = useState("");
   const onlyInstalled = params.get("installed") === "true";
   // Installers and disc images still to set up, games already unpacked into a folder, or archives.
   const format = params.get("format") ?? "";
@@ -87,8 +94,12 @@ function AllGames() {
   const [prefs, setPrefs] = useViewPrefs("library");
   const [platforms, setPlatforms] = useState<Array<{ id: string; count: number }>>([]);
   // What's installed: this PC's copies in the app, else installs on any of this person's devices.
-  const [installedIds, setInstalledIds] = useState<Set<string>>(new Set());
-  const [states, setStates] = useState<UserGameState[]>([]);
+  const [installedIds, setInstalledIds] = useState<Set<string>>(() => shownBefore.installed ?? new Set());
+  const [states, setStates] = useState<UserGameState[]>(() => shownBefore.states ?? []);
+  useEffect(() => {
+    shownBefore.installed = installedIds;
+    shownBefore.states = states;
+  }, [installedIds, states]);
   // Bumped when the server's library changes, so the list fetches again.
   const [revision, setRevision] = useState(0);
   useLive("library", () => setRevision((r) => r + 1));
@@ -121,6 +132,9 @@ function AllGames() {
         .games({ search, genre, controller, kidSafe, platform: system === "all" ? undefined : system, sort: sort === "played" ? "title" : sort, order: desc ? "desc" : "asc" })
         .then((g) => {
           setGames(g);
+          shownBefore.lists.set(listKey, g);
+          // Only the newest few lists are kept.
+          if (shownBefore.lists.size > 8) shownBefore.lists.delete(shownBefore.lists.keys().next().value!);
           setError("");
         }, (e: Error) => setError(e.message));
     }, 200);

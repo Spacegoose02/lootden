@@ -72,6 +72,24 @@ describe("play time watcher", () => {
     assert.ok(!events.includes("stop"));
   });
 
+  it("closes the game at bedtime even after asking the server again", async () => {
+    const clock = fakeClock(Date.parse("2026-10-28T20:50:00Z"));
+    const bedtime = cleanLimits({ bedtime: { from: "21:00", to: "07:00" }, hardStop: true });
+    const now = () => computeAllowance(bedtime, 0, 0, new Date(clock.now()), "UTC");
+    const events: string[] = [];
+    const stop = watchPlayTime({
+      allowance: now(),
+      refresh: async () => now(),
+      onWarn: (m) => events.push(`warn ${m}`),
+      onTimeUp: (grace) => events.push(`up ${grace}`),
+      onStop: () => events.push("stop"),
+      ...clock,
+    });
+    await clock.advance(15 * 60);
+    assert.deepEqual(events, ["warn 10", "warn 5", "warn 1", "up 60", "stop"]);
+    stop();
+  });
+
   it("works out today's time offline from the last answer and play since", () => {
     const kept = { allowance: at(30 * 60), limits, at: "2026-10-28T17:00:00.000Z" };
     const pending = [
