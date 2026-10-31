@@ -139,6 +139,8 @@ export function gameRoutes(app: FastifyInstance, ctx: AppContext) {
     add("emulation", "New on the Emulation shelf", ctx.library.list({ kidSafe, platform: "emulated", sort: "added", order: "desc", limit: 20 }));
     add("top", "Top rated", all.filter((g) => g.rating != null).sort((a, b) => b.rating! - a.rating!));
     add("controller", "Great with a controller", all.filter((g) => g.controllerSupport === "full"));
+    // Couch co-op, split screen and party games, for family night.
+    add("together", "Play together", all.filter((g) => g.together?.some((t) => t === "couch" || t === "split" || t === "party")));
     if (!kidSafe) add("kids", "Family friendly", all.filter((g) => g.kidSafe === true));
     for (const { name } of ctx.library.genres(kidSafe, PC_PLATFORM).slice(0, 6)) add(`genre:${name}`, name, all.filter((g) => g.genres.includes(name)));
     const featured = all

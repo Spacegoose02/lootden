@@ -7,6 +7,7 @@ import { BrandLogo } from "./BrandLogo";
 import { AppUpdateBanner } from "./AppOptions";
 import { desktop } from "../desktop";
 import { SECTION_EVENT } from "../gamepad";
+import { FunLayer } from "./FunLayer";
 
 interface NavItem {
   to: string;
@@ -184,6 +185,7 @@ export function Layout() {
         <Outlet />
       </main>
       <PadHints />
+      <FunLayer />
     </div>
   );
 }

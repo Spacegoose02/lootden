@@ -1,5 +1,12 @@
 import { desktop } from "./desktop";
 import type {
+  AchievementView,
+  Allowance,
+  Level,
+  PlayerStats,
+  PlayLimits,
+  TimeRequest,
+  WeeklyRecap,
   BrowserPolicy,
   AddonView,
   StoreGame,
@@ -678,7 +685,82 @@ export const api = {
   feeds: () => call<Array<{ id: string; url: string; title: string }>>("GET", "/api/news/feeds"),
   addFeed: (url: string, title?: string) => call("POST", "/api/news/feeds", { url, title }),
   removeFeed: (id: string) => call("DELETE", `/api/news/feeds/${id}`),
+
+  // Family: play time, bonus time, achievements, celebrations, the weekly recap and shelves.
+  allowance: () => call<Allowance & { limits: PlayLimits }>("GET", "/api/me/allowance"),
+  familySettings: () => call<FamilySettings>("GET", "/api/family/settings"),
+  saveFamilySettings: (patch: Partial<Pick<FamilySettings, "timeZone" | "separateSaves">>) => call<FamilySettings>("PUT", "/api/family/settings", patch),
+  userLimits: (id: number) => call<{ limits: PlayLimits; allowance: Allowance }>("GET", `/api/users/${id}/limits`),
+  saveUserLimits: (id: number, limits: PlayLimits) => call<{ limits: PlayLimits; allowance: Allowance }>("PUT", `/api/users/${id}/limits`, limits),
+  giveTime: (id: number, minutes: number) => call<{ limits: PlayLimits; allowance: Allowance }>("POST", `/api/users/${id}/bonus`, { minutes }),
+  timeRequests: () => call<TimeRequest[]>("GET", "/api/time-requests"),
+  askForTime: (minutes: number, note: string | null) => call<TimeRequest>("POST", "/api/time-requests", { minutes, note }),
+  approveTime: (id: number, minutes?: number) => call<TimeRequest>("POST", `/api/time-requests/${id}/approve`, minutes ? { minutes } : {}),
+  declineTime: (id: number) => call<TimeRequest>("POST", `/api/time-requests/${id}/decline`),
+  progress: () => call<Progress>("GET", "/api/me/progress"),
+  playerCard: (id: number) => call<PlayerCard>("GET", `/api/users/${id}/card`),
+  celebrations: () => call<Celebrations>("GET", "/api/me/celebrations"),
+  celebrated: () => call("POST", "/api/me/celebrations/seen"),
+  spun: () => call<{ spins: number }>("POST", "/api/me/roulette"),
+  recap: (weeksAgo = 0) => call<WeeklyRecap>("GET", `/api/family/recap${qs({ weeksAgo: weeksAgo || undefined })}`),
+  shelves: () => call<Shelf[]>("GET", "/api/shelves"),
+  createShelf: (s: ShelfInput) => call<Shelf>("POST", "/api/shelves", s),
+  updateShelf: (id: number, s: ShelfInput) => call<Shelf>("PATCH", `/api/shelves/${id}`, s),
+  deleteShelf: (id: number) => call("DELETE", `/api/shelves/${id}`),
+  shelveGame: (id: number, gameId: string) => call<Shelf>("PUT", `/api/shelves/${id}/games/${encodeURIComponent(gameId)}`),
+  unshelveGame: (id: number, gameId: string) => call<Shelf>("DELETE", `/api/shelves/${id}/games/${encodeURIComponent(gameId)}`),
+  gameShelves: (gameId: string) => call<number[]>("GET", `/api/games/${encodeURIComponent(gameId)}/shelves`),
+  setTogether: (id: string, together: string[] | null) => call<GameDetail>("PATCH", `/api/games/${id}`, { together }),
 };
+
+export interface FamilySettings {
+  timeZone: string;
+  separateSaves: boolean;
+  /** The time zone in use: the one set, else the server's. */
+  effectiveTimeZone: string;
+}
+
+export interface Progress {
+  level: Level;
+  stats: PlayerStats;
+  achievements: AchievementView[];
+}
+
+export interface PlayerCard {
+  id: number;
+  displayName: string;
+  avatar: string;
+  kid: boolean;
+  level: Level;
+  achievements: AchievementView[];
+}
+
+export interface Celebrations {
+  achievements: AchievementView[];
+  wishes: Array<{ id: number; title: string; image: string | null; gameId: string }>;
+  bonus: Array<{ id: number; minutes: number }>;
+}
+
+export interface Shelf {
+  id: number;
+  name: string;
+  emoji: string | null;
+  description: string | null;
+  household: boolean;
+  onHome: boolean;
+  ownerId: number | null;
+  mine: boolean;
+  games: GameSummary[];
+}
+
+export type ShelfInput = Partial<Pick<Shelf, "name" | "emoji" | "description" | "household" | "onHome">>;
+
+/** "1 h 20 min", "45 min": for play time left and limits. */
+export function formatMinutes(seconds: number): string {
+  const m = Math.max(0, Math.round(seconds / 60));
+  if (m < 60) return `${m} min`;
+  return m % 60 ? `${Math.floor(m / 60)} h ${m % 60} min` : `${m / 60} h`;
+}
 
 export const avatarUrl = (seed: string) => `/api/avatars/${encodeURIComponent(seed)}.svg`;
 

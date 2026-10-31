@@ -7,6 +7,7 @@ import { AdminIntegrations } from "../components/AdminIntegrations";
 import { AdminVideos } from "../components/AdminVideos";
 import { Card, Field, Pill, Toggle, useConnectors } from "../components/SettingsUi";
 import { ThemePicker } from "../components/ThemePicker";
+import { FamilySettingsCard, PlayLimitsEditor } from "../components/PlayTime";
 import { useAuth } from "../auth";
 
 type Msg = (m: string, error?: boolean) => void;
@@ -170,6 +171,7 @@ function LibrarySection({ say }: { say: Msg }) {
         )}
       </Card>
       <Profiles say={say} />
+      <FamilySettingsCard say={say} />
     </>
   );
 }
@@ -178,6 +180,7 @@ function Profiles({ say }: { say: Msg }) {
   const [users, setUsers] = useState<User[]>([]);
   const [newUser, setNewUser] = useState({ username: "", password: "", kidMode: false, role: "user" });
   const [browserFor, setBrowserFor] = useState<number | null>(null);
+  const [limitsFor, setLimitsFor] = useState<number | null>(null);
   const load = () => void api.users().then(setUsers, () => {});
   useEffect(load, []);
   const { busy, act } = useAct(say, load);
@@ -199,6 +202,9 @@ function Profiles({ say }: { say: Msg }) {
                 <option value="user">User</option>
                 <option value="admin">Admin</option>
               </select>
+              <button className="ghost small" aria-expanded={limitsFor === u.id} title="Daily play time, bedtime and bonus time" onClick={() => setLimitsFor(limitsFor === u.id ? null : u.id)}>
+                Play time
+              </button>
               <button className="ghost small" aria-expanded={browserFor === u.id} title="What they can open in the app's web browser" onClick={() => setBrowserFor(browserFor === u.id ? null : u.id)}>
                 Browser
               </button>
@@ -206,6 +212,7 @@ function Profiles({ say }: { say: Msg }) {
                 Delete
               </button>
             </span>
+            {limitsFor === u.id && <PlayLimitsEditor user={u} say={say} />}
             {browserFor === u.id && <BrowserRules user={u} say={say} />}
           </li>
         ))}

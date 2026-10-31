@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api, type GameRequest } from "../api";
 import { useAuth } from "../auth";
+import { PlayTimeCard, TimeRequestsAdmin } from "../components/PlayTime";
 
 const STATUS: Record<GameRequest["status"], string> = {
   pending: "Waiting for an admin",
@@ -101,6 +102,7 @@ export function Requests() {
   return (
     <div className="requests">
       <h1>Requests</h1>
+      {admin ? <TimeRequestsAdmin /> : <PlayTimeCard />}
       <form
         className="panel request-form"
         data-nav-zone

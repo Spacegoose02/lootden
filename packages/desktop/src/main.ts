@@ -20,6 +20,9 @@ import {
   playEmulated,
   backupSaves,
   expandSavePath,
+  offlineAllowance,
+  switchSaveSlot,
+  watchPlayTime,
   findExecutable,
   findSevenZip,
   GameServerClient,
@@ -49,6 +52,7 @@ import {
   UpdateMismatchError,
   type InstallEvent,
 } from "@lootden/client";
+import type { Allowance } from "@lootden/shared";
 import { isExternalLink, isFile, onOrigin, permissionAllowed } from "./links.js";
 import { SettingsStore, type DesktopSettings } from "./settings.js";
 import { WebBrowser } from "./browser.js";
@@ -194,21 +198,49 @@ async function syncSaves(api: GameServerClient, gameId: string, installDir: stri
   return { backupId: backup.id, size: backup.size };
 }
 
-/** Gets a device token from the signed-in browser session the first time it's needed. */
+/** The session cookie whose person was last checked against the token, so it's asked once per sign-in. */
+let checkedSession = "";
+
+/** Who a token or session belongs to; null when the server can't say. */
+async function whoIs(headers: Record<string, string>): Promise<number | null> {
+  const res = await net.fetch(`${origin()}/api/me`, { headers, signal: AbortSignal.timeout(5000) }).catch(() => null);
+  const body = res?.ok ? ((await res.json().catch(() => null)) as { user?: { id: number } | null } | null) : null;
+  return body?.user?.id ?? null;
+}
+
+/**
+ * The device token for whoever is signed in to LootDen's window. Each profile gets its own the
+ * first time it's needed, so play time, limits and saves follow the person, not the first one
+ * who signed in on this PC. Without a session (offline, signed out) the last token is used.
+ */
 async function client(): Promise<GameServerClient> {
   const s = settings.get();
-  if (s.apiToken) return new GameServerClient({ serverUrl: s.serverUrl, apiToken: s.apiToken });
-  const [cookie] = await session.defaultSession.cookies.get({ url: s.serverUrl, name: "gm_session" });
+  const [cookie] = await session.defaultSession.cookies.get({ url: s.serverUrl, name: "gm_session" }).catch(() => []);
+  const use = (token: string) => new GameServerClient({ serverUrl: s.serverUrl, apiToken: token });
+  if (s.apiToken && (!cookie || cookie.value === checkedSession)) return use(s.apiToken);
   if (!cookie) throw new Error("Sign in first");
-  const res = await net.fetch(`${origin()}/api/me/tokens`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Cookie: `gm_session=${cookie.value}` },
-    body: JSON.stringify({ name: `Desktop app (${os.hostname()})` }),
-  });
-  if (!res.ok) throw new Error(`Could not register this computer (${res.status})`);
-  const { token } = (await res.json()) as { token: string };
-  settings.update({ apiToken: token });
-  return new GameServerClient({ serverUrl: s.serverUrl, apiToken: token });
+  const person = await whoIs({ Cookie: `gm_session=${cookie.value}` });
+  if (person === null) {
+    if (s.apiToken) return use(s.apiToken);
+    throw new Error("Sign in first");
+  }
+  // Tokens from before profile tokens: find out whose it is once.
+  const tokenUser = s.apiToken ? (s.apiTokenUser ?? (await whoIs({ Authorization: `Bearer ${s.apiToken}` }))) : null;
+  const tokens: Record<string, string> = { ...(s.profileTokens ?? {}), ...(s.apiToken && tokenUser !== null ? { [tokenUser]: s.apiToken } : {}) };
+  checkedSession = cookie.value;
+  let token = tokens[person];
+  if (!token) {
+    const res = await net.fetch(`${origin()}/api/me/tokens`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: `gm_session=${cookie.value}` },
+      body: JSON.stringify({ name: `Desktop app (${os.hostname()})` }),
+    });
+    if (!res.ok) throw new Error(`Could not register this computer (${res.status})`);
+    token = ((await res.json()) as { token: string }).token;
+    tokens[person] = token;
+  }
+  if (token !== s.apiToken || s.apiTokenUser !== person) settings.update({ apiToken: token, apiTokenUser: person, profileTokens: tokens, keptAllowance: undefined });
+  return use(token);
 }
 
 /**
@@ -242,9 +274,74 @@ const clientOrOffline = () => client().catch(() => new GameServerClient({ server
 
 /** Play time goes to the server; while it's out of reach it waits in the settings until the app is back online. */
 async function recordPlay(api: GameServerClient, gameId: string, seconds: number): Promise<boolean> {
-  if (await api.reportActivity({ gameId, device: os.hostname(), event: "played", seconds })) return true;
+  if (await api.reportActivity({ gameId, device: os.hostname(), event: "played", seconds, endedAt: new Date().toISOString() })) return true;
   settings.update({ pendingPlays: [...settings.get().pendingPlays, { gameId, seconds, playedAt: new Date().toISOString() }] });
   return false;
+}
+
+/** The server's answer about today's play time for whoever plays on this PC. */
+type TodayInfo = Allowance & { userId?: number; separateSaves?: boolean };
+
+/**
+ * Today's play time allowance, kept for when the server can't be reached. Null when the server
+ * has no limits to give (an older server, or the service token).
+ */
+async function todaysAllowance(api: GameServerClient): Promise<TodayInfo | null> {
+  try {
+    const a = await api.allowance();
+    settings.update({ keptAllowance: { allowance: a, limits: a.limits, at: new Date().toISOString() } });
+    return a;
+  } catch (err) {
+    if (typeof (err as { status?: number }).status === "number") return null;
+    const s = settings.get();
+    return s.keptAllowance ? offlineAllowance(s.keptAllowance, s.pendingPlays) : null;
+  }
+}
+
+/** Play time heads-ups: in the app, and as a Windows notification because the game is in front. */
+function playNotice(gameId: string, title: string, body: string): void {
+  win?.webContents.send("gm:progress", { gameId, type: "limit", title, message: body });
+  if (Notification.isSupported()) new Notification({ title, body, urgency: "critical" }).show();
+}
+
+/** Watches a game against today's play time; returns the function that stops watching. */
+function guardPlay(api: GameServerClient, gameId: string, title: string, today: TodayInfo | null, stop?: AbortController): () => void {
+  if (!today?.limited) return () => {};
+  return watchPlayTime({
+    allowance: today,
+    refresh: () => todaysAllowance(api),
+    onWarn: (m) => playNotice(gameId, `${m} minute${m === 1 ? "" : "s"} of play time left`, `Time to find a save point in ${title}.`),
+    onTimeUp: (grace) =>
+      playNotice(gameId, "Time's up!", grace && stop ? `Save your game now: LootDen closes ${title} in ${grace} seconds.` : `That's today's play time. Save and take a break!`),
+    onStop: () => stop?.abort(),
+  });
+}
+
+/**
+ * Save slots: on a PC several profiles share, put whoever played last's saves aside and bring
+ * this person's back before the game starts. Needs the server (it says who's playing).
+ */
+async function useSaveSlot(api: GameServerClient, gameId: string, installDir: string, today: TodayInfo | null): Promise<void> {
+  if (!today?.separateSaves || today.userId === undefined) return;
+  const detail = await api.getGame(gameId).catch(() => null);
+  if (!detail?.savePath) return;
+  const dir = await expandSavePath(detail.savePath, installDir);
+  const owners = settings.get().saveOwners ?? {};
+  const result = await switchSaveSlot({
+    saveDir: dir,
+    slotsDir: path.join(app.getPath("userData"), "SaveSlots"),
+    gameId,
+    userId: today.userId,
+    owner: owners[gameId] ?? null,
+    restoreFromServer: async () => {
+      const newest = (await api.listSaves(gameId)).sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
+      if (!newest) return false;
+      await restoreSaves(api, await sevenZip(), gameId, newest.id, dir);
+      return true;
+    },
+  });
+  settings.update({ saveOwners: { ...settings.get().saveOwners, [gameId]: today.userId } });
+  if (result === "swapped" || result === "restored") send({ gameId, type: "prepare", message: "Your saves are back in place", done: true });
 }
 
 let flushing = false;
@@ -254,7 +351,7 @@ async function flushPendingPlays(): Promise<void> {
   try {
     const api = await client();
     for (const p of settings.get().pendingPlays) {
-      if (!(await api.reportActivity({ gameId: p.gameId, device: os.hostname(), event: "played", seconds: p.seconds }))) return;
+      if (!(await api.reportActivity({ gameId: p.gameId, device: os.hostname(), event: "played", seconds: p.seconds, endedAt: p.playedAt }))) return;
       settings.update({ pendingPlays: settings.get().pendingPlays.filter((x) => x.playedAt !== p.playedAt || x.gameId !== p.gameId) });
     }
   } catch {
@@ -660,7 +757,7 @@ function registerIpc(): void {
     const parsed = new URL(/^https?:\/\//.test(url) ? url : `http://${url}`);
     const health = await net.fetch(`${parsed.origin}/api/health`).then((r) => r.json() as Promise<{ status?: string }>).catch(() => null);
     if (health?.status !== "ok") throw new Error(`No LootDen server answered at ${parsed.origin}`);
-    settings.update({ serverUrl: parsed.origin, apiToken: "" });
+    settings.update({ serverUrl: parsed.origin, apiToken: "", apiTokenUser: undefined, profileTokens: {}, keptAllowance: undefined, saveOwners: {} });
     await win?.loadURL(parsed.origin);
     return true;
   });
@@ -785,9 +882,17 @@ function registerIpc(): void {
       exe = relTo(game.dir, r.filePaths[0]!);
     }
     if (exe !== game.executable) await saveExecutable(game.dir, exe);
+    // Play time limits and bedtime, then this person's own saves.
+    const live = await clientOrOffline();
+    const today = await todaysAllowance(live);
+    if (today && !today.canPlay) throw new Error(today.reason ?? "No play time left today");
+    await useSaveSlot(live, gameId, game.dir, today).catch((err: Error) => send({ gameId, type: "warning", message: `Couldn't switch saves: ${err.message}` }));
+    const stop = new AbortController();
+    const unwatch = guardPlay(live, gameId, game.title, today, today?.hardStop ? stop : undefined);
     send({ gameId, type: "playing" });
-    void launchAndTrack(game.dir, exe).then(
+    void launchAndTrack(game.dir, exe, process.platform, stop.signal).then(
       async (seconds) => {
+        unwatch();
         send({ gameId, type: "stopped", seconds });
         const api = await clientOrOffline();
         // Offline: no save backup this time; the next session online backs the folder up.
@@ -796,7 +901,10 @@ function registerIpc(): void {
         const saved = await syncSaves(api, gameId, game.dir).catch((err: Error) => ({ error: err.message }));
         if (saved) send({ gameId, type: "saves", ...saved });
       },
-      (err: Error) => send({ gameId, type: "error", message: err.message }),
+      (err: Error) => {
+        unwatch();
+        send({ gameId, type: "error", message: err.message });
+      },
     );
     return { executable: exe };
   }
@@ -804,6 +912,10 @@ function registerIpc(): void {
   /** Emulated games: restore newer saves, run the emulator, back up what changed. */
   async function playEmulatedGame(gameId: string, dir: string, platform: string) {
     const api = await clientOrOffline();
+    const today = await todaysAllowance(api);
+    if (today && !today.canPlay) throw new Error(today.reason ?? "No play time left today");
+    // Emulators can't be closed from here, so limits only warn.
+    let unwatch = () => {};
     let started: (v: { executable: string }) => void = () => {};
     const ready = new Promise<{ executable: string }>((resolve) => (started = resolve));
     const session = playEmulated(api, gameId, dir, platform, {
@@ -812,17 +924,22 @@ function registerIpc(): void {
       device: os.hostname(),
       onEvent: (ev) => send({ gameId, type: "prepare", message: ev.message }),
       onStarted: (plan) => {
+        unwatch = guardPlay(api, gameId, path.basename(plan.rom), today);
         send({ gameId, type: "playing" });
         started({ executable: `${plan.emulator.name}: ${path.basename(plan.rom)}` });
       },
     });
     session.then(
       async (r) => {
+        unwatch();
         send({ gameId, type: "stopped", seconds: r.seconds });
         await recordPlay(api, gameId, r.seconds);
         if (r.backup) send({ gameId, type: "saves", backupId: r.backup.id, size: r.backup.size });
       },
-      (err: Error) => send({ gameId, type: "error", message: err.message }),
+      (err: Error) => {
+        unwatch();
+        send({ gameId, type: "error", message: err.message });
+      },
     );
     // Errors before the emulator starts (missing BIOS, no emulator yet) go straight back to the page.
     return Promise.race([ready, session.then(() => ({ executable: "" }))]);
@@ -1311,7 +1428,7 @@ function registerIpc(): void {
 
   ipcMain.handle("gm:changeServer", async (e) => {
     if (!isAppPage(e, OFFLINE_PAGE)) fromServer(e);
-    settings.update({ serverUrl: "", apiToken: "" });
+    settings.update({ serverUrl: "", apiToken: "", apiTokenUser: undefined, profileTokens: {}, keptAllowance: undefined, saveOwners: {} });
     if (customFrame) win?.setTitleBarOverlay({ color: "#0d0820", symbolColor: "#f3eeff", height: TITLEBAR_HEIGHT });
     await win?.loadFile(SETUP_PAGE);
   });
