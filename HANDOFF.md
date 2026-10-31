@@ -107,7 +107,7 @@ can be set once by an admin on the add-on's card (`PUT /api/addons/:id/shared`, 
 like accounts, never sent back); a person's own value wins. `Integrations` (IGDB and other admin keys in the settings table) aren't encrypted yet; the
 vault can do it.
 
-## Family fun pack (unreleased)
+## Family fun pack (0.20.0)
 
 Shared rules live in `packages/shared/src/family.ts`; the server side is `users/family.ts`
 (`FamilyService`), `users/shelves.ts` and `routes/family.ts`; tests in `server/test/family.test.ts`
