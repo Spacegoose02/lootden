@@ -42,6 +42,17 @@ describe("game versions", () => {
     assert.equal(packageInfo(tidyName("Critter.Cove.Build.15934-TENOKE")).version, "Build 15934");
   });
 
+  it("reads a from and to version written without a v", () => {
+    const want = { kind: "update", baseTitle: "Update EA SPORTS College Football 27", version: "1.0.141.13368", fromVersion: "1.0.141.3207" };
+    assert.deepEqual(packageInfo("Update EA SPORTS College Football 27_1.0.141.3207 to 1.0.141.13368"), want);
+    // The same name once tidied, with spaces for the dots; the title's own 27 stays out of it.
+    assert.deepEqual(packageInfo("Update EA SPORTS College Football 27 1 0 141 3207 to 1 0 141 13368"), want);
+    assert.equal(versionFromName("Update EA SPORTS College Football 27_1.0.141.3207 to 1.0.141.13368"), "1.0.141.13368");
+    // Plain numbers on either side of "to" aren't versions.
+    assert.equal(packageInfo("Zero to Hero 2").kind, "game");
+    assert.equal(packageInfo("From 1 to 100").version, null);
+  });
+
   it("doesn't take a title's own numbers for a version", () => {
     for (const name of ["EA Sports College Football 26", "Metal Gear Solid 3 Snake Eater", "METAL GEAR SOLID MASTER COLLECTION Vol 2", "Fallout 3.5", "Build 1000 Houses", "The.Sims.4.1.0.2", "Game (2024)"]) {
       assert.equal(packageInfo(name).version, null, name);

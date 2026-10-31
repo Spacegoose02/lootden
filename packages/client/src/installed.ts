@@ -3,6 +3,7 @@ import path from "node:path";
 import { safeFolderName, setupKindOf } from "@lootden/shared";
 import { isManifest, LEGACY_MANIFEST_NAME, MANIFEST_NAME } from "./installer.js";
 import type { AppliedUpdate } from "./updates.js";
+import { exeVersion } from "./exeversion.js";
 
 export interface InstalledGame {
   gameId: string;
@@ -23,6 +24,11 @@ export interface InstalledGame {
   version?: string | null;
   /** Updates and DLC applied to this copy, oldest first. */
   updates?: AppliedUpdate[];
+  /**
+   * The version stamped on the game's executable, read each time games are listed (not saved).
+   * Shows an update made outside LootDen, such as by the game's own launcher.
+   */
+  exeVersion?: string | null;
 }
 
 /** The manifest file's contents: .lootden.json, or .game-manager.json from before the rename. */
@@ -90,6 +96,12 @@ async function withSetupKnown(g: InstalledGame): Promise<InstalledGame> {
   return { ...g, needsSetup };
 }
 
+async function withExeVersion(g: InstalledGame): Promise<InstalledGame> {
+  if (g.platform !== "pc" || !g.executable) return g;
+  const exe = path.isAbsolute(g.executable) ? g.executable : path.join(g.dir, g.executable);
+  return { ...g, exeVersion: await exeVersion(exe) };
+}
+
 /** Finds installed games by their manifest in each install folder (one level deep). */
 export async function listInstalled(installDirs: string[]): Promise<InstalledGame[]> {
   const out: InstalledGame[] = [];
@@ -106,7 +118,7 @@ export async function listInstalled(installDirs: string[]): Promise<InstalledGam
       const key = path.resolve(path.join(root, name)).toLowerCase();
       if (m && !seen.has(key)) {
         seen.add(key);
-        out.push(await withSetupKnown(m));
+        out.push(await withExeVersion(await withSetupKnown(m)));
       }
     }
   }

@@ -26,6 +26,26 @@ const ANY_VERSION = new RegExp(String.raw`(?<![a-z0-9])${VERSION}(?![a-z0-9])`, 
 
 const clean = (v: string) => v.replace(/_/g, ".");
 
+/** "1.0.141.3207 to 1.0.141.13368": dotted versions without a "v", joined by "to" or an arrow. */
+const BARE_FROM_TO = /(?<![\d.])(\d+(?:\.\d+){2,3})[ ._]+(?:to|→|->)[ ._]+(\d+(?:\.\d+){2,3})(?![\d.])/i;
+/** "1 0 141 3207 to 1 0 141 13368": the same with spaces for dots, as tidied folder names have it. */
+const SPACED_FROM_TO = /(?<![\w.])(\d+(?: \d+){2,3}) (?:to|→|->) (\d+(?: \d+){2,3})(?![\w.])/gi;
+
+/**
+ * A from and to version written without a "v". Spaced ones only count when both sides have
+ * the same number of parts, so a title's own number ("College Football 27") isn't swallowed.
+ */
+function bareFromTo(base: string): { from: string; to: string; at: number } | null {
+  const dotted = base.match(BARE_FROM_TO);
+  if (dotted) return { from: dotted[1]!, to: dotted[2]!, at: dotted.index! };
+  for (const m of base.matchAll(SPACED_FROM_TO)) {
+    const from = m[1]!.split(" ");
+    const to = m[2]!.split(" ");
+    if (from.length === to.length) return { from: from.join("."), to: to.join("."), at: m.index! };
+  }
+  return null;
+}
+
 /** "Build 12345", "Build.12345". */
 const BUILD = /(?<![a-z0-9])build[ ._]?(\d{3,})(?!\d)/i;
 /** "(1.0.3)", "[1.2]": a version in brackets, with or without its v. */
@@ -51,7 +71,7 @@ function looseVersion(base: string): string | null {
 export function versionFromName(name: string): string | null {
   const base = name.replace(/(\.part\d+)?\.(zip|7z|rar|exe|msi|iso)(\.\d{3})?$/i, "");
   const versions = [...base.matchAll(ANY_VERSION)].map((m) => clean(m[1]!));
-  return versions.pop() ?? looseVersion(base);
+  return versions.pop() ?? bareFromTo(base)?.to ?? looseVersion(base);
 }
 
 /** GOG installers: setup_critter_cove_1.2.3_(64bit)_(12345).exe. */
@@ -92,10 +112,12 @@ export function versionLabel(version: string): string {
 /** Reads what a library entry is from its name ("Game.Update.v1.3-GROUP", "Game v1.2 to v1.3 Patch.zip"). */
 export function packageInfo(name: string, folderHint?: "update" | "dlc"): PackageInfo {
   const base = name.replace(/(\.part\d+)?\.(zip|7z|rar|exe|msi)(\.\d{3})?$/i, "");
-  const fromTo = base.match(FROM_TO);
+  const vFromTo = base.match(FROM_TO);
+  const bare = vFromTo ? null : bareFromTo(base);
+  const fromTo = vFromTo ? [clean(vFromTo[1]!), clean(vFromTo[2]!)] : bare ? [bare.from, bare.to] : null;
   const versions = [...base.matchAll(ANY_VERSION)].map((m) => clean(m[1]!));
-  const fromVersion = fromTo ? clean(fromTo[1]!) : (base.match(FROM)?.[1] ? clean(base.match(FROM)![1]!) : null);
-  const version = fromTo ? clean(fromTo[2]!) : (versions.filter((v) => v !== fromVersion).pop() ?? (fromVersion ? null : looseVersion(base)));
+  const fromVersion = fromTo ? fromTo[0]! : (base.match(FROM)?.[1] ? clean(base.match(FROM)![1]!) : null);
+  const version = fromTo ? fromTo[1]! : (versions.filter((v) => v !== fromVersion).pop() ?? (fromVersion ? null : looseVersion(base)));
 
   let kind: PackageKind = "game";
   if (!BUNDLED.test(base)) {
@@ -106,7 +128,7 @@ export function packageInfo(name: string, folderHint?: "update" | "dlc"): Packag
   if (kind === "game" && folderHint) kind = folderHint;
 
   // The base game's name is everything before the first update/DLC word or version.
-  const cut = kind === "game" ? -1 : Math.min(...[UPDATE_WORD, DLC_WORD, new RegExp(String.raw`(?<![a-z0-9])${VERSION}`, "i"), /(?<![a-z])from[ ._]/i].map((re) => base.search(re)).filter((i) => i > 0));
+  const cut = kind === "game" ? -1 : Math.min(...[UPDATE_WORD, DLC_WORD, new RegExp(String.raw`(?<![a-z0-9])${VERSION}`, "i"), /(?<![a-z])from[ ._]/i].map((re) => base.search(re)).concat(bare ? [bare.at] : []).filter((i) => i > 0));
   const head = cut > 0 && Number.isFinite(cut) ? base.slice(0, cut) : base;
   const baseTitle = head
     .replace(/[([{].*$/, "")
@@ -164,4 +186,31 @@ export function contentHint(files: Array<{ path: string }>): { says: "full" | "p
   if (names.some((n) => REDIST.test(n))) return { says: "full", why: "includes the game's redistributables" };
   if (names.length <= 3 && names.some((n) => PATCHER_EXE.test(n))) return { says: "patch", why: "is a patch program" };
   return null;
+}
+
+/**
+ * Whether a version read from a game's executable can be compared with one from file names:
+ * the exe's first two numbers have to match ("1.0.141.13368" against "1.0.141.3207"). Many
+ * games stamp something unrelated on their exe ("1.0.0.0" on a game the library calls v2.3).
+ */
+function sameScheme(exe: string, other: string): boolean {
+  const head = (v: string) => v.replace(/^build\s*/i, "").split(/[._-]/).slice(0, 2).map((x) => parseInt(x, 10) || 0).join(".");
+  return head(exe) === head(other);
+}
+
+/**
+ * The version a copy of a game is really at, for checking an update against it: what LootDen
+ * recorded, or the executable's own version when that's newer and in the same numbering,
+ * which happens when the game was updated outside LootDen (its launcher, or a patch by hand).
+ */
+export function effectiveVersion(
+  local: { version?: string | null; exeVersion?: string | null },
+  update?: { version?: string | null; fromVersion?: string | null },
+): { version: string | null; fromExe: boolean } {
+  const recorded = local.version ?? null;
+  const exe = local.exeVersion ?? null;
+  const ref = recorded ?? update?.fromVersion ?? update?.version ?? null;
+  if (!exe || !ref || !sameScheme(exe, ref)) return { version: recorded, fromExe: false };
+  if (recorded && compareVersion(exe, recorded) <= 0) return { version: recorded, fromExe: false };
+  return { version: exe, fromExe: true };
 }

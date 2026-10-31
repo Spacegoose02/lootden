@@ -33,6 +33,8 @@ export interface InstallOptions {
   onEvent?: (event: InstallEvent) => void;
   /** False for scratch downloads (preparing a disc game) that shouldn't count as an install. */
   report?: boolean;
+  /** False keeps a single wrapper folder as it is instead of lifting its contents up. */
+  hoist?: boolean;
 }
 
 /** Resolves a user's argument to one game: exact id, exact title, then a unique partial title match. */
@@ -52,16 +54,53 @@ function localPath(gameDir: string, relPath: string): string {
   return full;
 }
 
-/** Repacks often wrap everything in one folder; lift its contents up so the game isn't nested twice. */
-async function hoistSingleFolder(gameDir: string): Promise<void> {
-  const entries = (await readdir(gameDir, { withFileTypes: true })).filter((e) => !isManifest(e.name));
-  if (entries.length !== 1 || !entries[0]!.isDirectory()) return;
-  const wrapper = path.join(gameDir, `.gm-hoist-${Date.now()}`);
-  await rename(path.join(gameDir, entries[0]!.name), wrapper);
-  for (const child of await readdir(wrapper)) {
-    await rename(path.join(wrapper, child), path.join(gameDir, child));
+/** Errors Windows gives while another program (antivirus, the search indexer) still has a file open. */
+const LOCKED = new Set(["EPERM", "EBUSY", "EACCES"]);
+
+/**
+ * Renames, retrying for a while when the source is locked. Freshly unpacked files are often
+ * still being scanned by antivirus, and Windows won't move a folder with an open file in it.
+ */
+export async function renameRetrying(from: string, to: string, waits = [100, 250, 500, 1000, 2000, 4000], move: (from: string, to: string) => Promise<void> = rename): Promise<void> {
+  for (let i = 0; ; i++) {
+    try {
+      return await move(from, to);
+    } catch (err) {
+      if (i >= waits.length || !LOCKED.has((err as NodeJS.ErrnoException).code ?? "")) throw err;
+      await new Promise((r) => setTimeout(r, waits[i]));
+    }
   }
-  await rm(wrapper, { recursive: true });
+}
+
+/**
+ * Repacks often wrap everything in one folder; lift its contents up so the game isn't nested
+ * twice. It's only tidying, so when Windows keeps the folder locked the game stays nested
+ * (and still works) rather than failing the install. Returns a warning when that happens.
+ */
+export async function hoistSingleFolder(gameDir: string, move: (from: string, to: string) => Promise<void> = renameRetrying): Promise<string | null> {
+  const entries = (await readdir(gameDir, { withFileTypes: true })).filter((e) => !isManifest(e.name));
+  if (entries.length !== 1 || !entries[0]!.isDirectory()) return null;
+  const name = entries[0]!.name;
+  const wrapper = path.join(gameDir, `.gm-hoist-${Date.now()}`);
+  try {
+    await move(path.join(gameDir, name), wrapper);
+  } catch (err) {
+    return `Left the files inside "${name}" because Windows kept the folder locked (${(err as NodeJS.ErrnoException).code ?? (err as Error).message}). The game works from there.`;
+  }
+  const moved: string[] = [];
+  try {
+    for (const child of await readdir(wrapper)) {
+      await move(path.join(wrapper, child), path.join(gameDir, child));
+      moved.push(child);
+    }
+  } catch (err) {
+    // Put back what was already lifted, so the files aren't split across two folders.
+    for (const child of moved) await move(path.join(gameDir, child), path.join(wrapper, child)).catch(() => {});
+    await move(wrapper, path.join(gameDir, name)).catch(() => {});
+    return `Left the files inside "${name}" because Windows kept a file locked (${(err as NodeJS.ErrnoException).code ?? (err as Error).message}). The game works from there.`;
+  }
+  await rm(wrapper, { recursive: true, force: true });
+  return null;
 }
 
 export async function installGame(api: GameServerClient, gameId: string, opts: InstallOptions): Promise<string> {
@@ -118,7 +157,10 @@ export async function installGame(api: GameServerClient, gameId: string, opts: I
       emit({ type: "removed", files: set.volumes });
     }
   }
-  if (archivePaths.length > 0 && !opts.keepArchives) await hoistSingleFolder(gameDir);
+  if (archivePaths.length > 0 && !opts.keepArchives && opts.hoist !== false) {
+    const warning = await hoistSingleFolder(gameDir);
+    if (warning) emit({ type: "warning", message: warning });
+  }
 
   // An installer inside an archive only shows once it's unpacked, so check the files we ended up with too.
   const needsSetup = game.platform === "pc" ? (game.needsSetup ?? (await detectSetup(gameDir))) : null;
