@@ -65,7 +65,7 @@ import { familyRoutes } from "./routes/family.js";
 import { FamilyService } from "./users/family.js";
 import { ShelfStore } from "./users/shelves.js";
 
-export const VERSION = "0.19.0";
+export const VERSION = "0.20.0";
 
 /** Routes reachable without signing in. */
 // The Steam sign-in callback finds its person by a one-time state value (it may land in a browser nobody is signed in to).
