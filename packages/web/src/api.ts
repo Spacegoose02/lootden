@@ -26,6 +26,12 @@ import type {
   UserGameState,
   WorkshopItem,
   WorkshopSettings,
+  HelperAccess,
+  HelperChatRequest,
+  HelperSettings,
+  HelperSettingsView,
+  HelperStatus,
+  HelperUsageReport,
 } from "@lootden/shared";
 
 export class ApiError extends Error {
@@ -563,6 +569,15 @@ export const api = {
     call<User>("PATCH", `/api/users/${id}`, patch),
   deleteUser: (id: number) => call("DELETE", `/api/users/${id}`),
 
+  // Bandit, the AI helper.
+  helperStatus: () => call<HelperStatus>("GET", "/api/me/helper"),
+  setHelperEnabled: (enabled: boolean) => call<HelperStatus>("PUT", "/api/me/helper", { enabled }),
+  helperSettings: () => call<HelperSettingsView>("GET", "/api/helper/settings"),
+  saveHelperSettings: (patch: Partial<HelperSettings>) => call<HelperSettingsView>("PUT", "/api/helper/settings", patch),
+  helperUsage: () => call<HelperUsageReport>("GET", "/api/helper/usage"),
+  userHelper: (id: number) => call<HelperAccess>("GET", `/api/users/${id}/helper`),
+  saveUserHelper: (id: number, patch: { allowed?: boolean | null; dailyLimit?: number | null }) => call<HelperAccess>("PUT", `/api/users/${id}/helper`, patch),
+
   connectors: () => call<Connectors>("GET", "/api/connectors"),
   saveConnectors: (c: Partial<Connectors>) => call<Connectors>("PUT", "/api/connectors", c),
   testConnector: (name: string) => call<{ message: string }>("POST", `/api/connectors/${name}/test`),
@@ -778,4 +793,35 @@ export function formatBytes(n: number): string {
 export function formatPlaytime(seconds: number): string {
   if (seconds < 3600) return `${Math.round(seconds / 60)} min`;
   return `${(seconds / 3600).toFixed(1)} h`;
+}
+
+/**
+ * Asks Bandit, calling onText with each piece of the answer as it arrives. Problems before the
+ * answer starts come back as an ApiError with the server's words.
+ */
+export async function askHelper(req: HelperChatRequest, onText: (text: string) => void, signal?: AbortSignal): Promise<void> {
+  const res = await fetch("/api/helper/chat", {
+    method: "POST",
+    credentials: "same-origin",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(req),
+    signal,
+  }).catch((err: unknown) => {
+    if (signal?.aborted) throw err;
+    throw new ApiError("Can't reach the LootDen server", 0);
+  });
+  if (!res.ok) {
+    const data = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new ApiError(data.error ?? `Request failed (${res.status})`, res.status);
+  }
+  const reader = res.body?.getReader();
+  if (!reader) return onText(await res.text());
+  const decoder = new TextDecoder();
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    onText(decoder.decode(value, { stream: true }));
+  }
+  const rest = decoder.decode();
+  if (rest) onText(rest);
 }

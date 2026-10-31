@@ -8,6 +8,7 @@ import { AppUpdateBanner } from "./AppOptions";
 import { desktop } from "../desktop";
 import { SECTION_EVENT } from "../gamepad";
 import { FunLayer } from "./FunLayer";
+import { Bandit } from "./Bandit";
 import { useScrollMemory } from "../scrollMemory";
 
 interface NavItem {
@@ -188,6 +189,7 @@ export function Layout() {
         <Outlet />
       </main>
       <PadHints />
+      <Bandit />
       <FunLayer />
     </div>
   );
@@ -216,6 +218,9 @@ function PadHints() {
       </span>
       <span>
         <kbd className="pad-b">B</kbd>Back
+      </span>
+      <span className="pad-hint-helper">
+        <kbd className="pad-x">X</kbd>Bandit
       </span>
       <span>
         <kbd className="pad-y">Y</kbd>Filters and games

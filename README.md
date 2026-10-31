@@ -32,6 +32,10 @@ installs games from it on any PC in the house.
 - Profiles: local accounts, OIDC or forward-auth sign-in, kid profiles that only see
   kid-safe games, per-profile play time, backlog and journal.
 - Save backups to the server when a game closes, restored on another PC.
+- Bandit, an AI gaming helper (a raccoon, of course) in the corner of every page: tips and
+  hints for the game you're looking at, with kid-safe answers on kid profiles that a parent
+  switches on. Bring your own Anthropic API key; admins pick the model and set daily limits
+  and a monthly budget, and see what it costs.
 - Emulation: console games in their own section. The desktop app sets up RetroArch,
   DuckStation, PCSX2, RPCS3 and xemu, and many systems also play in the browser.
 - Optional download tools for admins: Prowlarr search, qBittorrent, Transmission, Deluge

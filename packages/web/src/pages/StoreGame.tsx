@@ -9,6 +9,7 @@ import { GameMedia } from "../components/GameMedia";
 import { useAuth } from "../auth";
 import { listingDate } from "../components/Listing";
 import { launchStoreGame, storeInstallUrl } from "../components/StoreGameCard";
+import { useHelperGame } from "../helperGame";
 
 const SOURCES: Record<string, string> = { igdb: "IGDB", rawg: "RAWG", steam: "Steam" };
 
@@ -36,6 +37,10 @@ export function StoreGame() {
       setScanned(true);
     }, () => {});
   }, [addon, id, localTitle]);
+
+  // Bandit, the AI helper, knows which game this is.
+  const helperTitle = detail ? (detail.custom.title ?? detail.game?.title ?? local?.title ?? localTitle) : "";
+  useHelperGame(helperTitle ? { ref: { store: { addon, id, title: helperTitle } }, title: helperTitle } : null);
 
   if (error) return <p className="error">{error}</p>;
   if (!detail) return <p className="muted">Loading…</p>;

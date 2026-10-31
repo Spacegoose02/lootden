@@ -3,7 +3,7 @@ import path from "node:path";
 import cookie from "@fastify/cookie";
 import fastifyStatic from "@fastify/static";
 import Fastify, { type FastifyInstance } from "fastify";
-import { API_VERSION, type HealthResponse } from "@lootden/shared";
+import { API_VERSION, zonedParts, type HealthResponse } from "@lootden/shared";
 import { OidcService } from "./auth/oidc.js";
 import { AuthService, SESSION_COOKIE } from "./auth/service.js";
 import { Library } from "./catalog/library.js";
@@ -64,6 +64,8 @@ import { LiveEvents } from "./live.js";
 import { familyRoutes } from "./routes/family.js";
 import { FamilyService } from "./users/family.js";
 import { ShelfStore } from "./users/shelves.js";
+import { HelperService, type HelperAi } from "./helper/service.js";
+import { helperRoutes } from "./routes/helper.js";
 
 export const VERSION = "0.20.1";
 
@@ -96,6 +98,8 @@ export interface BuildOptions {
   /** Tests: the library add-ons to offer, and DNS for their private-network check. */
   addons?: LibraryAddon[];
   resolveHost?: (host: string) => Promise<string[]>;
+  /** Tests: Bandit's AI, so no request reaches a real provider. */
+  helperAi?: HelperAi;
 }
 
 type Log = { info(o: object, m: string): void; warn(o: object, m: string): void };
@@ -133,6 +137,8 @@ export function buildContext(config: ServerConfig, db: Db, log: Log, opts: Build
     void notifier.send(e.kind, e.kind === "grabbed" ? `Sent ${e.title} to the download client` : `Couldn't download ${e.title}`, e.message ?? null, "/downloads");
   };
   const requests = new RequestService(db, library, wishlist, wanted, downloads, notifier);
+  const vault = Vault.open(config.dataDir, config.secretKey);
+  const family = new FamilyService(db, library, users, () => requests, notifier);
   return {
     config,
     db,
@@ -162,11 +168,12 @@ export function buildContext(config: ServerConfig, db: Db, log: Log, opts: Build
     journal: new JournalStore(db),
     nexus: new NexusMods(() => settings().nexus.apiKey, opts.fetchImpl),
     sources: new SourceRegistry(db, wishlist, notifier, opts.fetchImpl),
-    addons: new AddonRegistry(db, library, opts.fetchImpl, opts.addons, opts.resolveHost, Vault.open(config.dataDir, config.secretKey)),
+    addons: new AddonRegistry(db, library, opts.fetchImpl, opts.addons, opts.resolveHost, vault),
     storeDetails: new StoreGameDetails(db, metadata, config.dataDir, log),
     steamSignIn: new SteamSignIn(opts.fetchImpl),
     live,
-    family: new FamilyService(db, library, users, () => requests, notifier),
+    family,
+    helper: new HelperService(db, vault, config.anthropicApiKey, () => zonedParts(new Date(), family.timeZone()).date, opts.helperAi),
     shelves: new ShelfStore(db, library),
     timeToBeat: timeToBeat(metadata.igdb, new HowLongToBeat(opts.fetchImpl), () => settings().hltb.enabled !== false),
   };
@@ -245,6 +252,7 @@ export function buildApp(config: ServerConfig, db: Db, opts: BuildOptions = {}):
   // Open event streams would hold shutdown up.
   app.addHook("preClose", async () => ctx.live.close());
   familyRoutes(app, ctx);
+  helperRoutes(app, ctx);
 
   const webDir = opts.webDir;
   if (webDir && existsSync(path.join(webDir, "index.html"))) {

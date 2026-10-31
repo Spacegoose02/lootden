@@ -60,6 +60,12 @@ is a commented copy for Docker Compose.
 | `LOOTDEN_EMULATORJS_DATA` | EmulatorJS CDN | Where browser emulation loads EmulatorJS from |
 | `LOOTDEN_7Z_PATH` | | A 7-Zip with RAR support for imports (the image ships one) |
 
+### Bandit (AI helper)
+
+| Variable | Default | What it does |
+| --- | --- | --- |
+| `LOOTDEN_ANTHROPIC_API_KEY` (or `ANTHROPIC_API_KEY`) | | Anthropic API key for Bandit, the in-app gaming helper. A key saved in Settings, Bandit (AI helper) wins. Everything else (model, budget, limits) is set there |
+
 ### Desktop app and CLI
 
 | Variable | What it does |
@@ -85,6 +91,7 @@ set `"allowUnverifiedUpdates": true` in the app's `settings.json` (in its user d
 | **Wanted & rules** | Automatic searches for watched wishlist games, auto-grab, release rules (must / must not contain, preferred words, size, seeders, blocked indexers) |
 | **Release sources** | Feeds of new games: on/off, address, key, request limits, extra allowed hosts, "On my network" for sources on your LAN |
 | **Scanning & alerts** | ClamAV and VirusTotal; which alerts to show; an Apprise server to send them on |
+| **Bandit (AI helper)** | The AI gaming helper: on/off, Anthropic API key, model (Claude Opus 5.5, Sonnet 5.5 or Haiku 5.5), thinking (quick, balanced, deep), longest answer, questions a day for grown-ups and for kids, a monthly budget in dollars that pauses him once it's reached, and this month's usage and estimated cost per person. Each person's row has the parent switch (kids start off) and their own daily limit |
 | **Sign-in & services** | Public address, OIDC, IGDB / RAWG / SteamGridDB / ScreenScraper / TheGamesDB keys, LaunchBox switch, metadata source priority, itch.io and NexusMods keys |
 | **News & apps** | News feeds, YouTube rows, desktop app builds for the Get the app page |
 

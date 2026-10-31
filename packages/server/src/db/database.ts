@@ -497,6 +497,26 @@ const MIGRATIONS: string[] = [
     PRIMARY KEY (shelf_id, game_id)
   );
   `,
+  `
+  -- Bandit, the AI helper. allowed: an admin's switch (NULL: on for grown-ups, off for kids);
+  -- enabled: the person's own switch; daily_limit: messages a day for this person (NULL: the server's).
+  CREATE TABLE helper_access (
+    user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    allowed INTEGER,
+    enabled INTEGER NOT NULL DEFAULT 1,
+    daily_limit INTEGER
+  );
+  -- What Bandit was used for, per person per day: messages, tokens and the estimated cost in US dollars.
+  CREATE TABLE helper_usage (
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    day TEXT NOT NULL,
+    count INTEGER NOT NULL DEFAULT 0,
+    input_tokens INTEGER NOT NULL DEFAULT 0,
+    output_tokens INTEGER NOT NULL DEFAULT 0,
+    cost REAL NOT NULL DEFAULT 0,
+    PRIMARY KEY (user_id, day)
+  );
+  `,
 ];
 
 export function openDatabase(file: string): Db {

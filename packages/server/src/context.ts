@@ -34,6 +34,7 @@ import type { SteamSignIn } from "./addons/steam-signin.js";
 import type { LiveEvents } from "./live.js";
 import type { FamilyService } from "./users/family.js";
 import type { ShelfStore } from "./users/shelves.js";
+import type { HelperService } from "./helper/service.js";
 
 /** Everything route modules need, built once in buildApp. */
 export interface AppContext {
@@ -75,6 +76,8 @@ export interface AppContext {
   /** Play time limits, bonus time, achievements, the weekly recap and celebrations. */
   family: FamilyService;
   shelves: ShelfStore;
+  /** Bandit, the AI gaming helper. */
+  helper: HelperService;
   timeToBeat: (providerId: string | null, title: string) => Promise<TimeToBeat | null>;
 }
 
