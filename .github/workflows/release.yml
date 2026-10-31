@@ -95,7 +95,9 @@ jobs:
           path: dist
           pattern: "{desktop-*,playnite}"
       # The desktop apps check updates against this before installing them (updater.ts).
-      - run: find dist -type f -exec sha256sum {} + | sed 's#  .*/#  #' | sort -k2 > SHA256SUMS
+      # A block scalar, because in a plain one the "  #" in the sed below starts a YAML comment.
+      - run: |
+          find dist -type f -exec sha256sum {} + | sed 's#  .*/#  #' | sort -k2 > SHA256SUMS
       - uses: softprops/action-gh-release@v2
         with:
           files: |
