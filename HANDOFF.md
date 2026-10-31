@@ -107,6 +107,17 @@ can be set once by an admin on the add-on's card (`PUT /api/addons/:id/shared`, 
 like accounts, never sent back); a person's own value wins. `Integrations` (IGDB and other admin keys in the settings table) aren't encrypted yet; the
 vault can do it.
 
+## Roblox games an admin picks (0.22.0)
+
+- Settings, Roblox: an admin pastes a roblox.com link or place ID; `server/src/roblox/catalog.ts`
+  looks it up through Roblox's public APIs (no key) and stores it in `roblox_games`, with
+  per-profile or everyone visibility in `roblox_access`.
+- They join `/api/store-games` as store `roblox` (`AddonRegistry.extraGames`), so they show in
+  the Library store filter, Home, Installed and controller navigation.
+- Play opens `roblox://experiences/start?placeId=…`; the desktop app's `playRoblox` checks the
+  allowance and bedtime, waits for the Roblox player, guards play time and records
+  `roblox:<placeId>` sessions. Roblox must be installed and signed in on the PC.
+
 ## Version pills on more covers (0.21.2)
 
 - `versionFromName` reads `Build 12345`, `(1.0.3)` / `[1.2]` and bare 2+ dot versions; title
