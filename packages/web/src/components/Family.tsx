@@ -4,6 +4,7 @@ import type { RecapPlayer, WeeklyRecap } from "@lootden/shared";
 import { api, avatarUrl, formatPlaytime, type PlayerCard } from "../api";
 import { useAuth } from "../auth";
 import { HoloCard } from "./Progress";
+import { useEscape } from "../escape";
 
 const day = (d: string, opts: Intl.DateTimeFormatOptions) => new Date(`${d}T12:00:00Z`).toLocaleDateString(undefined, { ...opts, timeZone: "UTC" });
 const range = (r: WeeklyRecap) => `${day(r.from, { day: "numeric", month: "short" })} to ${day(r.to, { day: "numeric", month: "short" })}`;
@@ -133,6 +134,7 @@ export function FamilyRecap() {
   const [weeksAgo, setWeeksAgo] = useState(0);
   const [recap, setRecap] = useState<WeeklyRecap | null>(null);
   const [card, setCard] = useState<PlayerCard | null>(null);
+  useEscape(() => setCard(null), !!card);
   const [error, setError] = useState("");
   useEffect(() => {
     setRecap(null);

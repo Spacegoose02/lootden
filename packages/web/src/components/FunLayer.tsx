@@ -3,6 +3,7 @@ import { Link, useLocation } from "react-router-dom";
 import { api, type Celebrations } from "../api";
 import { useAuth } from "../auth";
 import { desktop } from "../desktop";
+import { useEscape } from "../escape";
 
 const COLORS = ["var(--accent)", "var(--accent-2)", "#ffd84d", "#59ff8a", "#ff5470", "#a3a8ff"];
 
@@ -82,9 +83,10 @@ export function FunLayer() {
   }, [toast]);
 
   const close = () => {
+    if (party) void api.celebrated(party).catch(() => {});
     setParty(null);
-    void api.celebrated().catch(() => {});
   };
+  useEscape(close, !!party);
   // Opening a game from the unlock screen counts as having seen it.
   useEffect(() => {
     if (party && location.pathname.startsWith("/games/")) close();

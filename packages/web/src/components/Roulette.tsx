@@ -5,6 +5,7 @@ import { api } from "../api";
 import { useAuth } from "../auth";
 import { bridgeError, desktop } from "../desktop";
 import { Cover } from "./Cover";
+import { useEscape } from "../escape";
 
 type Filter = "installed" | "backlog" | "fresh" | "together" | "controller";
 const FILTERS: Array<[Filter, string]> = [
@@ -51,6 +52,8 @@ export function GameRoulette({ onClose }: { onClose: () => void }) {
   const [reel, setReel] = useState<GameSummary[]>([]);
   const [pick, setPick] = useState<GameSummary | null>(null);
   const [spinning, setSpinning] = useState(false);
+  // B on a controller (Esc) closes it, except mid-spin like the Close button.
+  useEscape(onClose, !spinning);
   const [error, setError] = useState("");
   const track = useRef<HTMLDivElement>(null);
   const pool = useMemo(

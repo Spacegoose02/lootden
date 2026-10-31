@@ -80,8 +80,10 @@ export function familyRoutes(app: FastifyInstance, ctx: AppContext) {
     return { id: user.id, displayName: user.displayName, avatar: user.avatar, kid: user.kidMode, level, achievements: achievements.filter((a) => a.unlockedAt) };
   });
   app.get("/api/me/celebrations", async (req) => ctx.family.celebrations(requirePerson(req).id));
-  app.post("/api/me/celebrations/seen", async (req) => {
-    ctx.family.celebrated(requirePerson(req).id);
+  app.post<{ Body: { achievements?: unknown; wishes?: unknown; bonus?: unknown } | undefined }>("/api/me/celebrations/seen", async (req) => {
+    const b = req.body;
+    // The ones the screen showed; nothing named (older apps) marks everything.
+    ctx.family.celebrated(requirePerson(req).id, b && typeof b === "object" && ("achievements" in b || "wishes" in b || "bonus" in b) ? b : undefined);
     return { ok: true };
   });
   app.post("/api/me/roulette", async (req) => ({ spins: ctx.family.bump(requirePerson(req).id, "roulette") }));

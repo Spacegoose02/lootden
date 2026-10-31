@@ -54,6 +54,20 @@ describe("finding the game executable", () => {
     const seconds = await launchAndTrack(dir, "run.sh", "linux");
     assert.ok(seconds >= 1 && seconds <= 3, `ran ${seconds}s`);
   });
+
+  it("keeps timing a game a launcher started and then left running", { skip: process.platform !== "linux" }, async () => {
+    const dir = await fakeInstall("Launched", { "launcher.sh": 'sh "$(dirname "$0")/game.sh" &\n', "game.sh": "sleep 2\n" });
+    const seconds = await launchAndTrack(dir, "launcher.sh", "linux", undefined, { pollMs: 200 });
+    assert.ok(seconds >= 2 && seconds <= 4, `ran ${seconds}s`);
+  });
+
+  it("closes what the launcher started when play time is up", { skip: process.platform !== "linux" }, async () => {
+    const dir = await fakeInstall("Stopped", { "launcher.sh": 'sh "$(dirname "$0")/game.sh" &\n', "game.sh": "sleep 30\n" });
+    const stop = new AbortController();
+    setTimeout(() => stop.abort(), 600);
+    const seconds = await launchAndTrack(dir, "launcher.sh", "linux", stop.signal, { pollMs: 200 });
+    assert.ok(seconds < 5, `ran ${seconds}s`);
+  });
 });
 
 describe("installed games", () => {

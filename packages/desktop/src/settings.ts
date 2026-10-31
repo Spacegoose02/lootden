@@ -35,8 +35,8 @@ export interface DesktopSettings {
   openAtLogin: boolean;
   /** The "still running in the tray" hint was shown once. */
   trayHintShown: boolean;
-  /** Play time recorded while the server couldn't be reached, sent when the app is back online. */
-  pendingPlays: Array<{ gameId: string; seconds: number; playedAt: string }>;
+  /** Play time recorded while the server couldn't be reached, with whose profile played it, sent when the app is back online. */
+  pendingPlays: Array<{ gameId: string; seconds: number; playedAt: string; userId?: number }>;
   /** Other stores' games on this PC: launchers not to look in, and extra folders to look in (picked in Profile, This computer). */
   storeScan: { disabled: string[]; folders: string[] };
   /** The web UI's theme colours (#hex), so the offline page looks like the app. Missing until the app has been online. */

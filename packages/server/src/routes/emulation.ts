@@ -18,6 +18,11 @@ export function emulationRoutes(app: FastifyInstance, ctx: AppContext) {
     const user = requireUser(req);
     const game = ctx.library.get(req.params.id);
     if (!game || (user.kidMode && game.kidSafe !== true)) throw new HttpProblem(404, "Game not found");
+    // Play time limits and bedtime count here too, not just in the desktop app.
+    if (user.user) {
+      const today = ctx.family.allowance(user.user.id);
+      if (today.limited && !today.canPlay) throw new HttpProblem(403, today.reason ?? "No play time left today");
+    }
     if (!browserPlayable(game)) throw new HttpProblem(400, "This game can't be played in the browser");
     reply.header("Content-Type", "text/html; charset=utf-8").header("Cache-Control", "no-store");
     return reply.send(playPage(game, ctx.bios.list()));

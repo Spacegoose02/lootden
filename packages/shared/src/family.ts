@@ -157,8 +157,10 @@ export function computeAllowance(limits: PlayLimits, usedToday: number, bonusSec
   };
 }
 
-/** Seconds left before play has to stop: the daily time or bedtime, whichever comes first; null for no end. */
+/** Seconds left before play has to stop: the daily time or bedtime, whichever comes first (0 during bedtime); null for no end. */
 export function secondsLeft(a: Allowance): number | null {
+  // Bedtime has started: nothing left, whatever the daily time says.
+  if (a.bedtimeNow) return 0;
   const ends = [a.remainingSeconds, a.bedtimeInSeconds].filter((x): x is number => x !== null);
   return ends.length ? Math.min(...ends) : null;
 }

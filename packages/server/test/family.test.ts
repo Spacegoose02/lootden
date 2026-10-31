@@ -48,6 +48,20 @@ describe("play time limits", () => {
     assert.equal(zonedParts(new Date("2026-10-29T02:00:00Z"), "America/New_York").date, "2026-10-28");
   });
 
+  it("keeps games in the browser to play time too", async () => {
+    const { app, ctx } = await makeApp(root);
+    const admin = await person(app, ctx, "papa", { role: "admin" });
+    const kid = await person(app, ctx, "lea");
+    ctx.family.saveSettings({ timeZone: "UTC" });
+    const portal = gameId(ctx, /portal/i);
+    await app.inject({ method: "PUT", url: `/api/users/${kid.id}/limits`, headers: admin.headers, payload: { weekdayMinutes: 10, weekendMinutes: 10 } });
+    assert.equal((await app.inject({ url: `/api/games/${portal}/play`, headers: kid.headers })).statusCode, 400, "time left: Portal just isn't a browser game");
+    await app.inject({ method: "POST", url: "/api/me/activity", headers: kid.headers, payload: { gameId: portal, device: "PC", event: "played", seconds: 10 * 60 } });
+    const blocked = await app.inject({ url: `/api/games/${portal}/play`, headers: kid.headers });
+    assert.equal(blocked.statusCode, 403);
+    assert.match(blocked.json().error, /play time/);
+  });
+
   it("counts sessions, lets kids ask for bonus time and admins grant it", async () => {
     const { app, ctx } = await makeApp(root);
     const admin = await person(app, ctx, "mum", { role: "admin" });
@@ -114,6 +128,12 @@ describe("achievements and levels", () => {
 
     const party = (await app.inject({ url: "/api/me/celebrations", headers: ana.headers })).json();
     assert.ok(party.achievements.length >= 4);
+    // The screen showed only the first badge: the rest still get their moment.
+    const [first] = party.achievements as Array<{ id: string }>;
+    await app.inject({ method: "POST", url: "/api/me/celebrations/seen", headers: ana.headers, payload: { achievements: [first!.id], wishes: [], bonus: [] } });
+    const rest = (await app.inject({ url: "/api/me/celebrations", headers: ana.headers })).json().achievements as Array<{ id: string }>;
+    assert.equal(rest.length, party.achievements.length - 1);
+    assert.ok(!rest.some((a) => a.id === first!.id));
     await app.inject({ method: "POST", url: "/api/me/celebrations/seen", headers: ana.headers });
     assert.equal((await app.inject({ url: "/api/me/celebrations", headers: ana.headers })).json().achievements.length, 0, "celebrated once");
 
