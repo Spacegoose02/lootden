@@ -23,6 +23,8 @@ export interface InstalledGame {
   /** The installed version, and the updates and DLC applied to this copy (missing in older apps). */
   version?: string | null;
   updates?: AppliedUpdate[];
+  /** The version stamped on the game's executable, when it has one (missing in older apps). */
+  exeVersion?: string | null;
 }
 
 export interface AppliedUpdate {

@@ -1,6 +1,6 @@
 import { copyFile, mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { archiveKindOf, compareVersion, groupArchiveSets, setupKindOf, type GameDetail } from "@lootden/shared";
+import { archiveKindOf, compareVersion, effectiveVersion, groupArchiveSets, setupKindOf, type GameDetail } from "@lootden/shared";
 import type { GameServerClient } from "./api.js";
 import { extractArchive, findSevenZip } from "./extractor.js";
 import { saveManifest, type InstalledGame } from "./installed.js";
@@ -105,14 +105,16 @@ async function sharesMore(dir: string, match: string, other: string): Promise<bo
 }
 
 /** Why an update shouldn't go on this copy, or null when it fits. */
-export function updateProblem(update: Pick<GameDetail, "kind" | "title" | "version" | "fromVersion" | "id">, installed: Pick<InstalledGame, "version" | "updates">): string | null {
+export function updateProblem(update: Pick<GameDetail, "kind" | "title" | "version" | "fromVersion" | "id">, installed: Pick<InstalledGame, "version" | "updates" | "exeVersion">): string | null {
   if (installed.updates?.some((u) => u.id === update.id)) return `${update.title} is already applied`;
   if (update.kind !== "update") return null;
-  const have = installed.version ?? null;
+  const { version: have, fromExe } = effectiveVersion(installed, update);
+  const outside = fromExe ? " (the game was updated outside LootDen)" : "";
+  // Checked first: a game updated past this one also no longer matches its from version.
+  if (update.version && have && compareVersion(update.version, have) <= 0) return `Version ${have} is installed${outside}, which is already ${update.version} or newer`;
   if (update.fromVersion && have && compareVersion(have, update.fromVersion) !== 0) {
-    return `This update is for version ${update.fromVersion}, but version ${have} is installed`;
+    return `This update is for version ${update.fromVersion}, but version ${have} is installed${outside}`;
   }
-  if (update.version && have && compareVersion(update.version, have) <= 0) return `Version ${have} is installed, which is already ${update.version} or newer`;
   return null;
 }
 
@@ -136,7 +138,9 @@ export async function applyUpdate(api: GameServerClient, updateId: string, insta
   await rm(work, { recursive: true, force: true });
   await mkdir(work, { recursive: true });
   try {
-    const staged = await installGame(api, update.id, { installDir: work, keepArchives: false, sevenZipPath: opts.sevenZipPath, signal: opts.signal, onEvent: opts.onEvent, report: false });
+    // No hoisting: overlayRoot already looks past a wrapper folder, and moving a freshly
+    // unpacked folder is what Windows refuses while antivirus is still scanning it.
+    const staged = await installGame(api, update.id, { installDir: work, keepArchives: false, sevenZipPath: opts.sevenZipPath, signal: opts.signal, onEvent: opts.onEvent, report: false, hoist: false });
     await unpackLeftovers(staged, opts.sevenZipPath, opts.signal);
     const files = await listFiles(staged);
     if (!files.length) throw new Error(`${update.title} has no files`);
@@ -186,7 +190,9 @@ export async function applyUpdate(api: GameServerClient, updateId: string, insta
     await saveManifest(installed.dir, { version: record.version, updates: [...(installed.updates ?? []).filter((u) => u.id !== update.id), record] });
     return record;
   } finally {
-    await rm(work, { recursive: true, force: true });
+    // A scratch folder that's still locked is left for next time, rather than turning a
+    // finished update into an error.
+    await rm(work, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }).catch(() => {});
   }
 }
 
