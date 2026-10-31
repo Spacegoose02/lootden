@@ -10,6 +10,7 @@ import type { TogetherTag } from "./family.js";
 export * from "./packages.js";
 import type { KindReason, PackageKind } from "./packages.js";
 export * from "./platforms.js";
+export * from "./roblox.js";
 
 export const API_VERSION = 1;
 

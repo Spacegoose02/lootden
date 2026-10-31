@@ -28,6 +28,7 @@ In LootDen. Admins can switch an add-on off for everyone from the same card.
 | `itch` | Games bought or claimed on itch.io (API key from the account settings); soundtracks and tools skipped; Play opens the itch app |
 | Ubisoft Connect (desktop only) | No account side: `packages/client/src/stores/ubisoft.ts` reads the launcher's registry keys, and the games show on this PC only |
 | EA app (desktop only) | No account side: `packages/client/src/stores/ea.ts` finds install folders through Windows' installed programs (EAInstaller `Cleanup.exe` uninstallers) and the EA app's install folders, then reads each game's `__Installer/installerdata.xml` for its offer id and name. Play is an `origin2://` link, which the EA app answers |
+| Roblox (admin-picked, no account) | Not an account add-on: an admin pastes Roblox game links under **Settings, Roblox** (`src/roblox/catalog.ts`). The name, description, creator, icon, a screenshot and Roblox's age recommendation come from Roblox's public web APIs. Each game is shown to everyone or only to the profiles ticked, joins `GET /api/store-games` as store `roblox` through `AddonRegistry.extraGames`, and plays through a `roblox://experiences/start?placeId=` link. The desktop app counts play time while the Roblox player runs and closes it when a hard-stop limit runs out (`packages/client/src/roblox.ts`) |
 | `json-list` | A JSON list of games at any address; for stores without an add-on, and the template for new ones |
 
 ## Adding one

@@ -5,6 +5,7 @@ import { api, avatarUrl, formatBytes, type Connectors, type ReleaseSourceView, t
 import { AdminApps } from "../components/AdminApps";
 import { AdminIntegrations } from "../components/AdminIntegrations";
 import { HelperSection } from "../components/AdminHelper";
+import { RobloxSection } from "../components/AdminRoblox";
 import { AdminVideos } from "../components/AdminVideos";
 import { Card, Field, Pill, Toggle, useConnectors } from "../components/SettingsUi";
 import { ThemePicker } from "../components/ThemePicker";
@@ -20,6 +21,7 @@ const SECTIONS: Array<{ id: string; title: string; blurb: string }> = [
   { id: "wanted", title: "Wanted & rules", blurb: "Auto-search and what to grab" },
   { id: "sources", title: "Release sources", blurb: "Feeds and APIs that list new games" },
   { id: "safety", title: "Scanning & alerts", blurb: "Virus scan and notifications" },
+  { id: "roblox", title: "Roblox", blurb: "Roblox games for the library and who sees them" },
   { id: "helper", title: "Bandit (AI helper)", blurb: "AI key, model, budget and who can use him" },
   { id: "services", title: "Sign-in & services", blurb: "SSO, metadata keys, itch.io, Nexus" },
   { id: "content", title: "News & apps", blurb: "Feeds, videos and app builds" },
@@ -66,6 +68,7 @@ export function Settings() {
         {section === "wanted" && <WantedSection say={say} />}
         {section === "sources" && <SourcesSection say={say} />}
         {section === "safety" && <SafetySection say={say} />}
+        {section === "roblox" && <RobloxSection say={say} />}
         {section === "helper" && <HelperSection say={say} />}
         {section === "services" && <ServicesSection say={say} />}
         {section === "content" && <ContentSection say={say} />}

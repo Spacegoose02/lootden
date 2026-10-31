@@ -521,6 +521,30 @@ const MIGRATIONS: string[] = [
   -- Admin's version for a game whose file and folder names don't say one; NULL means read from the names.
   ALTER TABLE games ADD COLUMN version_override TEXT;
   `,
+  `
+  -- Roblox experiences an admin picked for the library, with Roblox's own details for them.
+  CREATE TABLE roblox_games (
+    universe_id TEXT PRIMARY KEY,
+    place_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    description TEXT,
+    creator TEXT,
+    icon_url TEXT,
+    thumbnail_url TEXT,
+    age_rating TEXT,
+    genre TEXT,
+    max_players INTEGER,
+    everyone INTEGER NOT NULL DEFAULT 0,
+    added_at TEXT NOT NULL,
+    refreshed_at TEXT NOT NULL
+  );
+  -- Who sees each one (when it isn't shown to everyone).
+  CREATE TABLE roblox_access (
+    universe_id TEXT NOT NULL REFERENCES roblox_games(universe_id) ON DELETE CASCADE,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    PRIMARY KEY (universe_id, user_id)
+  );
+  `,
 ];
 
 export function openDatabase(file: string): Db {

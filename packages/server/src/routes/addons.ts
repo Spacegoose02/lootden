@@ -1,6 +1,6 @@
 import { createReadStream } from "node:fs";
 import type { FastifyInstance, FastifyRequest } from "fastify";
-import type { GameListing } from "@lootden/shared";
+import { ROBLOX_ADDON, type GameListing } from "@lootden/shared";
 import { HttpProblem, requireAdmin, requirePerson, type AppContext } from "../context.js";
 import { STEAM_CALLBACK } from "../addons/steam-signin.js";
 
@@ -103,6 +103,12 @@ export function addonRoutes(app: FastifyInstance, ctx: AppContext) {
     const title = game?.title ?? String(req.query.title ?? "").trim().slice(0, 200);
     return { user, addon, externalId, game, title };
   };
+  /** Roblox games' pages come from Roblox and an admin's pick: nothing to rematch or restyle per person. */
+  const editable = (req: FastifyRequest<One>) => {
+    const g = one(req);
+    if (g.addon === ROBLOX_ADDON) throw new HttpProblem(400, "Roblox games' details come from Roblox. An admin can refresh them in Settings, Roblox.");
+    return g;
+  };
   const kindOf = (k?: string) => {
     if (k !== "cover" && k !== "background") throw new HttpProblem(404, "Artwork is cover or background");
     return k;
@@ -112,6 +118,11 @@ export function addonRoutes(app: FastifyInstance, ctx: AppContext) {
 
   app.get<One>("/api/store-games/:addon/:externalId", async (req) => {
     const g = one(req);
+    if (g.addon === ROBLOX_ADDON) {
+      const page = ctx.roblox.detail(g.user.id, g.externalId);
+      if (!page) throw new HttpProblem(404, "No such game");
+      return page;
+    }
     if (!g.game && !g.title) throw new HttpProblem(404, "No such game");
     return ctx.storeDetails.detail(g.user.id, g.addon, g.externalId, g.game, g.title);
   });
@@ -119,6 +130,12 @@ export function addonRoutes(app: FastifyInstance, ctx: AppContext) {
   for (const kind of ["cover", "background"] as const) {
     app.get<One>(`/api/store-games/:addon/:externalId/${kind}`, async (req, reply) => {
       const g = one(req);
+      if (g.addon === ROBLOX_ADDON) {
+        const page = ctx.roblox.detail(g.user.id, g.externalId);
+        const url = kind === "cover" ? page?.coverUrl : page?.backgroundUrl;
+        if (!url) throw new HttpProblem(404, `No ${kind}`);
+        return reply.header("Cache-Control", "private, max-age=86400").redirect(url);
+      }
       const image = await ctx.storeDetails.image(g.user.id, g.addon, g.externalId, g.title, kind);
       if (!image) throw new HttpProblem(404, `No ${kind}`);
       // Addresses are loaded by the browser itself, so the server never fetches what a person typed in.
@@ -130,14 +147,14 @@ export function addonRoutes(app: FastifyInstance, ctx: AppContext) {
 
   /** A new title or a different metadata match, for this person only. null puts the original back. */
   app.put<One & { Body: { title?: string | null; match?: { provider: string; providerId: string } | null } }>("/api/store-games/:addon/:externalId", async (req) => {
-    const g = one(req);
+    const g = editable(req);
     await fail(() => ctx.storeDetails.update(g.user.id, g.addon, g.externalId, { title: req.body?.title, match: req.body?.match }));
     return ctx.storeDetails.detail(g.user.id, g.addon, g.externalId, ctx.addons.game(g.user.id, g.addon, g.externalId), g.title);
   });
 
   /** Looks the game's match and details up again, for a wrong or out-of-date page. */
   app.post<One>("/api/store-games/:addon/:externalId/refresh", async (req) => {
-    const g = one(req);
+    const g = editable(req);
     if (!g.game && !g.title) throw new HttpProblem(404, "No such game");
     await fail(() => ctx.storeDetails.refresh(g.user.id, g.addon, g.externalId, g.title));
     return ctx.storeDetails.detail(g.user.id, g.addon, g.externalId, g.game, g.title);
@@ -145,7 +162,7 @@ export function addonRoutes(app: FastifyInstance, ctx: AppContext) {
 
   /** Games to pick a match from. */
   app.get<One>("/api/store-games/:addon/:externalId/matches", async (req) => {
-    const g = one(req);
+    const g = editable(req);
     const q = String(req.query.q ?? "").trim() || g.title;
     if (!q) return [];
     const found = await fail(() => ctx.metadata.search(q));
@@ -155,13 +172,13 @@ export function addonRoutes(app: FastifyInstance, ctx: AppContext) {
   });
 
   app.get<One>("/api/store-games/:addon/:externalId/artwork/:kind", async (req) => {
-    const g = one(req);
+    const g = editable(req);
     return fail(() => ctx.storeDetails.artworkOptions(g.user.id, g.addon, g.externalId, g.title, kindOf(req.params.kind), req.query.q?.trim() || undefined));
   });
 
   // Body: an image (Content-Type image/*) to upload, or JSON { url }.
   app.put<One>("/api/store-games/:addon/:externalId/artwork/:kind", async (req) => {
-    const g = one(req);
+    const g = editable(req);
     const kind = kindOf(req.params.kind);
     await fail(async () => {
       if (Buffer.isBuffer(req.body)) await ctx.storeDetails.saveUpload(g.user.id, g.addon, g.externalId, kind, req.body, String(req.headers["content-type"]).split(";")[0]!);
@@ -171,7 +188,7 @@ export function addonRoutes(app: FastifyInstance, ctx: AppContext) {
   });
 
   app.delete<One>("/api/store-games/:addon/:externalId/artwork/:kind", async (req) => {
-    const g = one(req);
+    const g = editable(req);
     ctx.storeDetails.setArtwork(g.user.id, g.addon, g.externalId, kindOf(req.params.kind), null);
     return ctx.storeDetails.detail(g.user.id, g.addon, g.externalId, ctx.addons.game(g.user.id, g.addon, g.externalId), g.title);
   });
