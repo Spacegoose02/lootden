@@ -28,8 +28,17 @@ export function storeInstallUrl(g: StoreGame): string | null {
 export async function launchStoreGame(g: StoreGame, local?: LocalStoreGame, install = false): Promise<void> {
   const url = local?.launchUrl ?? (install ? storeInstallUrl(g) : g.launchUrl);
   if (!url) return;
-  if (desktop?.launchStore) await desktop.launchStore(url);
-  else window.location.href = url;
+  if (!desktop?.launchStore) return void (window.location.href = url);
+  try {
+    await desktop.launchStore(url);
+  } catch (e) {
+    // Apps from before 0.22.0 don't know Roblox links yet: say how to fix it instead of the bare refusal.
+    if (g.addon === ROBLOX_ADDON && /isn't a store launcher link/.test(String((e as Error)?.message ?? e))) {
+      const version = await desktop.info().then((i) => i.version, () => "");
+      throw new Error(`This LootDen app${version ? ` (${version})` : ""} is too old to start Roblox games. Update it to 0.22.0 or newer: an admin clicks Get latest release under Settings, News & apps, then restart the app (or install LootDen-Setup-0.22.0.exe from the GitHub release).`);
+    }
+    throw e;
+  }
 }
 
 /**
