@@ -107,6 +107,17 @@ can be set once by an admin on the add-on's card (`PUT /api/addons/:id/shared`, 
 like accounts, never sent back); a person's own value wins. `Integrations` (IGDB and other admin keys in the settings table) aren't encrypted yet; the
 vault can do it.
 
+## Bug check fixes, Back keeps your place (0.20.1)
+
+- **Play time**: bedtime hard stop closes the game; offline sessions are credited to the
+  profile that played; store launches, `/api/games/:id/play` and the browser player respect
+  limits; launcher games stay timed while any process from the game's folder runs; a broken
+  token falls back to the last known allowance instead of lifting limits.
+- **Pop-ups and saves**: B / Esc closes roulette, celebrations and player cards
+  (`useEscape`); only celebrations actually shown are marked seen; save slots work offline.
+- **Back keeps your place**: `useScrollMemory` in Layout restores scroll and the focused game
+  on Back; new pages start at the top.
+
 ## Family fun pack (0.20.0)
 
 Shared rules live in `packages/shared/src/family.ts`; the server side is `users/family.ts`
