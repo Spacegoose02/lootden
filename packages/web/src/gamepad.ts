@@ -246,6 +246,9 @@ export function switchSection(by: number): void {
   window.dispatchEvent(new CustomEvent<number>(SECTION_EVENT, { detail: by }));
 }
 
+/** X: opens and closes Bandit, the AI helper (components/Bandit.tsx listens). */
+export const HELPER_EVENT = "lootden:helper";
+
 /** A or Enter on a select: change it with the d-pad until A, B or Enter again. */
 export function toggleEditing(el: HTMLSelectElement): void {
   setEditing(editing === el ? null : el);
@@ -343,7 +346,7 @@ export function installSpatialNavigation(onBack: () => void): () => void {
   window.addEventListener("pointerdown", onPointer, true);
   window.addEventListener("mousemove", onPointer, true);
 
-  // Gamepad polling: d-pad / left stick move, A (0) clicks, B (1) goes back, Y (3) jumps between
+  // Gamepad polling: d-pad / left stick move, A (0) clicks, B (1) goes back, X (2) opens Bandit, Y (3) jumps between
   // the filters and the games, the right stick scrolls, the bumpers (4, 5) switch sections of the
   // top menu, and the triggers (6, 7) switch the page's tabs.
   let frame = 0;
@@ -408,6 +411,7 @@ export function installSpatialNavigation(onBack: () => void): () => void {
           else back();
         });
         repeat(`${pad.index}y`, b(3), switchZone);
+        repeat(`${pad.index}x`, b(2), () => window.dispatchEvent(new Event(HELPER_EVENT)));
         repeat(`${pad.index}lt`, b(6), () => switchTab(-1));
         repeat(`${pad.index}rt`, b(7), () => switchTab(1));
         repeat(`${pad.index}lb`, b(4), () => switchSection(-1));

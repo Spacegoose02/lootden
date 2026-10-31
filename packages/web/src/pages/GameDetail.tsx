@@ -20,6 +20,7 @@ import { launchStoreGame, storeKey, useStoreGames } from "../components/StoreGam
 import { KindBadge, UpdateActions, useInstalled, versionLabel } from "../components/UpdateActions";
 import type { GameSummary } from "@lootden/shared";
 import { useImageTint } from "../tint";
+import { useHelperGame } from "../helperGame";
 
 /** What a game card passes along, so the page can show the cover at once while the rest loads. */
 type Preview = Pick<GameSummary, "id" | "title" | "coverUrl">;
@@ -40,6 +41,8 @@ export function GameDetail() {
 
   /** This PC's copy, when the server doesn't have the game any more (or can't be reached). */
   const [local, setLocal] = useState<{ copy: LocalGameCopy; removed: boolean } | null>(null);
+  // Bandit, the AI helper, knows which game this is.
+  useHelperGame(game && game.id === id ? { ref: { gameId: id }, title: game.title } : null);
 
   useEffect(() => {
     setGame(null);

@@ -107,6 +107,33 @@ can be set once by an admin on the add-on's card (`PUT /api/addons/:id/shared`, 
 like accounts, never sent back); a person's own value wins. `Integrations` (IGDB and other admin keys in the settings table) aren't encrypted yet; the
 vault can do it.
 
+## Bandit, the AI gaming helper (unreleased)
+
+A chat in the corner of every page (X on a controller) that helps with the game on screen.
+Shared rules and types are in `packages/shared/src/helper.ts`; the server side is
+`src/helper/service.ts` (`HelperService`) and `routes/helper.ts`; tests in
+`server/test/helper.test.ts`.
+
+- **Provider**: Anthropic through `@anthropic-ai/sdk` (`anthropicAi`), streaming, with server-side
+  refusal fallbacks (`fallbacks: "default"`) and prompt caching. Tests pass `helperAi` to
+  `buildApp` so nothing reaches the real API. The key is saved encrypted with the vault, or comes
+  from `LOOTDEN_ANTHROPIC_API_KEY` / `ANTHROPIC_API_KEY`.
+- **Costs**: admins pick the model, thinking effort and longest answer (`max_tokens`), daily
+  question limits for grown-ups and kids (and per person), and a monthly dollar budget. Every
+  answer's tokens are priced with `helperCost` (list prices in `HELPER_MODELS`) and added to
+  `helper_usage` per person per day; once the month's total reaches the budget Bandit pauses
+  until the 1st. Days and months follow the household time zone. A question whose answer
+  fails doesn't count.
+- **Who gets him**: `helper_access.allowed` is the parent switch (NULL: on for grown-ups, off for
+  kids), `enabled` the person's own switch in Profile. Kid profiles get extra kid-safe
+  instructions, and games they can't open aren't passed to the AI.
+- **Game context**: `GameDetail` and `StoreGame` call `useHelperGame`, so the chat knows the
+  title, platform, genres and summary. One chat per game, kept while the app is open; the
+  browser sends the chat back each time (last 20 turns).
+- **Controller**: X (`HELPER_EVENT` in `gamepad.ts`) opens and closes him. The panel is a
+  `role="dialog"`, so the d-pad stays inside and B closes it; with a pad the first suggested
+  question is focused, so nobody has to type.
+
 ## Bug check fixes, Back keeps your place (0.20.1)
 
 - **Play time**: bedtime hard stop closes the game; offline sessions are credited to the

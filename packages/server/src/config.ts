@@ -57,6 +57,8 @@ export interface ServerConfig {
   metadataOrder: { pc: string[]; emulated: string[] };
   /** Look up metadata automatically for new games. */
   metadataAuto: boolean;
+  /** Bandit, the AI gaming helper: an Anthropic API key from the environment (the admin can also paste one in Settings). */
+  anthropicApiKey: string;
 }
 
 function int(value: string | undefined, fallback: number): number {
@@ -127,5 +129,6 @@ export function loadConfig(rawEnv: NodeJS.ProcessEnv = process.env): ServerConfi
     launchbox: { enabled: bool(env.GM_LAUNCHBOX, false) },
     metadataOrder: { pc: [...DEFAULT_ORDER.pc], emulated: [...DEFAULT_ORDER.emulated] },
     metadataAuto: bool(env.GM_METADATA_AUTO, true),
+    anthropicApiKey: env.GM_ANTHROPIC_API_KEY || env.ANTHROPIC_API_KEY || "",
   };
 }

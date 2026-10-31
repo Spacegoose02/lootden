@@ -10,6 +10,7 @@ import { GameLibraries } from "../components/GameLibraries";
 import { StoreScan } from "../components/StoreScan";
 import { AchievementsGrid, HoloCard, RaccoonBuilder, useProgress } from "../components/Progress";
 import { PlayTimeCard } from "../components/PlayTime";
+import { BanditProfileCard } from "../components/Bandit";
 
 export function Profile() {
   const { me, refresh } = useAuth();
@@ -79,6 +80,8 @@ export function Profile() {
           </div>
         </div>
       </section>
+
+      {user && <BanditProfileCard />}
 
       {desktop && <ThisComputer />}
 
