@@ -5,7 +5,7 @@ import path from "node:path";
 import type { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import type { FastifyInstance, FastifyRequest } from "fastify";
-import { PC_PLATFORM, safeFolderName, type ControllerSupport, type GameSummary, type PackageKind } from "@lootden/shared";
+import { cleanTogether, PC_PLATFORM, safeFolderName, type ControllerSupport, type GameSummary, type PackageKind } from "@lootden/shared";
 import type { GameQuery } from "../catalog/library.js";
 import { resolveGameFile } from "../catalog/scanner.js";
 import { HttpProblem, requireAdmin, requireUser, type AppContext } from "../context.js";
@@ -341,7 +341,7 @@ export function gameRoutes(app: FastifyInstance, ctx: AppContext) {
 
   // ---- Admin: overrides and metadata matching ---------------------------------
 
-  app.patch<{ Params: { id: string }; Body: { title?: string | null; kidSafe?: boolean | null; controllerSupport?: ControllerSupport | null } }>(
+  app.patch<{ Params: { id: string }; Body: { title?: string | null; kidSafe?: boolean | null; controllerSupport?: ControllerSupport | null; together?: string[] | null } }>(
     "/api/games/:id",
     async (req) => {
       requireAdmin(req);
@@ -350,7 +350,8 @@ export function gameRoutes(app: FastifyInstance, ctx: AppContext) {
       if (b.controllerSupport != null && !["full", "partial", "none"].includes(b.controllerSupport)) {
         throw new HttpProblem(400, "controllerSupport is full, partial, none or null");
       }
-      ctx.library.setOverrides(req.params.id, { title: b.title, kidSafe: b.kidSafe, controller: b.controllerSupport });
+      if (b.together != null && !Array.isArray(b.together)) throw new HttpProblem(400, "together is a list of tags or null");
+      ctx.library.setOverrides(req.params.id, { title: b.title, kidSafe: b.kidSafe, controller: b.controllerSupport, together: b.together === undefined ? undefined : b.together === null ? null : cleanTogether(b.together) });
       return ctx.library.get(req.params.id);
     },
   );

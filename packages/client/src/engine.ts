@@ -8,6 +8,8 @@ export { installGame, isManifest, LEGACY_MANIFEST_NAME, MANIFEST_NAME, pickGame,
 export { findExecutable, launchAndTrack, saveExecutable } from "./launcher.js";
 export * from "./emulators.js";
 export { backupSaves, expandSavePath, restoreSaves } from "./saves.js";
+export { switchSaveSlot, type SaveSlotOptions } from "./saveslots.js";
+export { offlineAllowance, watchPlayTime, type KeptAllowance, type PlayWatchOptions } from "./playtime.js";
 export { findSetup, prepareGame, runLocalSetup, uploadInstalledFolder, type PrepareStep } from "./prepare.js";
 export { applyUpdate, BACKUP_FOLDER, undoUpdate, UpdateMismatchError, updateProblem, type AppliedUpdate, type ApplyUpdateOptions } from "./updates.js";
 export { scanStoreGames, STORE_SCANNERS, type StoreScanner } from "./stores/index.js";

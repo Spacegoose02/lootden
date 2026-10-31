@@ -426,6 +426,77 @@ const MIGRATIONS: string[] = [
     result TEXT NOT NULL
   );
   `,
+  `
+  -- Family features. Every finished play session, so play time can be counted per day and week.
+  CREATE TABLE play_sessions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    game_id TEXT NOT NULL,
+    device TEXT NOT NULL,
+    seconds INTEGER NOT NULL,
+    started_at TEXT NOT NULL,
+    ended_at TEXT NOT NULL
+  );
+  CREATE INDEX play_sessions_user ON play_sessions (user_id, ended_at);
+  -- Play time limits and bedtime per person (JSON, see PlayLimits).
+  CREATE TABLE play_limits (
+    user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    limits TEXT NOT NULL
+  );
+  -- Bonus time: asked for by a kid (pending) or granted straight away by an admin (approved).
+  CREATE TABLE time_requests (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    minutes INTEGER NOT NULL,
+    note TEXT,
+    day TEXT NOT NULL,
+    state TEXT NOT NULL DEFAULT 'pending',
+    created_at TEXT NOT NULL,
+    decided_at TEXT,
+    seen_at TEXT
+  );
+  CREATE INDEX time_requests_user ON time_requests (user_id, day);
+  -- Achievements as they unlock; seen_at is set once the person has had their celebration.
+  CREATE TABLE achievements (
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    achievement TEXT NOT NULL,
+    unlocked_at TEXT NOT NULL,
+    seen_at TEXT,
+    PRIMARY KEY (user_id, achievement)
+  );
+  -- Small per-person tallies (roulette spins...).
+  CREATE TABLE user_counters (
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    counter TEXT NOT NULL,
+    value INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (user_id, counter)
+  );
+  -- A requested game's arrival, celebrated once on the requester's next visit.
+  ALTER TABLE game_requests ADD COLUMN celebrated_at TEXT;
+  -- Requests from before celebrations: settled on first look (no party for games already in).
+  UPDATE game_requests SET celebrated_at = 'legacy';
+  -- Admin's play-together tags (JSON array); NULL means worked out from metadata.
+  ALTER TABLE games ADD COLUMN together_override TEXT;
+  -- Shelves: anyone's own, or household shelves an admin puts on everyone's Home.
+  CREATE TABLE shelves (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    emoji TEXT,
+    description TEXT,
+    household INTEGER NOT NULL DEFAULT 0,
+    on_home INTEGER NOT NULL DEFAULT 1,
+    position INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL
+  );
+  CREATE TABLE shelf_games (
+    shelf_id INTEGER NOT NULL REFERENCES shelves(id) ON DELETE CASCADE,
+    game_id TEXT NOT NULL,
+    position INTEGER NOT NULL DEFAULT 0,
+    added_at TEXT NOT NULL,
+    PRIMARY KEY (shelf_id, game_id)
+  );
+  `,
 ];
 
 export function openDatabase(file: string): Db {

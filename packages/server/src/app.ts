@@ -61,6 +61,9 @@ import { DirectDownloads } from "./direct/manager.js";
 import { directRoutes } from "./routes/direct.js";
 import { liveRoutes } from "./routes/live.js";
 import { LiveEvents } from "./live.js";
+import { familyRoutes } from "./routes/family.js";
+import { FamilyService } from "./users/family.js";
+import { ShelfStore } from "./users/shelves.js";
 
 export const VERSION = "0.19.0";
 
@@ -129,6 +132,7 @@ export function buildContext(config: ServerConfig, db: Db, log: Log, opts: Build
     live.publish("downloads", true);
     void notifier.send(e.kind, e.kind === "grabbed" ? `Sent ${e.title} to the download client` : `Couldn't download ${e.title}`, e.message ?? null, "/downloads");
   };
+  const requests = new RequestService(db, library, wishlist, wanted, downloads, notifier);
   return {
     config,
     db,
@@ -152,7 +156,7 @@ export function buildContext(config: ServerConfig, db: Db, log: Log, opts: Build
     notifier,
     scanner,
     wanted,
-    requests: new RequestService(db, library, wishlist, wanted, downloads, notifier),
+    requests,
     workshop: new SteamWorkshop(opts.fetchImpl),
     versions: new VersionChecker(db, library, updates, notifier, () => settings().itch.apiKey, opts.fetchImpl),
     journal: new JournalStore(db),
@@ -162,6 +166,8 @@ export function buildContext(config: ServerConfig, db: Db, log: Log, opts: Build
     storeDetails: new StoreGameDetails(db, metadata, config.dataDir, log),
     steamSignIn: new SteamSignIn(opts.fetchImpl),
     live,
+    family: new FamilyService(db, library, users, () => requests, notifier),
+    shelves: new ShelfStore(db, library),
     timeToBeat: timeToBeat(metadata.igdb, new HowLongToBeat(opts.fetchImpl), () => settings().hltb.enabled !== false),
   };
 }
@@ -238,6 +244,7 @@ export function buildApp(config: ServerConfig, db: Db, opts: BuildOptions = {}):
   liveRoutes(app, ctx);
   // Open event streams would hold shutdown up.
   app.addHook("preClose", async () => ctx.live.close());
+  familyRoutes(app, ctx);
 
   const webDir = opts.webDir;
   if (webDir && existsSync(path.join(webDir, "index.html"))) {
