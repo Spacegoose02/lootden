@@ -107,6 +107,14 @@ can be set once by an admin on the add-on's card (`PUT /api/addons/:id/shared`, 
 like accounts, never sent back); a person's own value wins. `Integrations` (IGDB and other admin keys in the settings table) aren't encrypted yet; the
 vault can do it.
 
+## Version pills on more covers (0.21.2)
+
+- `versionFromName` reads `Build 12345`, `(1.0.3)` / `[1.2]` and bare 2+ dot versions; title
+  numbers are left alone. `versionFromFiles` looks inside PC game folders (GOG installers, a
+  single subfolder, top-level installers/archives) when the name has none.
+- Admins can set a version on the game page (`games.version_override`); blank resets it.
+- Existing games pick up the new versions on the next library scan.
+
 ## Release files fix (0.21.1)
 
 - v0.20.0, v0.20.1 and v0.21.0 were published without files: in `release.yml` the plain
