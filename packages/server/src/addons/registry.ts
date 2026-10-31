@@ -41,6 +41,8 @@ interface GameRow {
  */
 export class AddonRegistry {
   private syncing = new Map<string, Promise<number>>();
+  /** Store games that come from the server rather than an account (an admin's Roblox picks). */
+  extraGames: (userId: number) => StoreGame[] = () => [];
 
   constructor(
     private readonly db: Db,
@@ -297,7 +299,8 @@ export class AddonRegistry {
         c,
       ]),
     );
-    return rows
+    const extra = this.extraGames(userId).filter((g) => !addon || g.addon === addon);
+    return [...rows
       .filter((r) => names.has(r.addon) && this.enabled(r.addon))
       .map((r) => {
         const c = custom.get(`${r.addon}:${r.external_id}`);
@@ -315,7 +318,7 @@ export class AddonRegistry {
         lastPlayedAt: r.last_played_at,
         libraryGameId: library.get(titleKey(cleanTitle(title).query)) ?? library.get(titleKey(cleanTitle(r.title).query)) ?? null,
       };
-      });
+      }), ...extra].sort((a, b) => a.title.localeCompare(b.title, undefined, { sensitivity: "base" }));
   }
 
   /** One of this person's store games. */

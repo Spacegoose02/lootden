@@ -2787,6 +2787,9 @@ label.field {
 .launcher-battlenet {
   --launcher: #148eff;
 }
+.launcher-roblox {
+  --launcher: #e2231a;
+}
 .launcher-filter {
   flex-wrap: wrap;
 }
@@ -4359,4 +4362,51 @@ html[data-lootden-frame] .lightbox {
 }
 .helper-people input[type="number"] {
   width: 6.5rem;
+}
+
+/* ---- Settings, Roblox ------------------------------------------------------------ */
+.roblox-people {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 1rem;
+  align-items: center;
+}
+.roblox-people .avatar {
+  border-radius: 50%;
+}
+.roblox-admin-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.75rem;
+}
+.roblox-admin-row {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 0.75rem;
+  align-items: start;
+  padding: 0.6rem;
+  border-radius: var(--radius, 10px);
+  background: color-mix(in srgb, currentColor 4%, transparent);
+}
+.roblox-admin-info {
+  display: grid;
+  gap: 0.35rem;
+  min-width: 0;
+}
+.roblox-icon {
+  width: 72px;
+  height: 72px;
+  border-radius: 14px;
+  object-fit: cover;
+}
+@media (max-width: 640px) {
+  .roblox-admin-row {
+    grid-template-columns: auto 1fr;
+  }
+  .roblox-admin-row > .inline {
+    grid-column: 1 / -1;
+    flex-wrap: wrap;
+  }
 }

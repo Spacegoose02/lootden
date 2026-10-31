@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import type { LocalStoreGame, StoreGame } from "@lootden/shared";
+import { ROBLOX_ADDON, type LocalStoreGame, type StoreGame } from "@lootden/shared";
 import { api, formatPlaytime, storeGamePath } from "../api";
 import { bridgeError, desktop } from "../desktop";
 import { Cover } from "./Cover";
@@ -59,6 +59,8 @@ export function useStoreGames(enabled = true) {
     api.storeGamesCustom().then((l) => setCustom(new Map(l.map((c) => [storeKey(c), c]))), () => {});
   }, [enabled]);
   const installed = new Map(local.map((l) => [storeKey(l), l]));
+  // Roblox games an admin picked play through the Roblox app, so in the app they're ready to play like an installed game.
+  if (scanned) for (const g of games ?? []) if (g.addon === ROBLOX_ADDON && g.launchUrl) installed.set(storeKey(g), { addon: g.addon, externalId: g.externalId, title: g.title, installDir: "", store: g.store });
   const all = games
     ? [
         ...games,
@@ -115,7 +117,7 @@ export function StoreGameCard({ game: g, local, scanned, onError }: { game: Stor
               In LootDen
             </Link>
           )}
-          {g.storeUrl && (
+          {g.storeUrl && g.addon !== ROBLOX_ADDON && (
             <a className="button small ghost" href={g.storeUrl} target="_blank" rel="noreferrer">
               Store
             </a>

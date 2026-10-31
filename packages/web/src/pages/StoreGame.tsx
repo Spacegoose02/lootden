@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
-import type { GameListing, LocalStoreGame, StoreGame as StoreGameT, StoreGameDetail } from "@lootden/shared";
+import { ROBLOX_ADDON, type GameListing, type LocalStoreGame, type StoreGame as StoreGameT, type StoreGameDetail } from "@lootden/shared";
 import { api, formatPlaytime } from "../api";
 import { bridgeError, desktop } from "../desktop";
 import { ArtworkPicker } from "../components/ArtworkEditor";
@@ -58,9 +58,12 @@ export function StoreGame() {
     lastPlayedAt: null,
     libraryGameId: null,
   };
-  const install = !local && scanned;
+  // Roblox games an admin picked play straight through the Roblox app: nothing to install from here.
+  const roblox = addon === ROBLOX_ADDON;
+  const ready = !!local || (roblox && scanned);
+  const install = !ready && scanned;
   const launch = local?.launchUrl ?? (install ? storeInstallUrl(game) : game.launchUrl);
-  const date = info ? listingDate(info) : null;
+  const date = info && addon !== ROBLOX_ADDON ? listingDate(info) : null;
 
   return (
     <article className="detail store-game">
@@ -73,6 +76,7 @@ export function StoreGame() {
           <div className="inline wrap">
             <span className="badge">{game.store}</span>
             {local && <span className="badge badge-kid">Installed on this PC</span>}
+            {roblox && info?.ageRatings[0] && <span className="badge">{info.ageRatings[0].rating}</span>}
             {game.playtimeSeconds ? <span className="badge">{formatPlaytime(game.playtimeSeconds)} played</span> : null}
             {info?.rating != null && <span className="badge">★ {info.rating}/100</span>}
           </div>
@@ -83,7 +87,7 @@ export function StoreGame() {
           <div className="inline wrap">
             {launch && (
               <button className="primary" onClick={() => launchStoreGame(game, local ?? undefined, install).catch((e) => setError(bridgeError(e)))}>
-                {local ? "▶ Play" : install ? `Install with ${game.store}` : `Open in ${game.store}`}
+                {ready ? "▶ Play" : install ? `Install with ${game.store}` : `Open in ${game.store}`}
               </button>
             )}
             {game.libraryGameId && (
@@ -93,18 +97,21 @@ export function StoreGame() {
             )}
             {game.storeUrl && (
               <a className="button" href={game.storeUrl} target="_blank" rel="noreferrer">
-                Store page
+                {roblox ? "Roblox page" : "Store page"}
               </a>
             )}
-            {info?.url && (
+            {info?.url && !roblox && (
               <a className="button ghost" href={info.url} target="_blank" rel="noreferrer">
                 View on {SOURCES[info.provider] ?? "source"}
               </a>
             )}
-            <button className="ghost" aria-expanded={editing} onClick={() => setEditing((v) => !v)}>
-              {editing ? "Done editing" : "Edit"}
-            </button>
+            {!roblox && (
+              <button className="ghost" aria-expanded={editing} onClick={() => setEditing((v) => !v)}>
+                {editing ? "Done editing" : "Edit"}
+              </button>
+            )}
           </div>
+          {roblox && <p className="muted small">Plays in the Roblox app{desktop ? "" : " (open LootDen's desktop app on a PC with Roblox installed)"}. It starts signed in to whichever Roblox account that PC uses.</p>}
         </div>
       </div>
 

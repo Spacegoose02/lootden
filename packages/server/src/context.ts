@@ -35,6 +35,7 @@ import type { LiveEvents } from "./live.js";
 import type { FamilyService } from "./users/family.js";
 import type { ShelfStore } from "./users/shelves.js";
 import type { HelperService } from "./helper/service.js";
+import type { RobloxCatalog } from "./roblox/catalog.js";
 
 /** Everything route modules need, built once in buildApp. */
 export interface AppContext {
@@ -70,6 +71,8 @@ export interface AppContext {
   /** Library add-ons: people's Steam, GOG, Epic... accounts and the games they own there. */
   addons: AddonRegistry;
   storeDetails: StoreGameDetails;
+  /** Roblox experiences an admin picked, shown to the profiles they chose. */
+  roblox: RobloxCatalog;
   steamSignIn: SteamSignIn;
   /** Tells open pages what changed (GET /api/events). */
   live: LiveEvents;

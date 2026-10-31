@@ -57,6 +57,8 @@ import { SteamSignIn } from "./addons/steam-signin.js";
 import { Vault } from "./auth/vault.js";
 import type { LibraryAddon } from "./addons/types.js";
 import { addonRoutes } from "./routes/addons.js";
+import { RobloxCatalog } from "./roblox/catalog.js";
+import { robloxRoutes } from "./routes/roblox.js";
 import { DirectDownloads } from "./direct/manager.js";
 import { directRoutes } from "./routes/direct.js";
 import { liveRoutes } from "./routes/live.js";
@@ -138,6 +140,9 @@ export function buildContext(config: ServerConfig, db: Db, log: Log, opts: Build
   };
   const requests = new RequestService(db, library, wishlist, wanted, downloads, notifier);
   const vault = Vault.open(config.dataDir, config.secretKey);
+  const roblox = new RobloxCatalog(db, opts.fetchImpl);
+  const addons = new AddonRegistry(db, library, opts.fetchImpl, opts.addons, opts.resolveHost, vault);
+  addons.extraGames = (userId) => roblox.storeGames(userId);
   const family = new FamilyService(db, library, users, () => requests, notifier);
   return {
     config,
@@ -168,7 +173,8 @@ export function buildContext(config: ServerConfig, db: Db, log: Log, opts: Build
     journal: new JournalStore(db),
     nexus: new NexusMods(() => settings().nexus.apiKey, opts.fetchImpl),
     sources: new SourceRegistry(db, wishlist, notifier, opts.fetchImpl),
-    addons: new AddonRegistry(db, library, opts.fetchImpl, opts.addons, opts.resolveHost, vault),
+    addons,
+    roblox,
     storeDetails: new StoreGameDetails(db, metadata, config.dataDir, log),
     steamSignIn: new SteamSignIn(opts.fetchImpl),
     live,
@@ -247,6 +253,7 @@ export function buildApp(config: ServerConfig, db: Db, opts: BuildOptions = {}):
   extraRoutes(app, ctx);
   sourceRoutes(app, ctx);
   addonRoutes(app, ctx);
+  robloxRoutes(app, ctx);
   directRoutes(app, ctx);
   liveRoutes(app, ctx);
   // Open event streams would hold shutdown up.

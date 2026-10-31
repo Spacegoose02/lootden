@@ -9,6 +9,7 @@ import type {
   WeeklyRecap,
   BrowserPolicy,
   AddonView,
+  RobloxGame,
   StoreGame,
   StoreGameDetail,
   ApiTokenInfo,
@@ -562,6 +563,13 @@ export const api = {
   refreshAllMetadata: (scope: string) => call<{ queued: number }>("POST", "/api/metadata/refresh", { scope }),
 
   users: () => call<User[]>("GET", "/api/users"),
+
+  // Roblox games an admin picks for the library.
+  robloxGames: () => call<RobloxGame[]>("GET", "/api/roblox"),
+  addRobloxGame: (input: string, access: { everyone: boolean; userIds: number[] }) => call<RobloxGame>("POST", "/api/roblox", { input, ...access }),
+  setRobloxAccess: (universeId: string, access: { everyone?: boolean; userIds?: number[] }) => call<RobloxGame>("PUT", `/api/roblox/${encodeURIComponent(universeId)}`, access),
+  refreshRobloxGame: (universeId: string) => call<RobloxGame>("POST", `/api/roblox/${encodeURIComponent(universeId)}/refresh`),
+  removeRobloxGame: (universeId: string) => call<RobloxGame[]>("DELETE", `/api/roblox/${encodeURIComponent(universeId)}`),
   userBrowser: (id: number) => call<BrowserPolicy>("GET", `/api/users/${id}/browser`),
   saveUserBrowser: (id: number, p: Partial<BrowserPolicy>) => call<BrowserPolicy>("PUT", `/api/users/${id}/browser`, p),
   createUser: (u: { username: string; password?: string; displayName?: string; role?: string; kidMode?: boolean }) => call<User>("POST", "/api/users", u),

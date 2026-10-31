@@ -46,6 +46,9 @@ import {
   type BrowserPolicy,
   STORE_SCANNERS,
   isStoreLaunchUrl,
+  robloxPlaceOf,
+  robloxPlayId,
+  trackRoblox,
   uninstallGame,
   applyUpdate,
   undoUpdate,
@@ -1413,9 +1416,49 @@ function registerIpc(): void {
   ipcMain.handle("gm:launchStore", async (e, url: string) => {
     fromServer(e);
     if (typeof url !== "string" || !isStoreLaunchUrl(url)) throw new Error("That isn't a store launcher link");
+    const place = robloxPlaceOf(url);
+    if (place) return playRoblox(url, place);
     await checkPlayTime(url);
     await shell.openExternal(url);
   });
+
+  /**
+   * A Roblox game an admin picked: unlike other stores, the Roblox player is one program that
+   * runs one game, so LootDen can count its play time and close it when the time is up.
+   */
+  async function playRoblox(url: string, place: string) {
+    const gameId = robloxPlayId(place);
+    if (playing.has(gameId) || launching.has(gameId)) throw new Error("Roblox is already starting that game");
+    const live = await clientOrOffline();
+    const player = currentPlayer();
+    const today = await todaysAllowance(live);
+    if (today && !today.canPlay) throw new Error(today.reason ?? "No play time left today");
+    await shell.openExternal(url);
+    launching.add(gameId);
+    const stop = new AbortController();
+    let unwatch = () => {};
+    void trackRoblox({
+      stop: stop.signal,
+      onStarted: () => {
+        launching.delete(gameId);
+        unwatch = guardPlay(live, gameId, "Roblox", today, today?.hardStop ? stop : undefined);
+        send({ gameId, type: "playing" });
+      },
+    }).then(
+      async (seconds) => {
+        launching.delete(gameId);
+        unwatch();
+        if (!playing.has(gameId)) return;
+        send({ gameId, type: "stopped", seconds });
+        await recordPlay(clientFor(player) ?? (await clientOrOffline()), gameId, seconds, player);
+      },
+      () => {
+        launching.delete(gameId);
+        unwatch();
+        playing.delete(gameId);
+      },
+    );
+  }
 
   /** The built-in web browser, on its start page or a web page. */
   ipcMain.handle("gm:openBrowser", (e, url?: string) => {
