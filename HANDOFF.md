@@ -107,7 +107,7 @@ can be set once by an admin on the add-on's card (`PUT /api/addons/:id/shared`, 
 like accounts, never sent back); a person's own value wins. `Integrations` (IGDB and other admin keys in the settings table) aren't encrypted yet; the
 vault can do it.
 
-## Bandit, the AI gaming helper (unreleased)
+## Bandit, the AI gaming helper (0.21.0)
 
 A chat in the corner of every page (X on a controller) that helps with the game on screen.
 Shared rules and types are in `packages/shared/src/helper.ts`; the server side is
