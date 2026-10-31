@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { readdir, stat } from "node:fs/promises";
 import path from "node:path";
-import { archiveKindOf, packageInfo, PC_PLATFORM, platformFor, romTitle, setupKindOf, type GameFile, type GameSummary } from "@lootden/shared";
+import { archiveKindOf, packageInfo, PC_PLATFORM, platformFor, romTitle, setupKindOf, versionFromFiles, type GameFile, type GameSummary } from "@lootden/shared";
 
 /** What the scanner knows from disk alone; the library adds database and metadata fields. */
 export type ScannedGame = Pick<
@@ -87,7 +87,8 @@ function summarize(
   return {
     kind: pkg.kind,
     baseTitle: pkg.baseTitle,
-    version: pkg.version,
+    // A game folder whose name doesn't say ("Critter Cove") may still hold a named installer.
+    version: pkg.version ?? (pkg.kind === "game" && platform === PC_PLATFORM && layout === "folder" ? versionFromFiles(files) : null),
     fromVersion: pkg.fromVersion,
     id,
     title: pkg.kind !== "game" ? packageTitle(name) : platform === PC_PLATFORM ? titleFromSource(name, layout === "archive") : romTitle(name, layout !== "folder") || name,

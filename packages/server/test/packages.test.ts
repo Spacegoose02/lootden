@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { after, before, describe, it } from "node:test";
-import { packageInfo } from "@lootden/shared";
+import { packageInfo, versionFromFiles, versionFromName, versionLabel } from "@lootden/shared";
 import { tidyName } from "../src/connectors/tidy.js";
 import { makeApp } from "./helpers.js";
 
@@ -26,6 +26,71 @@ describe("update and DLC names", () => {
     assert.equal(packageInfo(tidyName("Stardew.Valley.v1.5.to.v1.6.Patch-GROUP.rar")).fromVersion, "1.5");
     // Anything in an Updates folder is an update.
     assert.equal(packageInfo("Hades 1.39 files", "update").kind, "update");
+  });
+});
+
+describe("game versions", () => {
+  it("reads versions written without a v", () => {
+    assert.equal(packageInfo("Critter Cove Build 15934").version, "Build 15934");
+    assert.equal(packageInfo("Critter.Cove.Build.15934-TENOKE").version, "Build 15934");
+    assert.equal(packageInfo("Occupy Mars The Game [1.0.2]").version, "1.0.2");
+    assert.equal(packageInfo("Occupy Mars The Game (1.2)").version, "1.2");
+    assert.equal(packageInfo("Occupy Mars The Game 1.0.2").version, "1.0.2");
+    assert.equal(packageInfo("PBA Pro Bowling_2.0.1.3").version, "2.0.1.3");
+    // The v form still wins, and a tidied download reads back the same.
+    assert.equal(packageInfo("Hades v1.38 [1.0.0]").version, "1.38");
+    assert.equal(packageInfo(tidyName("Critter.Cove.Build.15934-TENOKE")).version, "Build 15934");
+  });
+
+  it("doesn't take a title's own numbers for a version", () => {
+    for (const name of ["EA Sports College Football 26", "Metal Gear Solid 3 Snake Eater", "METAL GEAR SOLID MASTER COLLECTION Vol 2", "Fallout 3.5", "Build 1000 Houses", "The.Sims.4.1.0.2", "Game (2024)"]) {
+      assert.equal(packageInfo(name).version, null, name);
+    }
+  });
+
+  it("finds a version inside a folder whose name doesn't say", () => {
+    assert.equal(versionFromFiles([{ path: "setup_critter_cove_1.2.3_(64bit)_(78123).exe" }, { path: "setup_critter_cove_1.2.3_(64bit)_(78123)-1.bin" }]), "1.2.3");
+    assert.equal(versionFromFiles([{ path: "Occupy Mars v1.0.2/OccupyMars.exe" }, { path: "Occupy Mars v1.0.2/data.pak" }]), "1.0.2");
+    assert.equal(versionFromFiles([{ path: "PBA.Pro.Bowling.v2.1.iso" }, { path: "readme.txt" }]), "2.1");
+    // Redistributables carry their own versions, which aren't the game's.
+    assert.equal(versionFromFiles([{ path: "Game.exe" }, { path: "_CommonRedist/PhysX-9.13.0604-SystemSoftware.msi" }, { path: "DirectX/Jun2010/DXSETUP.exe" }]), null);
+    assert.equal(versionFromName("Critter Cove"), null);
+    assert.equal(versionLabel("1.2"), "v1.2");
+    assert.equal(versionLabel("Build 15934"), "Build 15934");
+  });
+});
+
+describe("game versions in the library", () => {
+  let root: string;
+  before(async () => {
+    root = await mkdtemp(path.join(os.tmpdir(), "lootden-versions-"));
+    await mkdir(path.join(root, "Critter Cove"));
+    await writeFile(path.join(root, "Critter Cove", "setup_critter_cove_1.2.3_(64bit)_(78123).exe"), "x");
+    await mkdir(path.join(root, "Occupy Mars The Game"));
+    await writeFile(path.join(root, "Occupy Mars The Game", "OccupyMars.exe"), "x");
+  });
+  after(() => rm(root, { recursive: true, force: true }));
+
+  it("shows a version found inside the folder, and one an admin types in", async () => {
+    const { ctx, app } = await makeApp(root, { apiToken: "svc" });
+    const auth = { authorization: "Bearer svc" };
+    await ctx.library.rescan();
+    const games = (await app.inject({ url: "/api/games", headers: auth })).json() as Array<{ id: string; title: string; version: string | null; latestVersion: string | null }>;
+    const critter = games.find((g) => g.title === "Critter Cove")!;
+    assert.deepEqual([critter.version, critter.latestVersion], ["1.2.3", "1.2.3"]);
+    const mars = games.find((g) => g.title === "Occupy Mars The Game")!;
+    assert.equal(mars.version, null);
+
+    const set = await app.inject({ method: "PATCH", url: `/api/games/${mars.id}`, headers: auth, payload: { version: " v1.0.2 " } });
+    assert.equal(set.statusCode, 200);
+    const detail = set.json() as { version: string | null; latestVersion: string | null; overrides: { version: string | null } };
+    assert.deepEqual([detail.version, detail.latestVersion, detail.overrides.version], ["1.0.2", "1.0.2", "1.0.2"]);
+    const listed = (await app.inject({ url: "/api/games", headers: auth })).json() as Array<{ id: string; version: string | null }>;
+    assert.equal(listed.find((g) => g.id === mars.id)!.version, "1.0.2");
+
+    const reset = (await app.inject({ method: "PATCH", url: `/api/games/${mars.id}`, headers: auth, payload: { version: "" } })).json() as { version: string | null; overrides: { version: string | null } };
+    assert.deepEqual([reset.version, reset.overrides.version], [null, null]);
+    await app.close();
   });
 });
 

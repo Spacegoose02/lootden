@@ -547,7 +547,7 @@ export const api = {
   game: (id: string) => call<GameDetail>("GET", `/api/games/${id}`),
   setPackage: (id: string, patch: { kind?: string | null; baseGameId?: string | null }) => call<GameDetail>("PUT", `/api/games/${id}/package`, patch),
   deleteGame: (id: string, permanent = false) => call<{ deleted: string }>("DELETE", `/api/games/${id}${permanent ? "?permanent=true" : ""}`),
-  updateGame: (id: string, patch: { title?: string | null; kidSafe?: boolean | null; controllerSupport?: string | null }) =>
+  updateGame: (id: string, patch: { title?: string | null; kidSafe?: boolean | null; controllerSupport?: string | null; version?: string | null }) =>
     call<GameDetail>("PATCH", `/api/games/${id}`, patch),
   searchMetadata: (id: string, q: string) => call<Candidate[]>("GET", `/api/games/${id}/metadata/search${qs({ q })}`),
   applyMetadata: (id: string, provider: string, providerId: string) => call<GameDetail>("PUT", `/api/games/${id}/metadata`, { provider, providerId }),

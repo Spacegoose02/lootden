@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import type { GameSummary } from "@lootden/shared";
+import { versionLabel as v, type GameSummary } from "@lootden/shared";
 import { api, formatBytes } from "../api";
 import { Cover } from "../components/Cover";
 import { KindBadge, UpdateActions, useInstalled, versionLabel, versionProblem } from "../components/UpdateActions";
@@ -119,9 +119,9 @@ export function Updates() {
                   {!base
                     ? "Their games aren't on the server. An admin can match them to a game from their page."
                     : installed === null
-                      ? `${base.version ? `Server copy v${base.version}` : ""}`
+                      ? `${base.version ? `Server copy ${v(base.version)}` : ""}`
                       : local
-                        ? `Installed on this PC${local.version ? `: v${local.version}` : ""}${local.updates?.length ? ` · ${local.updates.length} applied` : ""}`
+                        ? `Installed on this PC${local.version ? `: ${v(local.version)}` : ""}${local.updates?.length ? ` · ${local.updates.length} applied` : ""}`
                         : "Not installed on this PC"}
                 </p>
               </div>

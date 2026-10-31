@@ -120,6 +120,8 @@ export interface GameDetail extends GameSummary {
     background: string | null;
     /** Play-together tags an admin set; null means worked out from metadata. */
     together: TogetherTag[] | null;
+    /** A version an admin typed in, for games whose file and folder names don't say. */
+    version: string | null;
   };
   /**
    * Where the game keeps saves on a player's PC, for save sync. Uses %APPDATA%,

@@ -229,6 +229,7 @@ function AdminTools({ game, onChange }: { game: Game; onChange: (g: Game) => voi
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [title, setTitle] = useState(game.overrides.title ?? "");
+  const [version, setVersion] = useState(game.overrides.version ?? "");
 
   const run = async (fn: () => Promise<void>) => {
     setBusy(true);
@@ -302,6 +303,19 @@ function AdminTools({ game, onChange }: { game: Game; onChange: (g: Game) => voi
           {title ? "Set title" : "Reset title"}
         </button>
       </div>
+      {game.kind === "game" && (
+        <div className="inline">
+          <input
+            placeholder={game.overrides.version || !game.version ? "Version, e.g. 1.2.3" : `Version (from the files: ${game.version})`}
+            value={version}
+            onChange={(e) => setVersion(e.target.value)}
+            aria-label="Version override"
+          />
+          <button disabled={busy} onClick={() => run(async () => onChange(await api.updateGame(game.id, { version: version.trim() || null })))}>
+            {version.trim() ? "Set version" : "Reset version"}
+          </button>
+        </div>
+      )}
       <div className="inline">
         <label>
           Kid-safe

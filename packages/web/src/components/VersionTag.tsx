@@ -1,4 +1,4 @@
-import { compareVersion, type GameSummary } from "@lootden/shared";
+import { compareVersion, versionLabel, type GameSummary } from "@lootden/shared";
 
 /** Up to date, an update waiting on the server, or nothing known. */
 export function versionStatus(game: Pick<GameSummary, "kind" | "version" | "latestVersion">): { label: string; state: "current" | "outdated"; note: string } | null {
@@ -6,13 +6,13 @@ export function versionStatus(game: Pick<GameSummary, "kind" | "version" | "late
   const { version, latestVersion: latest } = game;
   if (latest && (!version || compareVersion(latest, version) > 0)) {
     return {
-      label: version ? `v${version} → v${latest}` : `Update v${latest}`,
+      label: version ? `${versionLabel(version)} → ${versionLabel(latest)}` : `Update ${versionLabel(latest)}`,
       state: "outdated",
-      note: version ? `Out of date: v${version}, the server has an update to v${latest}` : `Out of date: the server has an update to v${latest}`,
+      note: version ? `Out of date: ${versionLabel(version)}, the server has an update to ${versionLabel(latest)}` : `Out of date: the server has an update to ${versionLabel(latest)}`,
     };
   }
   if (!version) return null;
-  return { label: `v${version}`, state: "current", note: `Up to date: v${version} is the newest version on the server` };
+  return { label: versionLabel(version), state: "current", note: `Up to date: ${versionLabel(version)} is the newest version on the server` };
 }
 
 /** The game's version on its cover: green when up to date, amber when an update is waiting. */

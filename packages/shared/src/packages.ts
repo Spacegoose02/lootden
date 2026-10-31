@@ -26,13 +26,76 @@ const ANY_VERSION = new RegExp(String.raw`(?<![a-z0-9])${VERSION}(?![a-z0-9])`, 
 
 const clean = (v: string) => v.replace(/_/g, ".");
 
+/** "Build 12345", "Build.12345". */
+const BUILD = /(?<![a-z0-9])build[ ._]?(\d{3,})(?!\d)/i;
+/** "(1.0.3)", "[1.2]": a version in brackets, with or without its v. */
+const BRACKETED = /[([]v?(\d+(?:\.\d+){1,3}[a-z]?)[)\]]/i;
+/**
+ * "Occupy Mars 1.0.2": a bare version needs two dots or more, so a title's own number
+ * ("College Football 26", "Metal Gear Solid 3", "Fallout 3.5") never counts as one.
+ */
+const BARE_DOTTED = /(?<=^|[\s_(-])(\d+(?:\.\d+){2,3}[a-z]?)(?![\w.])/i;
+
+/**
+ * A version written without a "v": "Build 12345", "[1.0.3]" or a bare "1.0.2". Only used when
+ * the name has no "v1.2" style version, which is the clearest way to write one.
+ */
+function looseVersion(base: string): string | null {
+  // A name that starts with it ("Build 1000 Houses") is a title.
+  const build = base.match(BUILD);
+  if (build && build.index! > 0) return `Build ${build[1]}`;
+  return base.match(BRACKETED)?.[1] ?? base.match(BARE_DOTTED)?.[1] ?? null;
+}
+
+/** The version a file or folder name gives, if any: "Game v1.2", "Game Build 12345", "Game [1.0.3]". */
+export function versionFromName(name: string): string | null {
+  const base = name.replace(/(\.part\d+)?\.(zip|7z|rar|exe|msi|iso)(\.\d{3})?$/i, "");
+  const versions = [...base.matchAll(ANY_VERSION)].map((m) => clean(m[1]!));
+  return versions.pop() ?? looseVersion(base);
+}
+
+/** GOG installers: setup_critter_cove_1.2.3_(64bit)_(12345).exe. */
+const GOG_SETUP = /^setup_.+?_v?(\d+(?:\.\d+)+[a-z]?)(?:_|\.exe$)/i;
+const NOT_THE_GAME = /(^|\/)(_commonredist|redist|redistributables?|directx|physx|vcredist|dotnet|__installer|support|prerequisites?)(\/|$)/i;
+const WHOLE_FILE = /\.(exe|msi|zip|7z|rar|iso)(\.\d{3})?$/i;
+
+/**
+ * A game's version from what's inside its folder, for folders whose own name doesn't say
+ * ("Critter Cove"): a GOG installer's name, the one folder everything sits in
+ * ("Critter Cove/Critter Cove v1.2/..."), or an installer or archive at the top.
+ */
+export function versionFromFiles(files: Array<{ path: string }>): string | null {
+  const paths = files.map((f) => f.path.replace(/\\/g, "/")).filter((p) => !NOT_THE_GAME.test(p));
+  for (const p of paths) {
+    if (p.split("/").length > 2) continue;
+    const m = p.split("/").pop()!.match(GOG_SETUP);
+    if (m) return m[1]!;
+  }
+  const tops = new Set(paths.map((p) => p.split("/")[0]!));
+  if (tops.size === 1 && paths.every((p) => p.includes("/"))) {
+    const v = versionFromName([...tops][0]!);
+    if (v) return v;
+  }
+  for (const p of paths) {
+    if (p.includes("/") || !WHOLE_FILE.test(p)) continue;
+    const v = versionFromName(p);
+    if (v) return v;
+  }
+  return null;
+}
+
+/** "v1.2" for people, or "Build 12345" as it is. */
+export function versionLabel(version: string): string {
+  return /^build /i.test(version) ? version : `v${version}`;
+}
+
 /** Reads what a library entry is from its name ("Game.Update.v1.3-GROUP", "Game v1.2 to v1.3 Patch.zip"). */
 export function packageInfo(name: string, folderHint?: "update" | "dlc"): PackageInfo {
   const base = name.replace(/(\.part\d+)?\.(zip|7z|rar|exe|msi)(\.\d{3})?$/i, "");
   const fromTo = base.match(FROM_TO);
   const versions = [...base.matchAll(ANY_VERSION)].map((m) => clean(m[1]!));
   const fromVersion = fromTo ? clean(fromTo[1]!) : (base.match(FROM)?.[1] ? clean(base.match(FROM)![1]!) : null);
-  const version = fromTo ? clean(fromTo[2]!) : (versions.filter((v) => v !== fromVersion).pop() ?? null);
+  const version = fromTo ? clean(fromTo[2]!) : (versions.filter((v) => v !== fromVersion).pop() ?? (fromVersion ? null : looseVersion(base)));
 
   let kind: PackageKind = "game";
   if (!BUNDLED.test(base)) {
