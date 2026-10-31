@@ -343,7 +343,7 @@ export function gameRoutes(app: FastifyInstance, ctx: AppContext) {
 
   // ---- Admin: overrides and metadata matching ---------------------------------
 
-  app.patch<{ Params: { id: string }; Body: { title?: string | null; kidSafe?: boolean | null; controllerSupport?: ControllerSupport | null; together?: string[] | null } }>(
+  app.patch<{ Params: { id: string }; Body: { title?: string | null; kidSafe?: boolean | null; controllerSupport?: ControllerSupport | null; together?: string[] | null; version?: string | null } }>(
     "/api/games/:id",
     async (req) => {
       requireAdmin(req);
@@ -353,7 +353,10 @@ export function gameRoutes(app: FastifyInstance, ctx: AppContext) {
         throw new HttpProblem(400, "controllerSupport is full, partial, none or null");
       }
       if (b.together != null && !Array.isArray(b.together)) throw new HttpProblem(400, "together is a list of tags or null");
-      ctx.library.setOverrides(req.params.id, { title: b.title, kidSafe: b.kidSafe, controller: b.controllerSupport, together: b.together === undefined ? undefined : b.together === null ? null : cleanTogether(b.together) });
+      if (b.version != null && typeof b.version !== "string") throw new HttpProblem(400, "version is text or null");
+      // "v1.2" and "1.2" mean the same; blank goes back to reading it from the names.
+      const version = b.version === undefined ? undefined : b.version?.trim().replace(/^v(?=\d)/i, "").slice(0, 40) || null;
+      ctx.library.setOverrides(req.params.id, { title: b.title, kidSafe: b.kidSafe, controller: b.controllerSupport, together: b.together === undefined ? undefined : b.together === null ? null : cleanTogether(b.together), version });
       return ctx.library.get(req.params.id);
     },
   );

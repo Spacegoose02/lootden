@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { platformFor, type GameSummary, type LocalStoreGame, type StoreGame, type UserGameState } from "@lootden/shared";
+import { platformFor, versionLabel, type GameSummary, type LocalStoreGame, type StoreGame, type UserGameState } from "@lootden/shared";
 import { api, formatBytes, formatPlaytime } from "../api";
 import { bridgeError, desktop, type InstalledGame } from "../desktop";
 import { Cover } from "./Cover";
@@ -260,7 +260,7 @@ export function InstalledGames() {
     [
       i.lastPlayedAt ? `Played ${new Date(i.lastPlayedAt).toLocaleDateString()}` : i.kind === "lootden" ? "Not played yet" : "",
       i.playtimeSeconds ? formatPlaytime(i.playtimeSeconds) : "",
-      i.kind === "lootden" && i.entry.local?.version ? `v${i.entry.local.version}` : "",
+      i.kind === "lootden" && i.entry.local?.version ? `${versionLabel(i.entry.local.version)}` : "",
     ]
       .filter(Boolean)
       .join(" · ") || (i.kind === "store" ? `Plays through ${i.game.store}` : "");

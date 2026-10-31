@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { mkdir, rename, rm, statfs } from "node:fs/promises";
 import path from "node:path";
-import { cleanTogether, compareVersion, contentHint, togetherFromMetadata, type TogetherTag, FULL_GAME_SIZE_RATIO, PC_PLATFORM, setupKindOf, type KindReason, PLATFORMS, type ControllerSupport, type GameDetail, type GameMetadata, type GameSummary, type LibraryStats, type PackageKind } from "@lootden/shared";
+import { cleanTogether, compareVersion, contentHint, togetherFromMetadata, type TogetherTag, FULL_GAME_SIZE_RATIO, PC_PLATFORM, setupKindOf, type KindReason, PLATFORMS, type ControllerSupport, type GameDetail, type GameMetadata, type GameSummary, type LibraryStats, type PackageKind, versionLabel } from "@lootden/shared";
 import { json, now, type Db } from "../db/database.js";
 import { kidSafeFromRatings } from "../metadata/ratings.js";
 import { cleanTitle, titleSimilarity } from "../metadata/titles.js";
@@ -57,6 +57,7 @@ interface GameRow {
   kind_override: string | null;
   base_game_override: string | null;
   together_override: string | null;
+  version_override: string | null;
 }
 
 interface MetadataRow {
@@ -116,6 +117,8 @@ export class Library {
   /** What each entry is and which game each update or DLC belongs to; rebuilt after scans, overrides and metadata changes (and at most every few seconds). */
   private baseCache: { at: number; map: Map<string, PackageVerdict> } | null = null;
   private latestCache: { from: Map<string, PackageVerdict>; map: Map<string, string> } | null = null;
+  /** Versions an admin typed in for games whose names don't say, by game id. */
+  private versionOverrides: Map<string, string> | null = null;
 
   constructor(
     private readonly db: Db,
@@ -252,7 +255,7 @@ export class Library {
 
   private rows(): { games: Map<string, GameRow>; meta: Map<string, MetadataRow> } {
     const games = new Map(
-      (this.db.prepare("SELECT id, added_at, title_override, kid_safe_override, controller_override, cover_override, background_override, save_path, kind_override, base_game_override, together_override FROM games").all() as unknown as GameRow[]).map(
+      (this.db.prepare("SELECT id, added_at, title_override, kid_safe_override, controller_override, cover_override, background_override, save_path, kind_override, base_game_override, together_override, version_override FROM games").all() as unknown as GameRow[]).map(
         (r) => [r.id, r],
       ),
     );
@@ -340,6 +343,14 @@ export class Library {
     return map;
   }
 
+  /** A game's version: what an admin set, or what its file and folder names say. */
+  private versionOf(g: ScannedGame): string | null {
+    this.versionOverrides ??= new Map(
+      (this.db.prepare("SELECT id, version_override FROM games WHERE version_override IS NOT NULL").all() as Array<{ id: string; version_override: string }>).map((r) => [r.id, r.version_override]),
+    );
+    return this.versionOverrides.get(g.id) ?? g.version;
+  }
+
   /** Newest version on the server per game: its own name's, or the highest of its updates'. */
   private latestVersions(): Map<string, string> {
     const verdicts = this.packages();
@@ -348,9 +359,10 @@ export class Library {
     for (const g of this.scanned.values()) {
       const v = verdicts.get(g.id);
       const owner = v?.kind === "update" ? v.baseGameId : (v?.kind ?? g.kind) === "game" ? g.id : null;
-      if (!owner || !g.version) continue;
+      const version = this.versionOf(g);
+      if (!owner || !version) continue;
       const best = map.get(owner);
-      if (!best || compareVersion(g.version, best) > 0) map.set(owner, g.version);
+      if (!best || compareVersion(version, best) > 0) map.set(owner, version);
     }
     this.latestCache = { from: verdicts, map };
     return map;
@@ -371,7 +383,7 @@ export class Library {
     const { files, entryModifiedAt, ...base } = g;
     return {
       ...base,
-      title: row?.title_override || metadata?.name || (lookalike ? `${g.baseTitle}${g.version ? ` v${g.version}` : ""}` : g.title),
+      title: row?.title_override || metadata?.name || (lookalike ? `${g.baseTitle}${g.version ? ` ${versionLabel(g.version)}` : ""}` : g.title),
       // "Recently added" follows the folder's Date modified, like sorting the games folder in Explorer.
       addedAt: entryModifiedAt ?? row?.added_at ?? new Date(0).toISOString(),
       // Updates and DLC show their game's art unless they have their own.
@@ -384,7 +396,7 @@ export class Library {
       // Updates and DLC are as kid-safe as their game.
       kidSafe: ownKidSafe ?? baseGame?.kidSafe ?? null,
       kind,
-      version: g.version,
+      version: this.versionOf(g),
       fromVersion: kind === "update" ? g.fromVersion : null,
       baseGameId,
       kindReason: reason,
@@ -401,6 +413,7 @@ export class Library {
         cover: row?.cover_override ?? null,
         background: row?.background_override ?? null,
         together: row?.together_override != null ? cleanTogether(json(row.together_override, [])) : null,
+        version: row?.version_override ?? null,
       },
       savePath: row?.save_path ?? null,
       addons: [],
@@ -416,7 +429,7 @@ export class Library {
   get(id: string, related = true): GameDetail | undefined {
     const g = this.scanned.get(id);
     if (!g) return undefined;
-    const row = this.db.prepare("SELECT id, added_at, title_override, kid_safe_override, controller_override, cover_override, background_override, save_path, kind_override, base_game_override, together_override FROM games WHERE id = ?").get(id) as
+    const row = this.db.prepare("SELECT id, added_at, title_override, kid_safe_override, controller_override, cover_override, background_override, save_path, kind_override, base_game_override, together_override, version_override FROM games WHERE id = ?").get(id) as
       | GameRow
       | undefined;
     const meta = this.db.prepare("SELECT * FROM metadata WHERE game_id = ?").get(id) as MetadataRow | undefined;
@@ -556,7 +569,12 @@ export class Library {
     this.db.prepare("UPDATE games SET save_path = ? WHERE id = ?").run(savePath || null, id);
   }
 
-  setOverrides(id: string, o: { title?: string | null; kidSafe?: boolean | null; controller?: ControllerSupport | null; together?: TogetherTag[] | null }): void {
+  setOverrides(id: string, o: { title?: string | null; kidSafe?: boolean | null; controller?: ControllerSupport | null; together?: TogetherTag[] | null; version?: string | null }): void {
+    if (o.version !== undefined) {
+      this.db.prepare("UPDATE games SET version_override = ? WHERE id = ?").run(o.version, id);
+      this.versionOverrides = null;
+      this.latestCache = null;
+    }
     if (o.together !== undefined) this.db.prepare("UPDATE games SET together_override = ? WHERE id = ?").run(o.together === null ? null : JSON.stringify(cleanTogether(o.together)), id);
     if (o.title !== undefined) this.db.prepare("UPDATE games SET title_override = ? WHERE id = ?").run(o.title || null, id);
     if (o.kidSafe !== undefined) this.db.prepare("UPDATE games SET kid_safe_override = ? WHERE id = ?").run(o.kidSafe === null ? null : o.kidSafe ? 1 : 0, id);

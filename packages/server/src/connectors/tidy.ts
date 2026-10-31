@@ -2,7 +2,7 @@ import { spawn } from "node:child_process";
 import { access, constants, open, readdir, rename, rm, stat } from "node:fs/promises";
 import { createRequire } from "node:module";
 import path from "node:path";
-import { groupArchiveSets, packageInfo, safeFolderName, setupKindOf } from "@lootden/shared";
+import { groupArchiveSets, packageInfo, safeFolderName, versionLabel, setupKindOf } from "@lootden/shared";
 import { packageTitle } from "../catalog/scanner.js";
 import { cleanTitle } from "../metadata/titles.js";
 
@@ -44,13 +44,13 @@ export function tidyName(releaseName: string): string {
   // Updates and DLC keep saying so, or they'd be taken for the full game once imported.
   const pkg = packageInfo(base);
   if (pkg.kind === "update") {
-    const versions = pkg.fromVersion ? `v${pkg.fromVersion} to v${pkg.version}` : pkg.version ? `v${pkg.version}` : "";
+    const versions = pkg.fromVersion ? `${versionLabel(pkg.fromVersion)} to ${pkg.version ? versionLabel(pkg.version) : ""}`.trim() : pkg.version ? `${versionLabel(pkg.version)}` : "";
     return safeFolderName(`${pkg.baseTitle} Update ${versions}`.trim());
   }
   if (pkg.kind === "dlc") return safeFolderName(packageTitle(base));
   const { query } = cleanTitle(base);
   const version = releaseVersion(base);
-  const label = version ? (version.startsWith("Build") ? `${query} ${version}` : `${query} v${version}`) : query;
+  const label = version ? (version.startsWith("Build") ? `${query} ${version}` : `${query} ${versionLabel(version)}`) : query;
   return safeFolderName(label);
 }
 

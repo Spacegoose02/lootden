@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { compareVersion, type GameSummary } from "@lootden/shared";
+import { compareVersion, versionLabel as v, type GameSummary } from "@lootden/shared";
 import { formatBytes } from "../api";
 import { bridgeError, desktop, type InstalledGame, type Progress } from "../desktop";
 
@@ -27,15 +27,15 @@ export function KindBadge({ game, detail = false }: { game: Pick<GameSummary, "k
 
 /** "v1.2 → v1.3", "v1.3" or "" for an update or DLC. */
 export function versionLabel(u: Pick<GameSummary, "version" | "fromVersion">): string {
-  if (u.fromVersion && u.version) return `v${u.fromVersion} → v${u.version}`;
-  return u.version ? `v${u.version}` : "";
+  if (u.fromVersion && u.version) return `${v(u.fromVersion)} → ${v(u.version)}`;
+  return u.version ? `${v(u.version)}` : "";
 }
 
 /** Why an update doesn't fit the copy on this PC, or null. Mirrors the app's own check. */
 export function versionProblem(u: Pick<GameSummary, "kind" | "version" | "fromVersion">, local: InstalledGame): string | null {
   if (u.kind !== "update" || !local.version) return null;
-  if (u.fromVersion && compareVersion(local.version, u.fromVersion) !== 0) return `Made for v${u.fromVersion}; this PC has v${local.version}`;
-  if (u.version && compareVersion(u.version, local.version) <= 0) return `This PC already has v${local.version}`;
+  if (u.fromVersion && compareVersion(local.version, u.fromVersion) !== 0) return `Made for ${v(u.fromVersion)}; this PC has ${v(local.version)}`;
+  if (u.version && compareVersion(u.version, local.version) <= 0) return `This PC already has ${v(local.version)}`;
   return null;
 }
 
@@ -129,7 +129,7 @@ export function UpdateActions({
             {busy ? "Applying…" : problem ? "Apply anyway…" : update.kind === "dlc" ? "Add to game" : "Apply update"}
           </button>
           <span className="muted small">
-            {problem ?? `To ${local.title}${local.version ? ` (v${local.version})` : ""} · ${formatBytes(update.sizeBytes)}`}
+            {problem ?? `To ${local.title}${local.version ? ` (${v(local.version)})` : ""} · ${formatBytes(update.sizeBytes)}`}
           </span>
         </div>
       )}

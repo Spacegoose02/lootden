@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { platformFor, type GameSummary } from "@lootden/shared";
+import { platformFor, versionLabel, type GameSummary } from "@lootden/shared";
 import { api, formatBytes } from "../api";
 import { bridgeError, desktop, type LocalGameCopy } from "../desktop";
 import { Cover } from "./Cover";
@@ -61,7 +61,7 @@ export function LocalGame({ copy, removed }: { copy: LocalGameCopy; removed: boo
   const cover = { id: l.gameId, title: game.title, coverUrl: copy.cover, backgroundUrl: null };
   const platform = l.platform ?? "pc";
   const needsSetup = !!l.needsSetup && !l.installedDir && platform === "pc";
-  const facts = [game.releaseYear, game.genres.join(", "), game.sizeBytes ? formatBytes(game.sizeBytes) : "", l.version ? `v${l.version}` : ""].filter(Boolean).join(" · ");
+  const facts = [game.releaseYear, game.genres.join(", "), game.sizeBytes ? formatBytes(game.sizeBytes) : "", l.version ? `${versionLabel(l.version)}` : ""].filter(Boolean).join(" · ");
 
   return (
     <article className="detail">

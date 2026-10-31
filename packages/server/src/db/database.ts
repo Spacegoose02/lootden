@@ -517,6 +517,10 @@ const MIGRATIONS: string[] = [
     PRIMARY KEY (user_id, day)
   );
   `,
+  `
+  -- Admin's version for a game whose file and folder names don't say one; NULL means read from the names.
+  ALTER TABLE games ADD COLUMN version_override TEXT;
+  `,
 ];
 
 export function openDatabase(file: string): Db {
