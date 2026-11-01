@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { formatBytes } from "../api";
-import { bridgeError, desktop, type AppSettings, type AppUpdate } from "../desktop";
+import { bridgeError, desktop, type AppSettings, type AppSettingsPatch, type AppUpdate } from "../desktop";
+import { EveryGameScripts } from "./LaunchOptions";
 
 /** Live state of the desktop app's own update (desktop app 0.9.1 and later). */
 export function useAppUpdate(): [AppUpdate | null, (a: "check" | "install") => Promise<void>] {
@@ -45,15 +46,20 @@ export function AppOptions() {
   const [opts, setOpts] = useState<AppSettings | null>(null);
   const [update, act] = useAppUpdate();
   const [error, setError] = useState("");
+  const [discordId, setDiscordId] = useState("");
   useEffect(() => {
-    if (desktop?.appSettings) void desktop.appSettings().then(setOpts, () => {});
+    if (desktop?.appSettings)
+      void desktop.appSettings().then((o) => {
+        setOpts(o);
+        setDiscordId(o.discordClientId ?? "");
+      }, () => {});
   }, []);
   if (!desktop) return null;
   const bridge = desktop;
   if (!bridge.appSettings || !bridge.quit) {
     return <p className="muted small">Update the LootDen app to choose tray, start-up and update options here.</p>;
   }
-  const set = (patch: Partial<Pick<AppSettings, "closeToTray" | "autoUpdate" | "openAtLogin" | "handheld" | "fullscreen" | "browserLinks">>) =>
+  const set = (patch: AppSettingsPatch) =>
     bridge.appSettings!(patch).then(setOpts, (e) => setError(bridgeError(e)));
   const run = (fn: () => Promise<unknown>) => fn().catch((e) => setError(bridgeError(e)));
   return (
@@ -112,8 +118,47 @@ export function AppOptions() {
               <small className="muted">Links in news, game pages and trailers. LootDen's browser works with a controller and stays in full screen.</small>
             </label>
           )}
+          {opts.splash && (
+            <label className="field">
+              <span className="field-label">Launch splash</span>
+              <select value={opts.splash} onChange={(e) => void set({ splash: e.target.value as "off" | "handheld" | "on" })}>
+                <option value="off">Off</option>
+                <option value="handheld">In handheld mode</option>
+                <option value="on">Always</option>
+              </select>
+              <small className="muted">Shows the game's picture full screen while it loads, instead of the desktop.</small>
+            </label>
+          )}
+          {opts.suspendKey !== undefined && (
+            <label className="check">
+              <input type="checkbox" checked={opts.suspendKey} onChange={(e) => void set({ suspendKey: e.target.checked })} />
+              Ctrl+Shift+P pauses and resumes the game that's running (a Pause button also shows on its page). Paused time doesn't count as play time. Online games may disconnect while paused.
+            </label>
+          )}
+          {opts.discordEnabled !== undefined && (
+            <div className="field">
+              <label className="check">
+                <input type="checkbox" checked={opts.discordEnabled} onChange={(e) => void set({ discordEnabled: e.target.checked })} />
+                Show what I'm playing on Discord
+              </label>
+              {opts.discordEnabled && (
+                <div className="inline wrap">
+                  <input value={discordId} onChange={(e) => setDiscordId(e.target.value)} placeholder="Discord application ID" aria-label="Discord application ID" inputMode="numeric" />
+                  <button className="small" onClick={() => void set({ discordClientId: discordId })}>
+                    Save
+                  </button>
+                </div>
+              )}
+              {opts.discordEnabled && (
+                <small className="muted">
+                  Needs the Discord app on this PC. Make a free application named LootDen at discord.com/developers/applications (its name is what Discord shows), copy its Application ID here, and optionally add an art asset called <code>lootden</code> for the picture.
+                </small>
+              )}
+            </div>
+          )}
         </div>
       )}
+      {desktop.setLaunchScripts && <EveryGameScripts />}
       <div className="inline app-update">
         <span>
           Version {update?.current ?? "?"}
