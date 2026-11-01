@@ -11,6 +11,7 @@ import {
   listTruckMods,
   readTruckManifest,
   removeTruckMod,
+  retireTruckModFiles,
   scanTruckMods,
   truckGameVersion,
   truckModsFolder,
@@ -50,7 +51,26 @@ async function sevenZip(bundled: string) {
   return bundled ? { path: bundled, supportsRar: false } : system;
 }
 
+/** An update started from the mod list: the next mod downloaded from that site replaces these files. */
+interface PendingUpdate {
+  game: TruckGame;
+  url: string;
+  host: string;
+  files: string[];
+  at: number;
+}
+
+const hostOf = (u: string) => {
+  try {
+    return new URL(u).hostname.replace(/^www\./, "").toLowerCase();
+  } catch {
+    return "";
+  }
+};
+
 export class TruckMods {
+  private pending: PendingUpdate[] = [];
+
   constructor(
     private readonly deps: TruckModDeps,
     private readonly bundled7za: () => string,
@@ -67,6 +87,25 @@ export class TruckMods {
 
   private notify(title: string, body: string) {
     if (Notification.isSupported()) new Notification({ title, body }).show();
+  }
+
+  /**
+   * The mod list's Update button: the next mod downloaded in the browser from this page's site (in
+   * the next hour) is that mod's new version, and the old files go to mod-old once it's in.
+   */
+  expectUpdate(game: TruckGame, url: string, files: string[]): void {
+    this.pending = [{ game, url, host: hostOf(url), files: files.slice(0, 50), at: Date.now() }, ...this.pending.filter((p) => p.url !== url)].slice(0, 10);
+  }
+
+  /** The update a download belongs to: one started on its site, else the only one started in the last 15 minutes. */
+  private pendingFor(pageUrl: string, fileUrl: string): PendingUpdate | null {
+    const fresh = this.pending.filter((p) => Date.now() - p.at < 60 * 60_000);
+    this.pending = fresh;
+    const hosts = [hostOf(pageUrl), hostOf(fileUrl)];
+    const bySite = fresh.find((p) => p.host && hosts.includes(p.host));
+    if (bySite) return bySite;
+    const recent = fresh.filter((p) => Date.now() - p.at < 15 * 60_000);
+    return recent.length === 1 ? recent[0]! : null;
   }
 
   /**
@@ -87,20 +126,23 @@ export class TruckMods {
   handleDownload(item: DownloadItem, wc: WebContents | undefined, owner: BaseWindow | null): boolean {
     const pageUrl = wc && !wc.isDestroyed() ? wc.getURL() : "";
     const fileName = item.getFilename();
-    if (!TruckMods.isModDownload(fileName, item.getURL(), pageUrl)) return false;
+    const update = truckModType(fileName) ? this.pendingFor(pageUrl, item.getURL()) : null;
+    if (!update && !TruckMods.isModDownload(fileName, item.getURL(), pageUrl)) return false;
     const pageTitle = wc && !wc.isDestroyed() ? wc.getTitle() : "";
     const tmp = path.join(os.tmpdir(), `lootden-truckmod-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
     mkdirSync(tmp, { recursive: true });
     item.setSavePath(path.join(tmp, safeName(fileName)));
 
-    const guess = truckGameFromUrl(pageUrl) ?? truckGameFromUrl(item.getURL());
+    const guess = update?.game ?? truckGameFromUrl(pageUrl) ?? truckGameFromUrl(item.getURL());
     const finished = new Promise<boolean>((resolve) => item.once("done", (_e, state) => resolve(state === "completed")));
     const games: TruckGame[] = guess === "ets2" ? ["ets2", "ats"] : ["ats", "ets2"];
     const ask = owner && !owner.isDestroyed()
       ? dialog.showMessageBox(owner as never, {
           type: "question",
-          message: `Add ${fileName} to your truck mods?`,
-          detail: "LootDen puts it in the game's mod folder on this PC; turn it on in the game's Mod Manager.",
+          message: update ? `Add ${fileName} as the new version?` : `Add ${fileName} to your truck mods?`,
+          detail: update
+            ? `LootDen puts it in the game's mod folder and moves the old version (${update.files.join(", ")}) to the mod-old folder beside it.`
+            : "LootDen puts it in the game's mod folder on this PC; turn it on in the game's Mod Manager.",
           buttons: [...games.map((g) => `Add to ${TRUCK_GAMES[g].short}`), "Save to Downloads"],
           defaultId: 0,
           cancelId: 2,
@@ -122,7 +164,13 @@ export class TruckMods {
         }
         const game = games[response]!;
         const title = titleFrom(pageTitle, pageUrl, fileName);
-        await this.addFile(game, saved, { fileName, title, sourceUrl: isTruckyModsUrl(pageUrl) ? pageUrl : null, share: checkboxChecked });
+        const added = await this.addFile(game, saved, { fileName, title, sourceUrl: update?.url ?? (isTruckyModsUrl(pageUrl) ? pageUrl : null), share: checkboxChecked });
+        if (update && update.game === game) {
+          this.pending = this.pending.filter((p) => p !== update);
+          const keep = new Set(added.files.map((f) => f.toLowerCase()));
+          const moved = await retireTruckModFiles(this.folder(game), update.files.filter((f) => !keep.has(f.toLowerCase())));
+          if (moved.length) this.progress(game, `Moved the old version to mod-old: ${moved.join(", ")}`, true);
+        }
       } catch (err) {
         this.notify("Couldn't add the mod", (err as Error).message);
       } finally {

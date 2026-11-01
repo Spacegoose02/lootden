@@ -17,6 +17,7 @@ import { UpdatesPanel } from "../components/UpdatesPanel";
 import { PreparePanel } from "../components/PreparePanel";
 import { JournalPanel, ModsPanel, WorkshopPanel, VersionBanner } from "../components/GameExtras";
 import { TruckModsPanel } from "../components/TruckMods";
+import { TruckModListPanel } from "../components/TruckModList";
 import { bridgeError, desktop, type LocalGameCopy } from "../desktop";
 import { LocalGame } from "../components/LocalGame";
 import { launchStoreGame, storeKey, useStoreGames } from "../components/StoreGameCard";
@@ -210,6 +211,7 @@ export function GameDetail() {
 
       {game.platform === "pc" && !isAddon && !me?.user?.kidMode && <WorkshopPanel gameId={game.id} isAdmin={me?.role === "admin"} installedHere={!!installed?.some((g) => g.gameId === game.id)} />}
       {game.platform === "pc" && !me?.user?.kidMode && truckGameFor(game.metadata?.steamAppId, game.title) && <TruckModsPanel game={truckGameFor(game.metadata?.steamAppId, game.title)!} />}
+      {game.platform === "pc" && !me?.user?.kidMode && truckGameFor(game.metadata?.steamAppId, game.title) && <TruckModListPanel game={truckGameFor(game.metadata?.steamAppId, game.title)!} />}
 
       {!isAddon && <PreparePanel game={game} />}
 

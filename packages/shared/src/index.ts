@@ -14,6 +14,7 @@ export * from "./platforms.js";
 export * from "./presence.js";
 export * from "./roblox.js";
 export * from "./truckmods.js";
+export * from "./truckmodlist.js";
 
 export const API_VERSION = 1;
 

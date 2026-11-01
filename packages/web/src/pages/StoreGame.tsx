@@ -6,6 +6,7 @@ import { bridgeError, desktop } from "../desktop";
 import { ArtworkPicker } from "../components/ArtworkEditor";
 import { WorkshopPanel } from "../components/GameExtras";
 import { TruckModsPanel } from "../components/TruckMods";
+import { TruckModListPanel } from "../components/TruckModList";
 import { GameMedia } from "../components/GameMedia";
 import { useAuth } from "../auth";
 import { listingDate } from "../components/Listing";
@@ -126,6 +127,7 @@ export function StoreGame() {
       {info && <GameMedia game={info} />}
       {addon === "steam" && /^\d+$/.test(id) && !me?.user?.kidMode && <WorkshopPanel steamAppId={id} isAdmin={me?.role === "admin"} installedHere={!!local} />}
       {addon === "steam" && truckGameForSteamApp(id) && !me?.user?.kidMode && <TruckModsPanel game={truckGameForSteamApp(id)!} />}
+      {addon === "steam" && truckGameForSteamApp(id) && !me?.user?.kidMode && <TruckModListPanel game={truckGameForSteamApp(id)!} />}
     </article>
   );
 }
