@@ -43,6 +43,10 @@ export class GameServerClient {
     this.base = config.serverUrl.replace(/\/+$/, "");
   }
 
+  /** A full URL for a path on the server, such as a download link it handed out. */
+  urlFor(pathname: string): string {
+    return this.base + pathname;
+  }
   headers(extra: Record<string, string> = {}): Record<string, string> {
     return this.config.apiToken ? { Authorization: `Bearer ${this.config.apiToken}`, ...extra } : extra;
   }

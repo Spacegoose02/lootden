@@ -55,6 +55,22 @@ export interface RecompSettingView {
   disabled: boolean;
 }
 
+export interface RecompInstalledMod {
+  full: string;
+  name: string;
+  version: string;
+  files: string[];
+  dep: boolean;
+}
+
+/** A recomp's mods on Thunderstore, and the ones on this PC. */
+export interface RecompModsView {
+  community: string;
+  available: Array<{ full: string; name: string; owner: string; description: string; icon: string; version: string; page: string; downloads: number; rating: number }>;
+  installed: RecompInstalledMod[];
+  others: string[];
+}
+
 export interface RecompSetup {
   id: string;
   installed: { version: string; installedAt: string } | null;
@@ -256,6 +272,9 @@ export interface DesktopBridge {
   removeRecomp?(id: string): Promise<{ keptSaves: boolean }>;
   recompUpdates?(): Promise<Array<{ id: string; installed: string; latest: string }>>;
   recompSettings?(id: string): Promise<RecompSettingView[]>;
+  recompMods?(id: string): Promise<RecompModsView | null>;
+  installRecompMod?(id: string, full: string): Promise<RecompInstalledMod[]>;
+  removeRecompMod?(id: string, full: string): Promise<RecompInstalledMod[]>;
   setRecompSetting?(id: string, settingId: string, choice: number): Promise<RecompSettingView[]>;
   changeServer(): Promise<void>;
   /** Switches to the app's offline library when the server really can't be reached (apps from 0.13.2). */

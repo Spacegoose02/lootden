@@ -42,6 +42,8 @@ export interface ToolsManifest {
       prepared?: string;
       /** The player's picks for settings passed on the command line, by setting id. */
       choices?: Record<string, number>;
+      /** Mods LootDen put in its mods folder, with their files, so they can be taken out again. */
+      mods?: Array<{ full: string; name: string; version: string; files: string[]; dep: boolean }>;
     }
   >;
   /** Last save backup restored per game, so the same backup isn't applied twice. */

@@ -1,3 +1,4 @@
+import type { RecompCache } from "./emulation/recomp-cache.js";
 import type { FastifyReply, FastifyRequest } from "fastify";
 import type { AuthService, Principal } from "./auth/service.js";
 import type { OidcService } from "./auth/oidc.js";
@@ -68,6 +69,7 @@ export interface AppContext {
   clients: ClientDownloads;
   saves: SaveStore;
   bios: BiosStore;
+  recompCache: RecompCache;
   updates: GameUpdates;
   freeGames: FreeGames;
   wishlist: WishlistService;

@@ -24,6 +24,9 @@ import {
   playRecomp,
   recompInfo,
   recompOverview,
+  recompMods,
+  installRecompMod,
+  removeRecompMod,
   recompSettings,
   recompUpdates,
   removeRecomp,
@@ -1723,6 +1726,21 @@ function registerIpc(): void {
     return recompUpdates({ toolsDir: toolsDir(), added: await addedRecomps() });
   });
 
+  ipcMain.handle("gm:recompMods", async (e, id: string) => {
+    fromServer(e);
+    return recompMods(String(id), { toolsDir: toolsDir(), added: await addedRecomps() });
+  });
+
+  ipcMain.handle("gm:installRecompMod", async (e, id: string, full: string) => {
+    fromServer(e);
+    return installRecompMod(String(id), String(full), { toolsDir: toolsDir(), sevenZip: await sevenZip(), added: await addedRecomps() });
+  });
+
+  ipcMain.handle("gm:removeRecompMod", async (e, id: string, full: string) => {
+    fromServer(e);
+    return removeRecompMod(String(id), String(full), { toolsDir: toolsDir(), added: await addedRecomps() });
+  });
+
   ipcMain.handle("gm:recompSettings", async (e, id: string) => {
     fromServer(e);
     return recompSettings(String(id), { toolsDir: toolsDir() });
@@ -1744,6 +1762,7 @@ function registerIpc(): void {
     try {
       const r = await installRecomp(id, {
         added: await addedRecomps(),
+        api: await client().catch(() => undefined),
         toolsDir: toolsDir(),
         sevenZip: await sevenZip(),
         signal: controller.signal,
