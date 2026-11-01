@@ -12,6 +12,7 @@ import { DesktopInstall } from "../components/DesktopInstall";
 import { ReleaseLookup } from "../components/ReleaseLookup";
 import { SavesPanel } from "../components/SavesPanel";
 import { ShelfButton } from "../components/Shelves";
+import { MarkButtons, TagsPanel } from "../components/Marks";
 import { TOGETHER_TAGS } from "@lootden/shared";
 import { UpdatesPanel } from "../components/UpdatesPanel";
 import { PreparePanel } from "../components/PreparePanel";
@@ -111,6 +112,7 @@ export function GameDetail() {
           )}
           <Badges game={game} />
           {me?.user && !isAddon && <ShelfButton gameId={game.id} />}
+          {me?.user && !isAddon && <MarkButtons gameKey={game.id} />}
           {me?.user && !isAddon && game.platform === "pc" && <SendToPcButton gameId={game.id} title={game.title} sizeBytes={game.sizeBytes} />}
           {!isAddon && game.platform === "pc" && <StreamButton gameId={game.id} title={game.title} />}
           <AlsoOnStores gameId={game.id} />
@@ -156,6 +158,7 @@ export function GameDetail() {
       {me?.user && !isAddon && <JournalPanel gameId={game.id} />}
       {me?.user && !isAddon && <GameAchievementsPanel gameId={game.id} journalId={game.id} />}
       {me?.user && !isAddon && <GameSessionsPanel gameId={game.id} />}
+      {me?.user && !isAddon && <TagsPanel gameKey={game.id} />}
       {!isAddon && <LocalScreenshots title={m?.name ?? game.title} steamAppId={m?.steamAppId ?? null} gameId={game.id} />}
 
       {m?.screenshots.length ? (

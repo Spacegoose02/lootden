@@ -1,5 +1,8 @@
 import { desktop } from "./desktop";
 import type {
+  GameMarks,
+  MarksPatch,
+  SmartRules,
   AchievementSummary,
   GameAchievements,
   AchievementSource,
@@ -810,6 +813,22 @@ export const api = {
     call<AchievementsAnswer>("GET", `/api/store-games/${encodeURIComponent(addon)}/${encodeURIComponent(id)}/achievements${refresh ? "?refresh=1" : ""}`),
   myAchievements: () => call<AchievementSummary>("GET", "/api/me/achievements"),
   familyAchievements: () => call<Array<{ userId: number; name: string; avatar: string | null; unlocked: number; perfect: number }>>("GET", "/api/family/achievements"),
+  marks: () => call<Record<string, GameMarks>>("GET", "/api/me/marks"),
+  tags: () => call<{ tags: Array<{ name: string; count: number }>; fields: string[] }>("GET", "/api/me/tags"),
+  setMarks: (key: string, patch: MarksPatch) => call<GameMarks>("PATCH", `/api/me/marks/${encodeURIComponent(key)}`, patch),
+  bulkEdit: (keys: string[], edit: { patch?: MarksPatch; status?: BacklogStatus | null; shelfId?: number }) => call<{ changed: number }>("POST", "/api/me/marks/bulk", { keys, ...edit }),
+  backups: () => call<BackupState>("GET", "/api/backups"),
+  backupSettings: (s: { daily?: boolean; keep?: number }) => call<BackupState>("PUT", "/api/backups/settings", s),
+  makeBackup: () => call<BackupState>("POST", "/api/backups"),
+  deleteBackup: (name: string) => call<BackupState>("DELETE", `/api/backups/${encodeURIComponent(name)}`),
+  restoreBackup: (name: string) => call<BackupState>("POST", `/api/backups/${encodeURIComponent(name)}/restore`),
+  cancelRestore: () => call<BackupState>("DELETE", "/api/backups/restore"),
+  uploadBackup: async (file: File) => {
+    const res = await fetch("/api/backups/upload", { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/octet-stream" }, body: file });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new ApiError((data as { error?: string }).error ?? `Upload failed (${res.status})`, res.status);
+    return data as BackupState;
+  },
   gameSessions: (id: string) => call<GameSessions>("GET", `/api/games/${encodeURIComponent(id)}/sessions`),
   playHistory: (days = 30, everyone = false) =>
     call<PlayHistory>("GET", `/api/me/play-history${qs({ days: String(days), everyone: everyone ? "1" : undefined, tz: Intl.DateTimeFormat().resolvedOptions().timeZone })}`),
@@ -883,10 +902,18 @@ export interface Shelf {
   onHome: boolean;
   ownerId: number | null;
   mine: boolean;
+  /** A smart shelf's rules; null (or missing on older servers) for one filled by hand. */
+  rules?: SmartRules | null;
   games: GameSummary[];
 }
 
-export type ShelfInput = Partial<Pick<Shelf, "name" | "emoji" | "description" | "household" | "onHome">>;
+export type ShelfInput = Partial<Pick<Shelf, "name" | "emoji" | "description" | "household" | "onHome">> & { rules?: SmartRules | null };
+
+export interface BackupState {
+  settings: { daily: boolean; keep: number };
+  backups: Array<{ name: string; bytes: number; createdAt: string }>;
+  pendingRestore: boolean;
+}
 
 /** "1 h 20 min", "45 min": for play time left and limits. */
 export function formatMinutes(seconds: number): string {

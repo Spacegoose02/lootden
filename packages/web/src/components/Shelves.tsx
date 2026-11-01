@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { api, type Shelf, type ShelfInput } from "../api";
+import type { SmartRules } from "@lootden/shared";
+import { api, BACKLOG, BACKLOG_LABELS, type Shelf, type ShelfInput } from "../api";
+import { useTagList } from "./Marks";
 import { useAuth } from "../auth";
 import { GameCard } from "./GameCard";
 
@@ -12,13 +14,16 @@ function ShelfForm({ shelf, admin, onDone, onCancel }: { shelf?: Shelf; admin: b
   const [description, setDescription] = useState(shelf?.description ?? "");
   const [household, setHousehold] = useState(shelf?.household ?? false);
   const [onHome, setOnHome] = useState(shelf?.onHome ?? true);
+  const [smart, setSmart] = useState(!!shelf?.rules);
+  const [rules, setRules] = useState<SmartRules>(shelf?.rules ?? {});
   const [error, setError] = useState("");
   return (
     <form
       className="panel shelf-form"
       onSubmit={(e) => {
         e.preventDefault();
-        void onDone({ name, emoji, description, household, onHome }).catch((err: Error) => setError(err.message));
+        if (smart && !Object.keys(rules).some((k) => k !== "sort" && k !== "limit")) return setError("Pick at least one rule, or untick Smart shelf");
+        void onDone({ name, emoji, description, household, onHome, rules: smart ? rules : null }).catch((err: Error) => setError(err.message));
       }}
     >
       <div className="emoji-pick" role="radiogroup" aria-label="Icon">
@@ -32,6 +37,11 @@ function ShelfForm({ shelf, admin, onDone, onCancel }: { shelf?: Shelf; admin: b
         <input placeholder="Shelf name, like Halloween picks" value={name} onChange={(e) => setName(e.target.value)} maxLength={60} aria-label="Name" autoFocus style={{ flex: 2 }} />
         <input placeholder="What's on it (optional)" value={description} onChange={(e) => setDescription(e.target.value)} maxLength={200} aria-label="Description" style={{ flex: 3 }} />
       </div>
+      <label className="check">
+        <input type="checkbox" checked={smart} onChange={(e) => setSmart(e.target.checked)} />
+        Smart shelf: fills itself with the games that match
+      </label>
+      {smart && <RulesEditor rules={rules} onChange={setRules} />}
       <div className="inline wrap">
         <label className="check">
           <input type="checkbox" checked={onHome} onChange={(e) => setOnHome(e.target.checked)} />
@@ -125,7 +135,7 @@ export function ShelvesTab() {
                     {s.name}
                   </h2>
                   <span className="muted small row-sub">
-                    {[s.household ? "Household" : "Yours", s.onHome ? "on Home" : null, `${s.games.length} game${s.games.length === 1 ? "" : "s"}`, s.description].filter(Boolean).join(" · ")}
+                    {[s.rules ? "✨ Smart" : null, s.household ? "Household" : "Yours", s.onHome ? "on Home" : null, `${s.games.length} game${s.games.length === 1 ? "" : "s"}`, s.description].filter(Boolean).join(" · ")}
                   </span>
                   {canEdit && (
                     <span className="inline">
@@ -176,7 +186,7 @@ export function ShelfButton({ gameId }: { gameId: string }) {
   const [error, setError] = useState("");
   const box = useRef<HTMLDivElement>(null);
   const load = () => {
-    api.shelves().then((s) => setShelves(s.filter((x) => (x.household ? admin : x.mine))), () => {});
+    api.shelves().then((s) => setShelves(s.filter((x) => !x.rules && (x.household ? admin : x.mine))), () => {});
     api.gameShelves(gameId).then((ids) => setOn(new Set(ids)), () => {});
   };
   useEffect(() => {
@@ -268,5 +278,132 @@ export function HomeShelves() {
         </section>
       ))}
     </>
+  );
+}
+
+/** A smart shelf's rules: every rule set has to match. */
+function RulesEditor({ rules, onChange }: { rules: SmartRules; onChange: (r: SmartRules) => void }) {
+  const tags = useTagList();
+  const [genres, setGenres] = useState<string[]>([]);
+  useEffect(() => {
+    api.genres().then((g) => setGenres(g.map((x) => x.name)), () => {});
+  }, []);
+  const set = (patch: Partial<SmartRules>) => {
+    const next = { ...rules, ...patch } as Record<string, unknown>;
+    for (const k of Object.keys(next)) if (next[k] === undefined || next[k] === "" || (Array.isArray(next[k]) && !(next[k] as unknown[]).length)) delete next[k];
+    onChange(next as SmartRules);
+  };
+  const tri = (v: boolean | undefined) => (v === undefined ? "" : v ? "yes" : "no");
+  const fromTri = (v: string) => (v === "" ? undefined : v === "yes");
+  return (
+    <div className="rules-editor">
+      <label className="field">
+        <span className="field-label">Genre</span>
+        <select value={rules.genres?.[0] ?? ""} onChange={(e) => set({ genres: e.target.value ? [e.target.value] : undefined })}>
+          <option value="">Any</option>
+          {genres.map((g) => (
+            <option key={g}>{g}</option>
+          ))}
+        </select>
+      </label>
+      <label className="field">
+        <span className="field-label">Tag</span>
+        <select value={rules.tags?.[0] ?? ""} onChange={(e) => set({ tags: e.target.value ? [e.target.value] : undefined })}>
+          <option value="">Any</option>
+          {tags.map((t) => (
+            <option key={t}>{t}</option>
+          ))}
+        </select>
+      </label>
+      <label className="field">
+        <span className="field-label">Status</span>
+        <select value={rules.statuses?.[0] ?? ""} onChange={(e) => set({ statuses: e.target.value ? [e.target.value] : undefined })}>
+          <option value="">Any</option>
+          {BACKLOG.map((b) => (
+            <option key={b} value={b}>
+              {BACKLOG_LABELS[b]}
+            </option>
+          ))}
+          <option value="none">No status yet</option>
+        </select>
+      </label>
+      <label className="field">
+        <span className="field-label">Played</span>
+        <select value={tri(rules.played)} onChange={(e) => set({ played: fromTri(e.target.value) })}>
+          <option value="">Either</option>
+          <option value="no">Never played</option>
+          <option value="yes">Played</option>
+        </select>
+      </label>
+      <label className="field">
+        <span className="field-label">Installed</span>
+        <select value={tri(rules.installed)} onChange={(e) => set({ installed: fromTri(e.target.value) })}>
+          <option value="">Either</option>
+          <option value="yes">Installed somewhere</option>
+          <option value="no">Not installed</option>
+        </select>
+      </label>
+      <label className="field">
+        <span className="field-label">Favourites</span>
+        <select value={tri(rules.favourite)} onChange={(e) => set({ favourite: fromTri(e.target.value) })}>
+          <option value="">Either</option>
+          <option value="yes">Only favourites</option>
+        </select>
+      </label>
+      <label className="field">
+        <span className="field-label">Players</span>
+        <select value={tri(rules.together)} onChange={(e) => set({ together: fromTri(e.target.value) })}>
+          <option value="">Any</option>
+          <option value="yes">👥 Play together</option>
+        </select>
+      </label>
+      <label className="field">
+        <span className="field-label">Controller</span>
+        <select value={rules.controller ?? ""} onChange={(e) => set({ controller: (e.target.value || undefined) as SmartRules["controller"] })}>
+          <option value="">Any input</option>
+          <option value="any">Full or partial</option>
+          <option value="full">Full</option>
+        </select>
+      </label>
+      <label className="field">
+        <span className="field-label">Rating at least</span>
+        <input type="number" min={0} max={100} value={rules.minRating ?? ""} onChange={(e) => set({ minRating: e.target.value ? Number(e.target.value) : undefined })} />
+      </label>
+      <label className="field">
+        <span className="field-label">Released from</span>
+        <input type="number" min={1970} max={2100} placeholder="Year" value={rules.fromYear ?? ""} onChange={(e) => set({ fromYear: e.target.value ? Number(e.target.value) : undefined })} />
+      </label>
+      <label className="field">
+        <span className="field-label">Released up to</span>
+        <input type="number" min={1970} max={2100} placeholder="Year" value={rules.toYear ?? ""} onChange={(e) => set({ toYear: e.target.value ? Number(e.target.value) : undefined })} />
+      </label>
+      <label className="field">
+        <span className="field-label">Added in the last</span>
+        <select value={rules.addedDays ?? ""} onChange={(e) => set({ addedDays: e.target.value ? Number(e.target.value) : undefined })}>
+          <option value="">Any time</option>
+          <option value={7}>Week</option>
+          <option value={30}>Month</option>
+          <option value={90}>3 months</option>
+          <option value={365}>Year</option>
+        </select>
+      </label>
+      <label className="check">
+        <input type="checkbox" checked={!!rules.kidSafe} onChange={(e) => set({ kidSafe: e.target.checked || undefined })} /> Kid-safe only
+      </label>
+      <label className="field">
+        <span className="field-label">Order</span>
+        <select value={rules.sort ?? "title"} onChange={(e) => set({ sort: e.target.value as SmartRules["sort"] })}>
+          <option value="title">Title</option>
+          <option value="added">Newest added</option>
+          <option value="rating">Best rated</option>
+          <option value="release">Newest release</option>
+          <option value="random">Shuffled daily</option>
+        </select>
+      </label>
+      <label className="field">
+        <span className="field-label">At most</span>
+        <input type="number" min={1} max={500} placeholder="All" value={rules.limit ?? ""} onChange={(e) => set({ limit: e.target.value ? Number(e.target.value) : undefined })} />
+      </label>
+    </div>
   );
 }

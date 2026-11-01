@@ -96,7 +96,7 @@ export function useStoreGames(enabled = true) {
  * the desktop app (scanned) a game this PC's launchers don't have says Install; in a browser,
  * where nothing can tell, the button just opens the launcher.
  */
-export function StoreGameCard({ game: g, local, scanned, onError }: { game: StoreGame; local?: LocalStoreGame; scanned?: boolean; onError?: (message: string) => void }) {
+export function StoreGameCard({ game: g, local, scanned, onError, alsoOn }: { game: StoreGame; local?: LocalStoreGame; scanned?: boolean; onError?: (message: string) => void; alsoOn?: string[] }) {
   const install = !local && !!scanned;
   const launch = local?.launchUrl ?? (install ? storeInstallUrl(g) : g.launchUrl);
   return (
@@ -111,6 +111,11 @@ export function StoreGameCard({ game: g, local, scanned, onError }: { game: Stor
           </div>
           <div className="card-meta">
             <span className={`badge launcher-badge launcher-${g.addon.replace(/[^a-z0-9-]/gi, "")}`}>{g.store}</span>
+            {alsoOn?.length ? (
+              <span className="badge also-on" title={`Also on ${alsoOn.join(", ")}`}>
+                +{alsoOn.length}
+              </span>
+            ) : null}
             {g.playtimeSeconds ? ` ${formatPlaytime(g.playtimeSeconds)}` : ""}
           </div>
         </div>
