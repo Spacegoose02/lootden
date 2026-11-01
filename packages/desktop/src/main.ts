@@ -13,6 +13,8 @@ import {
   isManifest,
   runLocalSetup,
   saveManifest,
+  exeStampOf,
+  versionTag,
   biosFromServer,
   emulatorInfo,
   emulatorOverview,
@@ -57,14 +59,39 @@ import {
   robloxPlaceOf,
   robloxPlayId,
   trackRoblox,
+  setRobloxFullscreen,
   uninstallGame,
   applyUpdate,
   undoUpdate,
   UpdateMismatchError,
   type InstallEvent,
+  isLaunchUrl,
+  launchActionAndTrack,
+  runLaunchSteps,
+  stepTarget,
+  suspendProcesses,
   findLocalScreenshots,
 } from "@lootden/client";
-import { PRESENCE_INTERVAL_SECONDS, type Allowance, type LocalStoreGame, type PcCommand, type PlaySource, type RunningGame } from "@lootden/shared";
+import {
+  cleanLaunchProfile,
+  cleanLaunchSteps,
+  effectiveVersion,
+  emptyLaunchProfile,
+  launchKey,
+  PRESENCE_INTERVAL_SECONDS,
+  storePlayId,
+  type Allowance,
+  type GlobalLaunchScripts,
+  type LaunchAction,
+  type LaunchProfile,
+  type LaunchStep,
+  type LocalStoreGame,
+  type PcCommand,
+  type PcCopy,
+  type PlaySource,
+  type RunningGame,
+} from "@lootden/shared";
+import { cleanDiscordId, DiscordPresence, showSplash } from "./playextras.js";
 import { isExternalLink, isFile, onOrigin, permissionAllowed } from "./links.js";
 import { SettingsStore, type DesktopSettings } from "./settings.js";
 import { WebBrowser } from "./browser.js";
@@ -422,6 +449,8 @@ let beating = false;
 let installRemote: ((gameId: string) => Promise<unknown>) | null = null;
 /** Starts an installed game (lootden://play links, which Sunshine uses); set once the IPC handlers exist. */
 let playRemote: ((gameId: string) => Promise<unknown>) | null = null;
+/** Uploads this PC's copy of a game as the library copy, when an admin asks; set once the IPC handlers exist. */
+let refreshRemote: ((cmd: Extract<PcCommand, { kind: "refresh-copy" }>) => Promise<void>) | null = null;
 /** Commands already carried out, so a repeat delivery does nothing twice. */
 const handledCommands = new Set<string>();
 
@@ -430,7 +459,161 @@ function markRunning(gameId: string, title: string, source: PlaySource, stop?: A
   nowRunning.set(gameId, { game: { gameId, title, source, startedAt: new Date().toISOString() }, stop });
   lastPlayingNow = [...nowRunning.values()].map((r) => r.game);
   updateScreenshotKey(true);
+  updateDiscord();
   scheduleHeartbeat(1000);
+}
+
+let copiesCache: { at: number; copies: PcCopy[] } | null = null;
+
+/**
+ * The version of each LootDen PC game installed here, for the server to spot copies newer than
+ * the library's (refreshed every ten minutes; reading exe versions isn't free).
+ */
+async function copiesForPresence(): Promise<PcCopy[]> {
+  if (copiesCache && Date.now() - copiesCache.at < 10 * 60_000) return copiesCache.copies;
+  const games = await listInstalled(await searchDirs()).catch(() => []);
+  const copies = games.flatMap((g) => {
+    if (g.platform !== "pc" || (g.needsSetup && !g.installedDir)) return [];
+    const { version, fromExe } = effectiveVersion(g);
+    return version ? [{ gameId: g.gameId, version, ...(fromExe ? { fromExe } : {}) }] : [];
+  });
+  copiesCache = { at: Date.now(), copies };
+  return copies;
+}
+
+// ---- Launch options, Discord, splash and suspend -------------------------------------
+
+/** A game's launch options on this PC, or null when none are set. */
+function launchProfile(key: string): LaunchProfile | null {
+  return settings.get().launchProfiles?.[key] ?? null;
+}
+
+function globalScripts(): GlobalLaunchScripts {
+  return settings.get().launchScripts ?? { before: [], after: [] };
+}
+
+/** The steps before a game starts: every game's first, then this game's. */
+function stepsBefore(p: LaunchProfile | null): LaunchStep[] {
+  return [...(p?.skipGlobal ? [] : globalScripts().before), ...(p?.before ?? [])];
+}
+
+function stepsAfter(p: LaunchProfile | null): LaunchStep[] {
+  return [...(p?.after ?? []), ...(p?.skipGlobal ? [] : globalScripts().after)];
+}
+
+/** Which action Play uses: the one asked for ("" is the game's own way), else the profile's default. */
+function pickAction(p: LaunchProfile | null, actionId?: string | null): LaunchAction | null {
+  if (actionId === "") return null;
+  const id = actionId ?? p?.defaultAction ?? null;
+  if (!id) return null;
+  const a = p?.actions.find((x) => x.id === id);
+  if (!a) throw new Error("That way of starting the game isn't set up on this PC any more");
+  return a;
+}
+
+/** Steps after a game closed: problems are shown but don't matter to the session. */
+async function runAfter(gameId: string, steps: LaunchStep[], dir: string): Promise<void> {
+  if (!steps.length) return;
+  await runLaunchSteps(steps, { gameDir: dir }).catch((err: Error) => send({ gameId, type: "warning", message: `After the game: ${err.message}` }));
+}
+
+/** The folders a game's processes run from, for suspend and resume. */
+const runningDirs = new Map<string, string[]>();
+/** Suspended games: since when, and how long they've been suspended in all (not play time). */
+const suspended = new Map<string, { since: number | null; total: number }>();
+
+function runFolders(home: string, extra: string[], action: LaunchAction | null): string[] {
+  const fromSteps = (action?.steps ?? []).flatMap((s) => (s.type === "run" && !isLaunchUrl(s.path) ? [path.dirname(stepTarget(s.path, home))] : []));
+  return [...new Set([home, ...extra, ...fromSteps])];
+}
+
+/** Seconds a game spent suspended, taken off its play time when it closes. */
+function takeSuspended(gameId: string): number {
+  const s = suspended.get(gameId);
+  suspended.delete(gameId);
+  if (!s) return 0;
+  return Math.round((s.total + (s.since ? Date.now() - s.since : 0)) / 1000);
+}
+
+/** Pauses or resumes a running game (the newest one when none is named). */
+async function toggleSuspend(gameId?: string): Promise<{ gameId: string; suspended: boolean } | null> {
+  const id = gameId ?? [...runningDirs.keys()].pop();
+  const dirs = id ? runningDirs.get(id) : undefined;
+  if (!id || !dirs) return null;
+  const state = suspended.get(id) ?? { since: null, total: 0 };
+  const pause = state.since === null;
+  await suspendProcesses(processesIn(await listProcesses(), dirs), !pause);
+  if (pause) state.since = Date.now();
+  else {
+    state.total += Date.now() - (state.since ?? Date.now());
+    state.since = null;
+  }
+  suspended.set(id, state);
+  const title = nowRunning.get(id)?.game.title ?? "The game";
+  if (Notification.isSupported()) new Notification({ title: pause ? `${title} is paused` : `${title} is back`, body: pause ? "Press Ctrl+Shift+P again to carry on." : "Have fun!", silent: true }).show();
+  send({ gameId: id, type: pause ? "suspended" : "resumed" });
+  return { gameId: id, suspended: pause };
+}
+
+const SUSPEND_KEY = "CommandOrControl+Shift+P";
+let suspendKeyOn = false;
+
+/** The suspend key only works while a game runs and when switched on in the app's options. */
+function updateSuspendKey(): void {
+  if (!app.isReady()) return;
+  const want = !!settings.get().suspendKey && runningDirs.size > 0;
+  if (want === suspendKeyOn) return;
+  if (want) suspendKeyOn = globalShortcut.register(SUSPEND_KEY, () => void toggleSuspend().catch(() => {}));
+  else {
+    globalShortcut.unregister(SUSPEND_KEY);
+    suspendKeyOn = false;
+  }
+}
+
+const discord = new DiscordPresence();
+
+/** Shows the newest running game on Discord, or clears it. */
+function updateDiscord(): void {
+  const d = settings.get().discord;
+  if (!d?.enabled || !d.clientId) return;
+  const g = [...nowRunning.values()].pop()?.game;
+  void discord.set(d.clientId, g ? { title: g.title, startedAt: Date.parse(g.startedAt), detail: g.source === "store" ? `via ${g.store ?? "LootDen"}` : undefined } : null).catch(() => {});
+}
+
+/** Closes the launch splash when its game stops. */
+const splashes = new Map<string, () => void>();
+
+/** The splash picture for a game, when the app is set to show one now. */
+function wantsSplash(): boolean {
+  const s = settings.get();
+  return s.splash === "on" || (s.splash === "handheld" && handheldActive(s));
+}
+
+function startSplash(gameId: string, title: string, image: string | null): void {
+  if (!wantsSplash()) return;
+  try {
+    splashes.get(gameId)?.();
+    splashes.set(gameId, showSplash(title, image));
+  } catch {
+    // No splash is fine.
+  }
+}
+
+/** Programs launch options would start that the person hasn't allowed on this PC yet; asks about them. */
+async function allowPrograms(what: string, steps: LaunchStep[]): Promise<void> {
+  const allowed = new Set((settings.get().allowedPrograms ?? []).map((p) => p.toLowerCase()));
+  const fresh = [...new Set(steps.flatMap((s) => (s.type === "run" ? [s.path] : [])))].filter((p) => !allowed.has(p.toLowerCase()));
+  if (!fresh.length) return;
+  const { response } = await dialog.showMessageBox(win!, {
+    type: "warning",
+    buttons: ["Allow", "Cancel"],
+    defaultId: 1,
+    cancelId: 1,
+    message: `Let LootDen start these for ${what}?`,
+    detail: `${fresh.join("\n")}\n\nOnly allow programs and scripts you trust. LootDen asks once for each one on this PC.`,
+  });
+  if (response !== 0) throw new Error("Not saved: the programs weren't allowed");
+  settings.update({ allowedPrograms: [...(settings.get().allowedPrograms ?? []), ...fresh].slice(-500) });
 }
 
 async function storeGamesForPresence(): Promise<LocalStoreGame[]> {
@@ -473,6 +656,10 @@ function runCommand(cmd: PcCommand): void {
     );
     return;
   }
+  if (cmd.kind === "refresh-copy") {
+    void refreshRemote?.(cmd);
+    return;
+  }
   const mine = nowRunning.get(cmd.gameId);
   const title = mine?.game.title ?? cmd.gameId;
   playNotice(cmd.gameId, `${cmd.from} is closing ${title}`, `${cmd.text ? `${cmd.text} ` : ""}Save your game now: it closes in 60 seconds.`);
@@ -496,7 +683,11 @@ async function heartbeat(): Promise<void> {
     lastPlayingNow = playingNow;
     updateScreenshotKey(playingNow.length > 0);
     const api = clientFor(currentPlayer()) ?? (await client());
-    const answer = await api.presence({ device: os.hostname(), playing: playingNow, pc: { ...(await pcReport(app.getVersion())), streamGames: settings.get().sunshine?.streamGames ?? [] } });
+    const answer = await api.presence({
+      device: os.hostname(),
+      playing: playingNow,
+      pc: { ...(await pcReport(app.getVersion())), streamGames: settings.get().sunshine?.streamGames ?? [], copies: await copiesForPresence() },
+    });
     for (const cmd of answer.commands) runCommand(cmd);
   } catch {
     // Offline, signed out or an older server: try again next time.
@@ -759,6 +950,10 @@ function send(payload: object): void {
   if (p.gameId && (p.type === "stopped" || p.type === "error")) {
     playing.delete(p.gameId);
     if (nowRunning.delete(p.gameId)) scheduleHeartbeat(1000);
+    splashes.get(p.gameId)?.();
+    splashes.delete(p.gameId);
+    if (runningDirs.delete(p.gameId)) updateSuspendKey();
+    updateDiscord();
   }
   if (p.type === "playing" || p.type === "stopped") refreshTray();
   win?.webContents.send("gm:progress", payload);
@@ -1121,52 +1316,81 @@ function registerIpc(): void {
     running.get(gameId)?.abort();
   });
 
-  ipcMain.handle("gm:play", async (e, gameId: string) => {
+  ipcMain.handle("gm:play", async (e, gameId: string, actionId?: string | null) => {
     fromServer(e);
-    return play(gameId);
+    return play(gameId, typeof actionId === "string" ? actionId : undefined);
   });
 
   /** Games between Play and running: a second press while the first is still starting. */
   const launching = new Set<string>();
 
   /** Starts an installed game, once: a second Play while it starts or runs does nothing new. */
-  async function play(gameId: string) {
+  async function play(gameId: string, actionId?: string) {
     if (playing.has(gameId) || launching.has(gameId)) throw new Error("That game is already running");
     launching.add(gameId);
     try {
-      return await startGame(gameId);
+      return await startGame(gameId, actionId);
     } finally {
       launching.delete(gameId);
     }
   }
 
-  /** Starts an installed game. Works offline: play time waits until the server is back. */
-  async function startGame(gameId: string) {
+  /**
+   * Starts an installed game, its own way or with one of its launch options (a mod loader).
+   * Works offline: play time waits until the server is back.
+   */
+  async function startGame(gameId: string, actionId?: string) {
     const game = await findInstalled(gameId);
     if (game.platform && game.platform !== "pc") return playEmulatedGame(gameId, game.dir, game.platform);
     if (game.needsSetup && !game.installedDir) throw new Error(`${game.title} is still ${game.needsSetup === "disc" ? "a disc image" : "an installer"}. Use Run installer first.`);
     const home = game.installedDir ?? game.dir;
-    let exe = game.executable ?? (await findExecutable(home, game.title).then((x) => x && relTo(game.dir, path.join(home, x))));
-    if (!exe) {
-      const r = await dialog.showOpenDialog(win!, { title: `Which file starts ${game.title}?`, defaultPath: home, properties: ["openFile"] });
-      if (r.canceled) return null;
-      exe = relTo(game.dir, r.filePaths[0]!);
+    const profile = launchProfile(launchKey({ gameId }));
+    const action = pickAction(profile, actionId);
+    let exe = game.executable ?? null;
+    if (!action) {
+      exe ??= await findExecutable(home, game.title).then((x) => x && relTo(game.dir, path.join(home, x)));
+      if (!exe) {
+        const r = await dialog.showOpenDialog(win!, { title: `Which file starts ${game.title}?`, defaultPath: home, properties: ["openFile"] });
+        if (r.canceled) return null;
+        exe = relTo(game.dir, r.filePaths[0]!);
+      }
+      if (exe !== game.executable) await saveExecutable(game.dir, exe);
     }
-    if (exe !== game.executable) await saveExecutable(game.dir, exe);
     // Play time limits and bedtime, then this person's own saves.
     const live = await clientOrOffline();
     const player = currentPlayer();
     const today = await todaysAllowance(live);
     if (today && !today.canPlay) throw new Error(today.reason ?? "No play time left today");
     await useSaveSlot(live, gameId, game.dir, today).catch((err: Error) => send({ gameId, type: "warning", message: `Couldn't switch saves: ${err.message}` }));
+    const detail = (await cachedDetails(gameId)) as { backgroundUrl?: string | null; coverUrl?: string | null } | null;
+    const art = detail?.backgroundUrl ?? detail?.coverUrl ?? null;
+    startSplash(gameId, game.title, art ? new URL(art, origin() || "http://localhost").toString() : null);
+    // Steps before the game: a failure stops here, before anything is counted.
+    const before = stepsBefore(profile);
+    if (before.length) {
+      send({ gameId, type: "prepare", message: "Getting things ready…" });
+      try {
+        await runLaunchSteps(before, { gameDir: home });
+      } catch (err) {
+        send({ gameId, type: "error", message: `Before the game: ${(err as Error).message}` });
+        throw err;
+      }
+    }
     const stop = new AbortController();
     const unwatch = guardPlay(live, gameId, game.title, today, today?.hardStop ? stop : undefined);
     markRunning(gameId, game.title, "lootden", stop);
-    send({ gameId, type: "playing" });
-    void launchAndTrack(game.dir, exe, process.platform, stop.signal, { watchDirs: [home] }).then(
-      async (seconds) => {
+    runningDirs.set(gameId, runFolders(home, [game.dir], action));
+    updateSuspendKey();
+    send({ gameId, type: "playing", action: action?.name });
+    const session = action
+      ? launchActionAndTrack(action, { gameDir: home, watchDirs: [game.dir], signal: stop.signal, onStep: (step) => step.type === "wait" && send({ gameId, type: "prepare", message: `Waiting ${step.seconds} s…` }) })
+      : launchAndTrack(game.dir, exe!, process.platform, stop.signal, { watchDirs: [home] });
+    void session.then(
+      async (total) => {
         unwatch();
+        const seconds = Math.max(0, total - takeSuspended(gameId));
         send({ gameId, type: "stopped", seconds });
+        await runAfter(gameId, stepsAfter(profile), home);
         const api = clientFor(player) ?? (await clientOrOffline());
         // Offline: no save backup this time; the next session online backs the folder up.
         if (!(await recordPlay(api, gameId, seconds, player))) return;
@@ -1176,11 +1400,130 @@ function registerIpc(): void {
       },
       (err: Error) => {
         unwatch();
+        takeSuspended(gameId);
         send({ gameId, type: "error", message: err.message });
+        void runAfter(gameId, stepsAfter(profile), home);
       },
     );
-    return { executable: exe };
+    return { executable: action ? action.name : exe! };
   }
+
+  /**
+   * Another store's game with launch options on this PC: steps before, the store's own launch
+   * link or one of its options, steps after, with Now Playing, limits and suspend like LootDen's.
+   */
+  async function playStore(addon: string, externalId: string, url: string, actionId?: string) {
+    if (!isStoreLaunchUrl(url)) throw new Error("That isn't a store launcher link");
+    const gameId = storePlayId(addon, externalId);
+    if (playing.has(gameId) || launching.has(gameId)) throw new Error("That game is already running");
+    let local = (await storeGamesForPresence()).find((g) => g.addon === addon && g.externalId === externalId);
+    if (!local) {
+      storeGamesCache = null;
+      local = (await storeGamesForPresence()).find((g) => g.addon === addon && g.externalId === externalId);
+    }
+    if (!local?.installDir) throw new Error("That game isn't installed on this PC, so its launch options can't run");
+    const profile = launchProfile(launchKey({ addon, externalId }));
+    const action = pickAction(profile, actionId) ?? { id: "store", name: local.title, steps: [{ type: "run", path: url }] };
+    await checkPlayTime(url);
+    const live = await clientOrOffline();
+    const today = await todaysAllowance(live);
+    launching.add(gameId);
+    try {
+      startSplash(gameId, local.title, null);
+      const before = stepsBefore(profile);
+      if (before.length) await runLaunchSteps(before, { gameDir: local.installDir });
+    } catch (err) {
+      launching.delete(gameId);
+      send({ gameId, type: "error", message: `Before the game: ${(err as Error).message}` });
+      throw err;
+    }
+    launching.delete(gameId);
+    const stop = new AbortController();
+    const unwatch = guardPlay(live, gameId, local.title, today, today?.hardStop ? stop : undefined);
+    markRunning(gameId, local.title, "store", stop);
+    runningDirs.set(gameId, runFolders(local.installDir, [], action));
+    updateSuspendKey();
+    send({ gameId, type: "playing", action: action.id === "store" ? undefined : action.name });
+    const home = local.installDir;
+    void launchActionAndTrack(action, { gameDir: home, signal: stop.signal, graceMs: 120_000 }).then(
+      async (total) => {
+        unwatch();
+        send({ gameId, type: "stopped", seconds: Math.max(0, total - takeSuspended(gameId)) });
+        await runAfter(gameId, stepsAfter(profile), home);
+      },
+      (err: Error) => {
+        unwatch();
+        takeSuspended(gameId);
+        send({ gameId, type: "error", message: err.message });
+        void runAfter(gameId, stepsAfter(profile), home);
+      },
+    );
+  }
+
+  ipcMain.handle("gm:playStore", async (e, addon: string, externalId: string, url: string, actionId?: string | null) => {
+    fromServer(e);
+    if (typeof addon !== "string" || typeof externalId !== "string" || typeof url !== "string") throw new Error("Pick a game");
+    return playStore(addon, externalId, url, typeof actionId === "string" ? actionId : undefined);
+  });
+
+  /** The folder a game's relative paths start from: its install here. */
+  async function launchHome(key: string): Promise<string> {
+    const m = /^lootden:(.+)$/.exec(key);
+    if (m) {
+      const g = await findInstalled(m[1]!);
+      return g.installedDir ?? g.dir;
+    }
+    const s = /^store:([^:]+):(.+)$/.exec(key);
+    const local = s && (await storeGamesForPresence()).find((g) => g.addon === s[1] && g.externalId === s[2]);
+    if (!local?.installDir) throw new Error("That game isn't installed on this PC");
+    return local.installDir;
+  }
+
+  ipcMain.handle("gm:launchOptions", async (e, key: string) => {
+    fromServer(e);
+    if (typeof key !== "string") throw new Error("Pick a game");
+    const dir = await launchHome(key).catch(() => null);
+    const s = settings.get();
+    return { profile: launchProfile(key), global: globalScripts(), dir, suspendKey: !!s.suspendKey, platform: process.platform };
+  });
+
+  ipcMain.handle("gm:setLaunchOptions", async (e, key: string, input: unknown, title?: string) => {
+    fromServer(e);
+    if (typeof key !== "string" || !/^(lootden|store):/.test(key)) throw new Error("Pick a game");
+    const all = { ...settings.get().launchProfiles };
+    if (input === null) delete all[key];
+    else {
+      const p = cleanLaunchProfile(input);
+      await allowPrograms(typeof title === "string" && title ? title.slice(0, 100) : "this game", [...p.before, ...p.after, ...p.actions.flatMap((a) => a.steps)]);
+      if (emptyLaunchProfile(p)) delete all[key];
+      else all[key] = p;
+    }
+    settings.update({ launchProfiles: all });
+    return launchProfile(key);
+  });
+
+  ipcMain.handle("gm:setLaunchScripts", async (e, input: { before?: unknown; after?: unknown }) => {
+    fromServer(e);
+    const scripts = { before: cleanLaunchSteps(input?.before), after: cleanLaunchSteps(input?.after) };
+    await allowPrograms("every game", [...scripts.before, ...scripts.after]);
+    settings.update({ launchScripts: scripts });
+    return scripts;
+  });
+
+  /** Picks a program or script for a launch option; inside the game's folder it's kept relative. */
+  ipcMain.handle("gm:pickProgram", async (e, key: string) => {
+    fromServer(e);
+    const dir = typeof key === "string" ? await launchHome(key).catch(() => undefined) : undefined;
+    const filters = process.platform === "win32" ? [{ name: "Programs and scripts", extensions: ["exe", "bat", "cmd", "ps1", "lnk", "url"] }, { name: "All files", extensions: ["*"] }] : [];
+    const r = await dialog.showOpenDialog(win!, { title: "Program or script to start", defaultPath: dir, properties: ["openFile"], filters });
+    if (r.canceled || !r.filePaths[0]) return null;
+    return dir ? relTo(dir, r.filePaths[0]) : r.filePaths[0];
+  });
+
+  ipcMain.handle("gm:suspend", async (e, gameId?: string) => {
+    fromServer(e);
+    return toggleSuspend(typeof gameId === "string" ? gameId : undefined);
+  });
 
   /** Emulated games: restore newer saves, run the emulator, back up what changed. */
   async function playEmulatedGame(gameId: string, dir: string, platform: string) {
@@ -1541,6 +1884,39 @@ function registerIpc(): void {
     }
   });
 
+  /**
+   * An admin asked for this PC's copy as the new library copy (it's newer than the server's):
+   * zip it, upload it with the request's ticket, then link this copy to the new library entry.
+   */
+  refreshRemote = async (cmd) => {
+    const api = await client();
+    const fail = (message: string) => {
+      playNotice(cmd.gameId, `Couldn't upload ${cmd.title}`, message);
+      void api.failRefresh(cmd.ticket, message).catch(() => {});
+    };
+    if (nowRunning.has(cmd.gameId)) return fail(`${cmd.title} is being played on this PC. Ask again once it's closed.`);
+    if (running.has(cmd.gameId)) return fail(`This PC is already working on ${cmd.title}.`);
+    const local = (await listInstalled(await searchDirs())).find((g) => g.gameId === cmd.gameId);
+    if (!local) return fail(`${cmd.title} isn't installed on this PC any more.`);
+    running.set(cmd.gameId, new AbortController());
+    const workDir = path.join(path.dirname(local.dir), `.refresh-${cmd.gameId}`);
+    playNotice(cmd.gameId, `Uploading ${cmd.title} to the library`, `${cmd.from} asked for this PC's copy (v${cmd.version}). It's zipped and uploaded in the background.`);
+    try {
+      const game = await uploadInstalledFolder(api, cmd.gameId, local.installedDir ?? local.dir, { workDir, sevenZip: await prepSevenZip(), version: cmd.version, ticket: cmd.ticket, onStep: prepareStep(cmd.gameId) });
+      // The library entry has a new id now; this copy is it, at the version that was uploaded.
+      await saveManifest(local.dir, { gameId: game.id, title: game.title, source: game.source, needsSetup: null, version: cmd.version, versionSetBy: versionTag("update"), exeStamp: await exeStampOf(local) });
+      copiesCache = null;
+      send({ gameId: cmd.gameId, type: "prepare", message: "Uploaded. The library copy is now this PC's.", done: true, newId: game.id });
+      playNotice(game.id, `${cmd.title} is in the library`, `Everyone now gets v${cmd.version}.`);
+    } catch (err) {
+      send({ gameId: cmd.gameId, type: "prepare", message: (err as Error).message, done: true, error: true });
+      fail((err as Error).message);
+    } finally {
+      running.delete(cmd.gameId);
+      await rm(workDir, { recursive: true, force: true }).catch(() => {});
+    }
+  };
+
   ipcMain.handle("gm:uninstall", async (e, gameId: string) => {
     fromServer(e);
     const game = await findInstalled(gameId);
@@ -1694,6 +2070,8 @@ function registerIpc(): void {
     if (today && !today.canPlay) throw new Error(today.reason ?? "No play time left today");
     // A Den Duty time-out can lock Roblox alone.
     if (today?.robloxLock) throw new Error(today.robloxLock);
+    // Straight into full screen, like a game started from the couch should.
+    await setRobloxFullscreen().catch(() => {});
     await shell.openExternal(url);
     launching.add(gameId);
     const stop = new AbortController();
@@ -1767,10 +2145,20 @@ function registerIpc(): void {
     await shell.openPath((await findInstalled(gameId)).dir);
   });
 
-  ipcMain.handle("gm:appSettings", (e, patch?: Partial<Pick<DesktopSettings, "closeToTray" | "autoUpdate" | "openAtLogin" | "handheld" | "fullscreen" | "browserLinks">>) => {
+  ipcMain.handle("gm:appSettings", (e, patch?: Partial<Pick<DesktopSettings, "closeToTray" | "autoUpdate" | "openAtLogin" | "handheld" | "fullscreen" | "browserLinks" | "splash" | "suspendKey">> & { discordEnabled?: boolean; discordClientId?: string }) => {
     fromServer(e);
     if (patch) {
       const clean: Partial<DesktopSettings> = {};
+      if (patch.splash && ["off", "handheld", "on"].includes(patch.splash)) clean.splash = patch.splash;
+      if (typeof patch.suspendKey === "boolean") clean.suspendKey = patch.suspendKey;
+      if (typeof patch.discordEnabled === "boolean" || typeof patch.discordClientId === "string") {
+        const was = settings.get().discord ?? { enabled: false, clientId: "" };
+        clean.discord = {
+          enabled: typeof patch.discordEnabled === "boolean" ? patch.discordEnabled : was.enabled,
+          clientId: typeof patch.discordClientId === "string" ? cleanDiscordId(patch.discordClientId) : was.clientId,
+        };
+        if (typeof patch.discordClientId === "string" && patch.discordClientId.trim() && !clean.discord.clientId) throw new Error("A Discord application id is a long number, from discord.com/developers");
+      }
       for (const k of ["closeToTray", "autoUpdate", "openAtLogin", "fullscreen"] as const) if (typeof patch[k] === "boolean") clean[k] = patch[k];
       if (patch.handheld && ["auto", "on", "off"].includes(patch.handheld)) clean.handheld = patch.handheld;
       if (patch.browserLinks && ["auto", "on", "off"].includes(patch.browserLinks)) clean.browserLinks = patch.browserLinks;
@@ -1785,9 +2173,18 @@ function registerIpc(): void {
         applyHandheld();
       }
       if (clean.autoUpdate) void checkForUpdate();
+      if (clean.discord) {
+        if (!clean.discord.enabled || !clean.discord.clientId) discord.close();
+        else updateDiscord();
+      }
+      if ("suspendKey" in clean) updateSuspendKey();
     }
     const s = settings.get();
     return {
+      splash: s.splash ?? "handheld",
+      suspendKey: !!s.suspendKey,
+      discordEnabled: !!s.discord?.enabled,
+      discordClientId: s.discord?.clientId ?? "",
       closeToTray: s.closeToTray,
       autoUpdate: s.autoUpdate,
       openAtLogin: s.openAtLogin,

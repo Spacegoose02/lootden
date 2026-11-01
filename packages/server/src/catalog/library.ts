@@ -547,6 +547,49 @@ export class Library {
   }
 
   /**
+   * What refreshing a game from a PC at `version` makes unnecessary: its updates up to that
+   * version (unversioned ones and DLC stay, since there's no telling what they hold) and other
+   * full copies of the same game at that version or older (a newer full copy named as an
+   * update, say). Null for anything that isn't a PC game in the library.
+   */
+  refreshPlan(id: string, version: string): { game: GameDetail; name: string; updates: GameDetail[]; oldCopies: GameDetail[] } | null {
+    const game = this.get(id);
+    if (!game || game.kind !== "game" || game.platform !== PC_PLATFORM) return null;
+    const upTo = (g: { version: string | null }) => !!g.version && compareVersion(g.version, version) <= 0;
+    const updates = game.addons.filter((a) => a.kind === "update" && upTo(a)).map((a) => this.get(a.id, false)!).filter(Boolean);
+    // Full copies tied to this one: named as its update but as big as it, or the one it was matched to.
+    const family = new Set<string>([id]);
+    const own = this.verdict(this.scanned.get(id)!).lookalike;
+    if (own) family.add(own);
+    for (const g of this.scanned.values()) {
+      const v = this.verdict(g);
+      if (v.kind === "game" && v.lookalike && family.has(v.lookalike)) family.add(g.id);
+    }
+    family.delete(id);
+    const oldCopies = [...family].map((x) => this.get(x, false)).filter((g): g is GameDetail => !!g && g.kind === "game" && upTo(g));
+    // The new file's name: the game's name without the old copy's version ("Game v1.5").
+    const name = game.overrides.title || game.metadata?.name || game.title.replace(/[\s._-]+v\d[\d\s._]*$/i, "") || game.title;
+    return { game, name, updates, oldCopies };
+  }
+
+  /** Moves entries out of the library into .replaced/ (kept, like a replaced original), then rescans. */
+  async retire(ids: string[]): Promise<string[]> {
+    const replaced = path.join(this.gamesDir, ".replaced");
+    await mkdir(replaced, { recursive: true });
+    const moved: string[] = [];
+    for (const id of ids) {
+      const g = this.scanned.get(id);
+      if (!g) continue;
+      const full = path.resolve(this.gamesDir, g.source);
+      if (!full.startsWith(path.resolve(this.gamesDir) + path.sep)) continue;
+      await rename(full, path.join(replaced, `${Date.now()}-${g.source.replaceAll("/", " - ")}`));
+      moved.push(g.source);
+    }
+    if (moved.length) await this.rescan();
+    return moved;
+  }
+
+  /**
    * Admin: takes a game out of the library. Its files move to .deleted/ in the games folder,
    * or are removed for good with `permanent`. Its settings, artwork and saves stay in the
    * database, so moving the files back brings the game back as it was.

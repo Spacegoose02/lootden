@@ -4,6 +4,7 @@ import { EMULATORS, platformFor, type GameDetail } from "@lootden/shared";
 import { formatBytes } from "../api";
 import { useAuth } from "../auth";
 import { bridgeError, desktop, useDesktopGame, type Drive } from "../desktop";
+import { LaunchOptionsPanel, PlayWithButtons, useLaunchOptions } from "./LaunchOptions";
 
 /** Install / play / uninstall panel shown inside the desktop app. */
 export function DesktopInstall({ game, autoFocus }: { game: GameDetail; autoFocus: boolean }) {
@@ -15,6 +16,22 @@ export function DesktopInstall({ game, autoFocus }: { game: GameDetail; autoFocu
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const button = useRef<HTMLButtonElement>(null);
+  const pcGame = (installed?.platform ?? "pc") === "pc";
+  const launch = useLaunchOptions(installed && pcGame ? `lootden:${game.id}` : null);
+  /** Running and paused, followed from the app's events (waits and messages come in between). */
+  const [running, setRunning] = useState(false);
+  const [paused, setPaused] = useState(false);
+  useEffect(() => {
+    const p = progress;
+    if (!p) return;
+    if (p.type === "playing") setRunning(true);
+    if (p.type === "stopped" || p.type === "error") {
+      setRunning(false);
+      setPaused(false);
+    }
+    if (p.type === "suspended") setPaused(true);
+    if (p.type === "resumed") setPaused(false);
+  }, [progress]);
 
   useEffect(() => {
     if (!desktop) return;
@@ -92,9 +109,15 @@ export function DesktopInstall({ game, autoFocus }: { game: GameDetail; autoFocu
     return (
       <div className="install panel">
         <div className="inline">
-          <button ref={button} className="primary" disabled={busy || p?.type === "playing"} onClick={() => run(() => bridge.play(game.id))}>
-            {p?.type === "playing" ? "Playing…" : emulatorName ? `▶ Play in ${emulatorName}` : "▶ Play"}
+          <button ref={button} className="primary" disabled={busy || running} onClick={() => run(() => bridge.play(game.id))}>
+            {running ? (paused ? "Paused" : "Playing…") : emulatorName ? `▶ Play in ${emulatorName}` : launch.state?.profile?.defaultAction ? `▶ Play with ${launch.state.profile.actions.find((a) => a.id === launch.state!.profile!.defaultAction)?.name ?? "mods"}` : "▶ Play"}
           </button>
+          {!running && <PlayWithButtons profile={launch.state?.profile ?? null} disabled={busy} onPlay={(id) => void run(() => bridge.play(game.id, id))} />}
+          {running && bridge.suspend && pcGame && (
+            <button className="secondary" onClick={() => void bridge.suspend!(game.id).catch((e) => setError(bridgeError(e)))}>
+              {paused ? "▶ Resume" : "⏸ Pause game"}
+            </button>
+          )}
           <button className="secondary" onClick={() => run(() => bridge.openFolder(game.id))}>
             Open folder
           </button>
@@ -116,6 +139,7 @@ export function DesktopInstall({ game, autoFocus }: { game: GameDetail; autoFocu
           {p?.type === "stopped" ? ` · last session ${Math.round(p.seconds / 60)} min` : ""}
         </p>
         {error && <p className="error small">{error}</p>}
+        {launch.state && <LaunchOptionsPanel launchKey={`lootden:${game.id}`} title={game.title} state={launch.state} onSaved={() => void launch.reload()} />}
       </div>
     );
   }

@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { isRobloxPlayer, trackRoblox } from "../src/roblox.js";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import { isRobloxPlayer, robloxSettingsDirs, setRobloxFullscreen, trackRoblox, withFullscreen } from "../src/roblox.js";
 
 describe("Roblox play tracking", () => {
   it("knows the Roblox player by its program", () => {
@@ -28,5 +31,31 @@ describe("Roblox play tracking", () => {
 
   it("gives up when the player never starts", async () => {
     assert.equal(await trackRoblox({ pollMs: 1, startTimeoutMs: 5, list: async () => [] }), 0);
+  });
+});
+
+describe("Roblox full screen", () => {
+  const settings = (flag: string | null) =>
+    `<?xml version="1.0" encoding="UTF-8"?>\n<roblox version="4">\n\t<Item class="UserGameSettings">\n\t\t<Properties>\n${flag === null ? "" : `\t\t\t<bool name="Fullscreen">${flag}</bool>\n`}\t\t\t<int name="GraphicsQualityLevel">5</int>\n\t\t</Properties>\n\t</Item>\n</roblox>\n`;
+
+  it("switches full screen on, keeping the rest of the settings", () => {
+    assert.equal(withFullscreen(settings("false")), settings("true"));
+    assert.equal(withFullscreen(settings("true")), settings("true"));
+    const added = withFullscreen(settings(null));
+    assert.match(added, /<Properties>\n\t\t\t<bool name="Fullscreen">true<\/bool>/);
+    assert.match(added, /GraphicsQualityLevel">5</);
+    assert.equal(withFullscreen("not settings"), "not settings");
+  });
+
+  it("changes the player's settings files and leaves a missing folder alone", async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), "roblox-"));
+    await writeFile(path.join(dir, "GlobalBasicSettings_13.xml"), settings("false"));
+    await writeFile(path.join(dir, "Other.xml"), settings("false"));
+    assert.deepEqual(await setRobloxFullscreen([dir, path.join(dir, "missing")]), [path.join(dir, "GlobalBasicSettings_13.xml")]);
+    assert.equal(await readFile(path.join(dir, "GlobalBasicSettings_13.xml"), "utf8"), settings("true"));
+    assert.equal(await readFile(path.join(dir, "Other.xml"), "utf8"), settings("false"));
+    assert.deepEqual(await setRobloxFullscreen([dir]), [], "already on");
+    assert.deepEqual(robloxSettingsDirs("win32", { LOCALAPPDATA: "C:\\Users\\sam\\AppData\\Local" }), ["C:\\Users\\sam\\AppData\\Local\\Roblox"]);
+    await rm(dir, { recursive: true, force: true });
   });
 });

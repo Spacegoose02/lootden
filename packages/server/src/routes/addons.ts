@@ -131,8 +131,13 @@ export function addonRoutes(app: FastifyInstance, ctx: AppContext) {
     app.get<One>(`/api/store-games/:addon/:externalId/${kind}`, async (req, reply) => {
       const g = one(req);
       if (g.addon === ROBLOX_ADDON) {
-        const page = ctx.roblox.detail(g.user.id, g.externalId);
-        const url = kind === "cover" ? page?.coverUrl : page?.backgroundUrl;
+        // Roblox has square icons and wide screenshots: the cover is a poster made from both.
+        if (kind === "cover") {
+          const svg = await ctx.roblox.poster(g.user.id, g.externalId);
+          if (!svg) throw new HttpProblem(404, "No cover");
+          return reply.type("image/svg+xml").header("Cache-Control", "private, max-age=604800").header("Content-Security-Policy", "default-src 'none'; img-src data:; style-src 'unsafe-inline'").send(svg);
+        }
+        const url = ctx.roblox.screenshot(g.user.id, g.externalId);
         if (!url) throw new HttpProblem(404, `No ${kind}`);
         return reply.header("Cache-Control", "private, max-age=86400").redirect(url);
       }

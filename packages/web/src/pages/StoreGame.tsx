@@ -12,6 +12,7 @@ import { GameMedia } from "../components/GameMedia";
 import { useAuth } from "../auth";
 import { listingDate } from "../components/Listing";
 import { launchStoreGame, storeInstallUrl } from "../components/StoreGameCard";
+import { LaunchOptionsPanel, PlayWithButtons, useLaunchOptions } from "../components/LaunchOptions";
 import { useHelperGame } from "../helperGame";
 
 const SOURCES: Record<string, string> = { igdb: "IGDB", rawg: "RAWG", steam: "Steam" };
@@ -29,6 +30,7 @@ export function StoreGame() {
   const [scanned, setScanned] = useState(false);
   const [error, setError] = useState("");
   const [editing, setEditing] = useState(false);
+  const launchOpts = useLaunchOptions(addon !== ROBLOX_ADDON ? `store:${addon}:${id}` : null);
 
   useEffect(() => {
     setDetail(null);
@@ -93,6 +95,7 @@ export function StoreGame() {
                 {ready ? "▶ Play" : install ? `Install with ${game.store}` : `Open in ${game.store}`}
               </button>
             )}
+            {ready && local && <PlayWithButtons profile={launchOpts.state?.profile ?? null} onPlay={(a) => void launchStoreGame(game, local, false, a).catch((e) => setError(bridgeError(e)))} />}
             {game.libraryGameId && (
               <Link className="button secondary" to={`/games/${game.libraryGameId}`}>
                 In LootDen
@@ -117,6 +120,8 @@ export function StoreGame() {
           {roblox && <p className="muted small">Plays in the Roblox app{desktop ? "" : " (open LootDen's desktop app on a PC with Roblox installed)"}. It starts signed in to whichever Roblox account that PC uses.</p>}
         </div>
       </div>
+
+      {local && launchOpts.state?.dir && <LaunchOptionsPanel launchKey={`store:${addon}:${id}`} title={game.title} state={launchOpts.state} onSaved={() => void launchOpts.reload()} />}
 
       {editing && <StoreGameEditor addon={addon} id={id} title={localTitle} detail={detail} onChange={setDetail} />}
 

@@ -107,6 +107,29 @@ can be set once by an admin on the add-on's card (`PUT /api/addons/:id/shared`, 
 like accounts, never sent back); a person's own value wins. `Integrations` (IGDB and other admin keys in the settings table) aren't encrypted yet; the
 vault can do it.
 
+## Launch options, Discord, splash and pause (unreleased)
+
+- **Launch options** are per PC, in the desktop `settings.json` (`launchProfiles`, keyed by
+  `launchKey`: `lootden:<gameId>` or `store:<addon>:<externalId>`; `launchScripts` for every
+  game). Types and checks are in `shared/src/launch.ts`; `client/src/launchactions.ts` runs the
+  steps (`run`, `wait`, `close`) and tracks the game while anything runs from its folder or the
+  started programs' folders, waiting up to a minute (two for store games) for slow launchers.
+  `.bat/.cmd` run through `cmd`, `.ps1` through PowerShell, `steam://` style links open through
+  the system, `.exe` through Wine on Linux.
+- **Allowing programs**: saving a profile shows a native dialog for every program not allowed
+  on that PC before (`allowedPrograms`), so a page from the server can't quietly add one.
+- `gm:play` takes an action id (`""` is the game's own way). Store games with launch options (or
+  every-game steps) go through `gm:playStore` instead of opening the launcher link directly, so
+  they get Now Playing, play time limits, suspend and the after steps; their play time still
+  isn't recorded.
+- **Suspend** (`toggleSuspend`): NtSuspendProcess / NtResumeProcess through PowerShell on Windows,
+  SIGSTOP / SIGCONT elsewhere, on everything running from the game's folders. Suspended time is
+  taken off the recorded session. Ctrl+Shift+P is only registered while a game runs and the
+  option is on.
+- **Discord** (`desktop/src/playextras.ts`): the local `discord-ipc-N` pipe, with a Discord
+  application id the person makes once. **Splash**: a frameless, click-through full-screen
+  window with the game's art for 12 s, or until the game stops.
+
 ## Game achievements, play history, local screenshots (unreleased)
 
 - **Achievements** (`users/achievements.ts`, `routes/achievements.ts`, types in

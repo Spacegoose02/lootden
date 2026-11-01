@@ -1,6 +1,7 @@
 import { ROBLOX_ADDON, parseRobloxPlace, robloxLaunchUrl, robloxPageUrl, type GameInfo, type RobloxGame, type StoreGame, type StoreGameDetail } from "@lootden/shared";
 import { now, type Db } from "../db/database.js";
 import type { FetchLike } from "../metadata/http.js";
+import { RobloxPosters } from "./poster.js";
 
 interface Row {
   universe_id: string;
@@ -41,10 +42,25 @@ const str = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : null
  * the profiles the admin ticked, as a store game under "Roblox" whose Play opens the Roblox app.
  */
 export class RobloxCatalog {
+  readonly posters: RobloxPosters;
+
   constructor(
     private readonly db: Db,
     private readonly fetchImpl: FetchLike = fetch,
-  ) {}
+  ) {
+    this.posters = new RobloxPosters(fetchImpl);
+  }
+
+  /** A game's poster, for someone it's shown to. Null otherwise. */
+  async poster(userId: number, universeId: string): Promise<string | null> {
+    const g = this.forUser(userId).find((x) => x.universeId === universeId);
+    return g ? this.posters.poster(g) : null;
+  }
+
+  /** A game's screenshot, for someone it's shown to. */
+  screenshot(userId: number, universeId: string): string | null {
+    return this.forUser(userId).find((x) => x.universeId === universeId)?.thumbnailUrl ?? null;
+  }
 
   private async get<T>(url: string, init: RequestInit = {}): Promise<T> {
     const res = await this.fetchImpl(url, { ...init, headers: { accept: "application/json", ...(init.headers ?? {}) }, signal: AbortSignal.timeout(20_000) });
@@ -231,9 +247,12 @@ export class RobloxCatalog {
       developers: g.creator ? [g.creator] : [],
       ageRatings: g.ageRating ? [{ organization: "Roblox", rating: g.ageRating }] : [],
     };
-    return { game: toStoreGame(g), info, coverUrl: g.iconUrl, backgroundUrl: g.thumbnailUrl, custom: { title: null, cover: null, background: null, match: null } };
+    return { game: toStoreGame(g), info, coverUrl: robloxPosterPath(g), backgroundUrl: g.thumbnailUrl, custom: { title: null, cover: null, background: null, match: null } };
   }
 }
+
+/** Where the server serves a Roblox game's portrait poster (see poster.ts). */
+export const robloxPosterPath = (g: RobloxGame) => `/api/store-games/${ROBLOX_ADDON}/${encodeURIComponent(g.universeId)}/cover?v=${RobloxPosters.version(g)}`;
 
 export function toStoreGame(g: RobloxGame): StoreGame {
   return {
@@ -241,7 +260,7 @@ export function toStoreGame(g: RobloxGame): StoreGame {
     store: "Roblox",
     externalId: g.universeId,
     title: g.name,
-    coverUrl: g.iconUrl,
+    coverUrl: robloxPosterPath(g),
     storeUrl: robloxPageUrl(g.placeId),
     launchUrl: robloxLaunchUrl(g.placeId),
     playtimeSeconds: null,

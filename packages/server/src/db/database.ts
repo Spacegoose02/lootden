@@ -637,6 +637,10 @@ export const MIGRATIONS: string[] = [
   ALTER TABLE pcs ADD COLUMN stream_games TEXT NOT NULL DEFAULT '[]';
   `,
   `
+  -- LootDen games installed on each PC with the version it knows they're at, to spot PCs with newer copies.
+  ALTER TABLE pcs ADD COLUMN copies TEXT NOT NULL DEFAULT '[]';
+  `,
+  `
   -- Game achievements (Steam, RetroAchievements, Xbox) as last looked up, per person and game.
   CREATE TABLE achievement_cache (
     user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,

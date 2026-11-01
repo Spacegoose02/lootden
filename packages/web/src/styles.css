@@ -4796,6 +4796,16 @@ html[data-lootden-frame] .lightbox {
   margin: 0.4rem 0;
 }
 
+/* Launch options: ways to start a game, and steps before and after it */
+.launch-options { margin-top: 0.75rem; }
+.launch-options > summary { cursor: pointer; padding: 0.25rem 0; }
+.launch-options h4 { margin: 1rem 0 0.4rem; font-size: 0.95rem; }
+.launch-action { border: 1px solid var(--border); border-radius: 10px; padding: 0.6rem; margin-bottom: 0.6rem; }
+.launch-steps ol { list-style: decimal; margin: 0.3rem 0 0.5rem; padding-left: 1.4rem; display: grid; gap: 0.4rem; }
+.launch-step { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; }
+.launch-step .grow { flex: 1 1 16rem; min-width: 10rem; }
+.launch-step input[type="number"] { width: 5.5rem; }
+.launch-step-tools { margin-left: auto; display: inline-flex; gap: 0.2rem; }
 /* Game achievements and play history */
 .achievements-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.6rem; }
 .achievements-head h2 { margin-right: auto; }

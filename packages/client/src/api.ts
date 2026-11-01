@@ -118,7 +118,16 @@ export class GameServerClient {
    * parts, so a reverse proxy's upload size limit doesn't stop a many-GB game, and a part that
    * fails is sent again instead of starting over.
    */
-  async uploadPrepared(gameId: string, zipPath: string, version?: string, onProgress?: (sent: number, total: number) => void): Promise<GameDetail> {
+  /** Tells the server a library refresh it asked this PC for can't be done. */
+  failRefresh(ticket: string, message: string) {
+    return this.json<{ ok: true }>(`/api/library/refresh/${encodeURIComponent(ticket)}/fail`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ message }) });
+  }
+  /**
+   * Uploads a zipped game in parts. `ticket` is a library refresh's one-time ticket, which lets
+   * the upload through without an admin profile.
+   */
+  async uploadPrepared(gameId: string, zipPath: string, version?: string, onProgress?: (sent: number, total: number) => void, ticket?: string): Promise<GameDetail> {
+    const auth = (extra: Record<string, string> = {}) => this.headers(ticket ? { ...extra, "x-lootden-ticket": ticket } : extra);
     const { open, stat } = await import("node:fs/promises");
     const { randomUUID } = await import("node:crypto");
     const total = (await stat(zipPath)).size;
@@ -134,10 +143,10 @@ export class GameServerClient {
         await file.read(chunk, 0, chunk.length, sent);
         const res = await fetch(`${this.base}${upload}?offset=${sent}`, {
           method: "PUT",
-          headers: this.headers({ "Content-Type": "application/octet-stream" }),
+          headers: auth({ "Content-Type": "application/octet-stream" }),
           body: chunk,
         }).catch((err: Error) => err);
-        if (res instanceof Response && res.status === 404 && sent === 0 && /"error":"Not found"|Route PUT/.test(await res.clone().text())) {
+        if (!ticket && res instanceof Response && res.status === 404 && sent === 0 && /"error":"Not found"|Route PUT/.test(await res.clone().text())) {
           return await this.uploadPreparedWhole(gameId, zipPath, qs); // a server from before 0.13
         }
         if (res instanceof Response && res.ok) {
@@ -152,13 +161,13 @@ export class GameServerClient {
         if (++failures > 4) throw res instanceof Response ? await uploadError(res) : new Error(`Uploading the installed game failed: the server stopped answering (${causeOf(res)})`);
         await new Promise((r) => setTimeout(r, 2000 * 2 ** (failures - 1)));
         // Pick up where the server says it is.
-        const where = await fetch(this.base + upload, { headers: this.headers() }).catch(() => null);
+        const where = await fetch(this.base + upload, { headers: auth() }).catch(() => null);
         if (where?.ok) sent = ((await where.json()) as { size: number }).size;
       }
     } finally {
       await file.close();
     }
-    const res = await fetch(`${this.base}${upload}/finish${qs}`, { method: "POST", headers: this.headers() });
+    const res = await fetch(`${this.base}${upload}/finish${qs}`, { method: "POST", headers: auth() });
     if (!res.ok) throw await uploadError(res);
     return (await res.json()) as GameDetail;
   }
