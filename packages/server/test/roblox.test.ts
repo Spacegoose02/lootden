@@ -3,7 +3,7 @@ import { rm } from "node:fs/promises";
 import { after, before, describe, it } from "node:test";
 import { isStoreLaunchUrl, parseRobloxPlace, robloxPlaceOf } from "@lootden/shared";
 import { ageRatingOf } from "../src/roblox/catalog.js";
-import { posterSvg, RobloxPosters, titleLines } from "../src/roblox/poster.js";
+import { imageType, posterSvg, RobloxPosters, titleLines } from "../src/roblox/poster.js";
 import { makeApp, makeLibrary, sessionCookie } from "./helpers.js";
 
 let root: string;
@@ -20,6 +20,9 @@ async function person(app: App["app"], ctx: App["ctx"], username: string, extra:
   return { id: user.id, headers: { cookie: sessionCookie(login) } };
 }
 
+const ICON_PNG = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.from("icon")]);
+const SHOT_JPEG = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.from("shot")]);
+
 /** Roblox's public APIs, as far as these tests need them: one experience, place 920587237 (start place) and 111 (a sub-place). */
 const calls: string[] = [];
 const roblox = (async (input: string | URL | Request, init?: RequestInit) => {
@@ -35,7 +38,8 @@ const roblox = (async (input: string | URL | Request, init?: RequestInit) => {
   }
   if (url.host === "thumbnails.roblox.com" && url.pathname.endsWith("/icons")) return Response.json({ data: [{ targetId: 383310974, state: "Completed", imageUrl: "https://tr.rbxcdn.com/icon.png" }] });
   if (url.host === "thumbnails.roblox.com") return Response.json({ data: [{ universeId: 383310974, thumbnails: [{ imageUrl: "https://tr.rbxcdn.com/shot.png" }] }] });
-  if (url.host === "tr.rbxcdn.com") return new Response(url.pathname === "/icon.png" ? "icon" : "shot", { headers: { "content-type": "image/png" } });
+  // Roblox's image servers don't always say image/*: the bytes decide.
+  if (url.host === "tr.rbxcdn.com") return new Response(url.pathname === "/icon.png" ? ICON_PNG : SHOT_JPEG, { headers: { "content-type": "binary/octet-stream" } });
   if (url.pathname.endsWith("/get-age-recommendation")) {
     assert.deepEqual(JSON.parse(String(init?.body)), { universeId: "383310974" });
     return Response.json({ ageRecommendationDetails: { ageRecommendationSummary: { ageRecommendation: { displayName: "Ages 9+", minimumAge: 9 } } } });
@@ -103,13 +107,30 @@ describe("Roblox games", () => {
     assert.equal(cover.statusCode, 200);
     assert.match(String(cover.headers["content-type"]), /^image\/svg\+xml/);
     assert.match(cover.body, /viewBox="0 0 600 900"/);
-    assert.match(cover.body, /href="data:image\/png;base64,aWNvbg=="/, "the icon, inlined");
-    assert.match(cover.body, /href="data:image\/png;base64,c2hvdA=="/, "the screenshot, inlined");
+    assert.ok(cover.body.includes(`href="data:image/png;base64,${ICON_PNG.toString("base64")}"`), "the icon, inlined");
+    assert.ok(cover.body.includes(`href="data:image/jpeg;base64,${SHOT_JPEG.toString("base64")}"`), "the screenshot, inlined");
+    assert.match(String(cover.headers["cache-control"]), /max-age=604800/);
     assert.match(cover.body, />Adopt Me!</);
     assert.ok(!cover.body.includes("rbxcdn.com"), "nothing for the browser to fetch");
     assert.equal((await app.inject({ url: mine[0].coverUrl, headers: other.headers })).statusCode, 404);
     const bg = await app.inject({ url: "/api/store-games/roblox/383310974/background", headers: kid.headers });
     assert.equal(bg.headers.location, "https://tr.rbxcdn.com/shot.png");
+
+    // An admin's own cover replaces the poster, for everyone who sees the game; removing it brings the poster back.
+    const png = Buffer.concat([ICON_PNG, Buffer.from("custom")]);
+    assert.equal((await app.inject({ method: "PUT", url: "/api/roblox/383310974/cover", headers: { ...kid.headers, "content-type": "image/png" }, payload: png })).statusCode, 403);
+    assert.equal((await app.inject({ method: "PUT", url: "/api/roblox/383310974/cover", headers: { ...admin.headers, "content-type": "text/plain" }, payload: "nope" })).statusCode, 400);
+    const up = await app.inject({ method: "PUT", url: "/api/roblox/383310974/cover", headers: { ...admin.headers, "content-type": "image/png" }, payload: png });
+    assert.equal(up.statusCode, 200, up.body);
+    assert.ok(up.json().customCover);
+    const after = (await app.inject({ url: "/api/store-games", headers: kid.headers })).json()[0];
+    assert.notEqual(after.coverUrl, mine[0].coverUrl, "a new address, so browsers drop the poster");
+    const own = await app.inject({ url: after.coverUrl, headers: kid.headers });
+    assert.equal(own.headers["content-type"], "image/png");
+    assert.deepEqual(own.rawPayload, png);
+    const cleared = await app.inject({ method: "DELETE", url: "/api/roblox/383310974/cover", headers: admin.headers });
+    assert.equal(cleared.json().customCover, null);
+    assert.match(String((await app.inject({ url: (await app.inject({ url: "/api/store-games", headers: kid.headers })).json()[0].coverUrl, headers: kid.headers })).headers["content-type"]), /svg/);
     assert.equal((await app.inject({ method: "PUT", url: "/api/store-games/roblox/383310974", headers: kid.headers, payload: { title: "Mine" } })).statusCode, 400, "nothing to rematch");
 
     // Everyone, then removed.
@@ -150,11 +171,19 @@ describe("Roblox posters", () => {
     const fetched: string[] = [];
     const posters = new RobloxPosters((async (u: string | URL | Request) => {
       fetched.push(String(u));
-      return new Response("x", { headers: { "content-type": "image/png" } });
+      return new Response(ICON_PNG, { headers: { "content-type": "image/png" } });
     }) as typeof fetch);
-    const g = { universeId: "2", placeId: "3", name: "Test", description: null, creator: null, iconUrl: "https://evil.example/icon.png", thumbnailUrl: "https://t1.rbxcdn.com/shot.png", ageRating: null, genre: null, maxPlayers: null, everyone: true, userIds: [], addedAt: "", refreshedAt: "" };
+    const g = { universeId: "2", placeId: "3", name: "Test", description: null, creator: null, iconUrl: "https://evil.example/icon.png", thumbnailUrl: "https://t1.rbxcdn.com/shot.png", ageRating: null, genre: null, maxPlayers: null, customCover: null, everyone: true, userIds: [], addedAt: "", refreshedAt: "" };
     const out = await posters.poster(g);
     assert.deepEqual(fetched, ["https://t1.rbxcdn.com/shot.png"]);
-    assert.equal((out.match(/data:image\/png/g) ?? []).length, 2, "the screenshot (href and xlink:href); no icon");
+    assert.ok(out.pictures);
+    assert.equal((out.svg.match(/data:image\/png/g) ?? []).length, 2, "the screenshot (href and xlink:href); no icon");
+
+    // An error page instead of a picture: no pictures, so the route falls back.
+    const broken = new RobloxPosters((async () => new Response("<html>denied</html>", { headers: { "content-type": "image/png" } })) as typeof fetch);
+    assert.equal((await broken.poster({ ...g, iconUrl: "https://tr.rbxcdn.com/a.png" })).pictures, false);
+    assert.equal(imageType(Buffer.from("RIFF0000WEBPVP8 ")), "image/webp");
+    assert.equal(imageType(Buffer.from("GIF89a..")), "image/gif");
+    assert.equal(imageType(Buffer.from("<html>")), null);
   });
 });

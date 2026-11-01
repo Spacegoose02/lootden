@@ -133,9 +133,16 @@ export function addonRoutes(app: FastifyInstance, ctx: AppContext) {
       if (g.addon === ROBLOX_ADDON) {
         // Roblox has square icons and wide screenshots: the cover is a poster made from both.
         if (kind === "cover") {
-          const svg = await ctx.roblox.poster(g.user.id, g.externalId);
-          if (!svg) throw new HttpProblem(404, "No cover");
-          return reply.type("image/svg+xml").header("Cache-Control", "private, max-age=604800").header("Content-Security-Policy", "default-src 'none'; img-src data:; style-src 'unsafe-inline'").send(svg);
+          const cover = await ctx.roblox.cover(g.user.id, g.externalId, g.user.role === "admin");
+          if (!cover) throw new HttpProblem(404, "No cover");
+          if ("file" in cover) return reply.type(cover.contentType).header("Cache-Control", "private, max-age=604800").send(createReadStream(cover.file));
+          // Roblox's pictures couldn't be fetched: the icon itself beats a poster with only the name, and it's tried again soon.
+          if (!cover.poster.pictures && cover.iconUrl) return reply.header("Cache-Control", "private, max-age=300").redirect(cover.iconUrl);
+          return reply
+            .type("image/svg+xml")
+            .header("Cache-Control", cover.poster.pictures ? "private, max-age=604800" : "private, max-age=300")
+            .header("Content-Security-Policy", "default-src 'none'; img-src data:; style-src 'unsafe-inline'")
+            .send(cover.poster.svg);
         }
         const url = ctx.roblox.screenshot(g.user.id, g.externalId);
         if (!url) throw new HttpProblem(404, `No ${kind}`);

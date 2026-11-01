@@ -42,6 +42,22 @@ export function robloxRoutes(app: FastifyInstance, ctx: AppContext) {
     return g;
   });
 
+  /** Admins: their own cover (body: the image, Content-Type image/*). DELETE goes back to LootDen's poster. */
+  app.put<{ Params: { id: string } }>("/api/roblox/:id/cover", async (req) => {
+    requireAdmin(req);
+    if (!Buffer.isBuffer(req.body)) throw new HttpProblem(400, "Send the image itself");
+    const g = await fail(() => ctx.roblox.setCover(req.params.id, req.body as Buffer, String(req.headers["content-type"]).split(";")[0]!.trim()));
+    live();
+    return g;
+  });
+
+  app.delete<{ Params: { id: string } }>("/api/roblox/:id/cover", async (req) => {
+    requireAdmin(req);
+    const g = await fail(() => ctx.roblox.clearCover(req.params.id));
+    live();
+    return g;
+  });
+
   app.post<{ Params: { id: string } }>("/api/roblox/:id/refresh", async (req) => {
     requireAdmin(req);
     return fail(() => ctx.roblox.refresh(req.params.id));

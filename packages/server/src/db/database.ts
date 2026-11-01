@@ -730,6 +730,10 @@ export const MIGRATIONS: string[] = [
   -- Saves made by a recomp (a native PC version of a console game) instead of the game's emulator.
   ALTER TABLE saves ADD COLUMN runner TEXT;
   `,
+  `
+  -- An admin's own cover for a Roblox game: "<content type>@<time>", the file under roblox-covers/.
+  ALTER TABLE roblox_games ADD COLUMN custom_cover TEXT;
+  `,
 ];
 
 export function openDatabase(file: string): Db {

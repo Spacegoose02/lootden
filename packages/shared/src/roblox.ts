@@ -21,6 +21,8 @@ export interface RobloxGame {
   ageRating: string | null;
   genre: string | null;
   maxPlayers: number | null;
+  /** When an admin uploaded their own cover (used instead of the poster LootDen makes); null for none. */
+  customCover: string | null;
   /** Shown to every profile. */
   everyone: boolean;
   /** The profiles it's shown to (when not everyone). */

@@ -84,26 +84,52 @@ ${lines.map((l, i) => `  <text x="${W / 2}" y="${textY + i * fontSize * 1.12}" f
 </svg>`;
 }
 
+/** Bumped when the poster's look changes, so browsers fetch the new one. */
+const POSTER_STYLE = "2";
+
+const IMAGE_HEADERS = {
+  accept: "image/avif,image/webp,image/png,image/jpeg,image/*;q=0.8,*/*;q=0.5",
+  "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36 LootDen",
+};
+
+export interface Poster {
+  svg: string;
+  pictures: boolean;
+}
+
+/** An image's type from its first bytes: PNG, JPEG, WebP or GIF. Null for anything else. */
+export function imageType(b: Buffer): string | null {
+  if (b.length >= 8 && b[0] === 0x89 && b.toString("latin1", 1, 4) === "PNG") return "image/png";
+  if (b.length >= 3 && b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff) return "image/jpeg";
+  if (b.length >= 12 && b.toString("latin1", 0, 4) === "RIFF" && b.toString("latin1", 8, 12) === "WEBP") return "image/webp";
+  if (b.length >= 6 && b.toString("latin1", 0, 4) === "GIF8") return "image/gif";
+  return null;
+}
+
 /** Builds and keeps the posters, fetching each game's pictures from Roblox once. */
 export class RobloxPosters {
-  private readonly made = new Map<string, Promise<string>>();
+  private readonly made = new Map<string, Promise<Poster>>();
 
-  constructor(private readonly fetchImpl: FetchLike = fetch) {}
+  constructor(
+    private readonly fetchImpl: FetchLike = fetch,
+    private readonly log: { warn(o: object, m: string): void } = { warn: () => {} },
+  ) {}
 
   /** Changes when the game's name or pictures do, so browsers drop an old poster. */
-  static version(g: Pick<RobloxGame, "name" | "iconUrl" | "thumbnailUrl">): string {
-    return createHash("sha256").update(`${g.name}\n${g.iconUrl}\n${g.thumbnailUrl}`).digest("hex").slice(0, 10);
+  static version(g: Pick<RobloxGame, "name" | "iconUrl" | "thumbnailUrl"> & { customCover?: string | null }): string {
+    return createHash("sha256").update(`${POSTER_STYLE}\n${g.name}\n${g.iconUrl}\n${g.thumbnailUrl}\n${g.customCover ?? ""}`).digest("hex").slice(0, 10);
   }
 
-  poster(g: RobloxGame): Promise<string> {
+  /** The poster, and whether Roblox's pictures made it in (without them it's only the name). */
+  poster(g: RobloxGame): Promise<Poster> {
     const key = `${g.universeId}:${RobloxPosters.version(g)}`;
     let job = this.made.get(key);
     if (!job) {
-      job = Promise.all([this.inline(g.iconUrl), this.inline(g.thumbnailUrl)]).then(([icon, shot]) => posterSvg(g, icon, shot));
-      // A poster made without its pictures (Roblox unreachable) is tried again next time.
+      job = Promise.all([this.inline(g.iconUrl), this.inline(g.thumbnailUrl)]).then(([icon, shot]) => ({ svg: posterSvg(g, icon, shot), pictures: !!(icon || shot) }));
+      // A poster made without its pictures (Roblox's image servers unreachable) is tried again next time.
       job.then(
-        (svg) => {
-          if (!svg.includes("data:image") && (g.iconUrl || g.thumbnailUrl)) this.made.delete(key);
+        (p) => {
+          if (!p.pictures && (g.iconUrl || g.thumbnailUrl)) this.made.delete(key);
         },
         () => this.made.delete(key),
       );
@@ -117,14 +143,22 @@ export class RobloxPosters {
   private async inline(url: string | null): Promise<string | null> {
     if (!isRobloxImage(url)) return null;
     try {
-      const res = await this.fetchImpl(url, { signal: AbortSignal.timeout(15_000) });
-      if (!res.ok) return null;
-      const type = (res.headers.get("content-type") ?? "image/png").split(";")[0]!.trim();
-      if (!/^image\/(png|jpeg|webp|gif)$/.test(type)) return null;
+      // Roblox's image servers answer some clients without a browser's headers with an error page.
+      const res = await this.fetchImpl(url, { headers: IMAGE_HEADERS, signal: AbortSignal.timeout(15_000) });
+      if (!res.ok) {
+        this.log.warn({ url, status: res.status }, "Roblox picture not fetched");
+        return null;
+      }
       const body = Buffer.from(await res.arrayBuffer());
-      if (body.length > 4 * 1024 * 1024) return null;
+      // The bytes say what the picture is: the servers' Content-Type isn't always an image one.
+      const type = imageType(body);
+      if (!type || body.length > 4 * 1024 * 1024) {
+        this.log.warn({ url, contentType: res.headers.get("content-type"), bytes: body.length }, "Roblox picture isn't a usable image");
+        return null;
+      }
       return `data:${type};base64,${body.toString("base64")}`;
-    } catch {
+    } catch (err) {
+      this.log.warn({ url, err: (err as Error).message }, "Roblox picture not fetched");
       return null;
     }
   }
