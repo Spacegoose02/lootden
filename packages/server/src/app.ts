@@ -69,6 +69,8 @@ import { LiveEvents } from "./live.js";
 import { familyRoutes } from "./routes/family.js";
 import { FamilyService } from "./users/family.js";
 import { PresenceService, type WakeSender } from "./users/presence.js";
+import { DenDutyLink } from "./users/denduty.js";
+import { denDutyRoutes } from "./routes/denduty.js";
 import { presenceRoutes } from "./routes/presence.js";
 import { ShelfStore } from "./users/shelves.js";
 import { HelperService, type HelperAi } from "./helper/service.js";
@@ -161,6 +163,8 @@ export function buildContext(config: ServerConfig, db: Db, log: Log, opts: Build
   const family = new FamilyService(db, library, users, () => requests, notifier);
   const presence = new PresenceService(db, users, library, family, opts.wake);
   presence.onChange = () => live.publish("playing");
+  const denDuty = new DenDutyLink(db, vault, users, family, presence, opts.fetchImpl);
+  family.externalLock = (userId) => denDuty.lockFor(userId);
   return {
     config,
     db,
@@ -198,6 +202,7 @@ export function buildContext(config: ServerConfig, db: Db, log: Log, opts: Build
     live,
     family,
     presence,
+    denDuty,
     helper: new HelperService(db, vault, config.anthropicApiKey, () => zonedParts(new Date(), family.timeZone()).date, opts.helperAi),
     shelves: new ShelfStore(db, library),
     timeToBeat: timeToBeat(metadata.igdb, new HowLongToBeat(opts.fetchImpl), () => settings().hltb.enabled !== false),
@@ -280,6 +285,7 @@ export function buildApp(config: ServerConfig, db: Db, opts: BuildOptions = {}):
   app.addHook("preClose", async () => ctx.live.close());
   familyRoutes(app, ctx);
   presenceRoutes(app, ctx);
+  denDutyRoutes(app, ctx);
   helperRoutes(app, ctx);
 
   // TabStationToo for PS2 games in the browser, cross-origin isolated, unless an admin switched it off.

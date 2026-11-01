@@ -1530,6 +1530,8 @@ function registerIpc(): void {
     const player = currentPlayer();
     const today = await todaysAllowance(live);
     if (today && !today.canPlay) throw new Error(today.reason ?? "No play time left today");
+    // A Den Duty time-out can lock Roblox alone.
+    if (today?.robloxLock) throw new Error(today.robloxLock);
     await shell.openExternal(url);
     launching.add(gameId);
     const stop = new AbortController();

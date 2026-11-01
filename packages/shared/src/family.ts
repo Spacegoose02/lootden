@@ -42,6 +42,8 @@ export interface Allowance {
   canPlay: boolean;
   /** Why not, in words, when canPlay is false. */
   reason: string | null;
+  /** Den Duty: a time-out that locks Roblox only, in words; other games still play. */
+  robloxLock?: string | null;
 }
 
 /** A bonus time request: a kid asks for more minutes today, an admin says yes or no. */

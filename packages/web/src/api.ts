@@ -753,6 +753,9 @@ export const api = {
   closeOnPc: (device: string, gameId: string, text?: string) => call("POST", `/api/pcs/${encodeURIComponent(device)}/close`, { gameId, text }),
   bonusNow: (userId: number, minutes: number) => call<{ allowance: Allowance }>("POST", `/api/family/now-playing/${userId}/bonus`, { minutes }),
   pcs: () => call<PcInfo[]>("GET", "/api/pcs"),
+  denDuty: () => call<DenDutyView>("GET", "/api/denduty"),
+  saveDenDuty: (patch: Partial<Omit<DenDutyView, "hasToken" | "connected" | "error" | "lastSyncAt" | "denKids" | "goals">> & { token?: string | null }) => call<DenDutyView>("PUT", "/api/denduty", patch),
+  syncDenDuty: () => call<DenDutyView>("POST", "/api/denduty/sync"),
   wakePc: (name: string) => call<{ sent: number }>("POST", `/api/pcs/${encodeURIComponent(name)}/wake`),
   setPcMac: (name: string, mac: string) => call<PcInfo>("PUT", `/api/pcs/${encodeURIComponent(name)}/mac`, { mac }),
   forgetPc: (name: string) => call("DELETE", `/api/pcs/${encodeURIComponent(name)}`),
@@ -862,4 +865,20 @@ export async function askHelper(req: HelperChatRequest, onText: (text: string) =
   }
   const rest = decoder.decode();
   if (rest) onText(rest);
+}
+
+/** Settings, Den Duty: the link to the family's chore tracker. */
+export interface DenDutyView {
+  url: string;
+  homeId: string;
+  kids: Record<string, string>;
+  locks: boolean;
+  choresFirst: boolean;
+  gameTime: boolean;
+  hasToken: boolean;
+  connected: boolean;
+  error: string | null;
+  lastSyncAt: string | null;
+  denKids: Array<{ id: string; name: string }>;
+  goals: Array<{ id: string; title: string; icon: string; reward: string | null; reachedAt: string }>;
 }

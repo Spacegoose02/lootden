@@ -7,6 +7,7 @@ import { AdminIntegrations } from "../components/AdminIntegrations";
 import { HelperSection } from "../components/AdminHelper";
 import { RobloxSection } from "../components/AdminRoblox";
 import { PcsSection } from "../components/AdminPcs";
+import { DenDutySection } from "../components/AdminDenDuty";
 import { AdminVideos } from "../components/AdminVideos";
 import { Card, Field, Pill, Toggle, useConnectors } from "../components/SettingsUi";
 import { ThemePicker } from "../components/ThemePicker";
@@ -22,6 +23,7 @@ const SECTIONS: Array<{ id: string; title: string; blurb: string }> = [
   { id: "wanted", title: "Wanted & rules", blurb: "Auto-search and what to grab" },
   { id: "sources", title: "Release sources", blurb: "Feeds and APIs that list new games" },
   { id: "safety", title: "Scanning & alerts", blurb: "Virus scan and notifications" },
+  { id: "denduty", title: "Den Duty", blurb: "Chores first, time-outs and game time from the chore app" },
   { id: "pcs", title: "PCs", blurb: "Which PCs are on, free space and Wake-on-LAN" },
   { id: "roblox", title: "Roblox", blurb: "Roblox games for the library and who sees them" },
   { id: "helper", title: "Bandit (AI helper)", blurb: "AI key, model, budget and who can use him" },
@@ -71,6 +73,7 @@ export function Settings() {
         {section === "sources" && <SourcesSection say={say} />}
         {section === "safety" && <SafetySection say={say} />}
         {section === "pcs" && <PcsSection say={say} />}
+        {section === "denduty" && <DenDutySection say={say} />}
         {section === "roblox" && <RobloxSection say={say} />}
         {section === "helper" && <HelperSection say={say} />}
         {section === "services" && <ServicesSection say={say} />}

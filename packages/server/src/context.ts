@@ -38,6 +38,7 @@ import type { ShelfStore } from "./users/shelves.js";
 import type { HelperService } from "./helper/service.js";
 import type { RobloxCatalog } from "./roblox/catalog.js";
 import type { PresenceService } from "./users/presence.js";
+import type { DenDutyLink } from "./users/denduty.js";
 
 /** Everything route modules need, built once in buildApp. */
 export interface AppContext {
@@ -85,6 +86,8 @@ export interface AppContext {
   shelves: ShelfStore;
   /** Now Playing, parents' messages to PCs and the household's PCs (Wake-on-LAN). */
   presence: PresenceService;
+  /** The link to Den Duty, the family's chore tracker: game locks, chores first, game time. */
+  denDuty: DenDutyLink;
   /** Bandit, the AI gaming helper. */
   helper: HelperService;
   timeToBeat: (providerId: string | null, title: string) => Promise<TimeToBeat | null>;

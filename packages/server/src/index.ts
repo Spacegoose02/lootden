@@ -40,6 +40,8 @@ if (config.watch) {
 }
 if (config.scanIntervalMinutes > 0) setInterval(rescan, config.scanIntervalMinutes * 60_000).unref();
 setInterval(() => ctx.auth.pruneSessions(), 6 * 3600_000).unref();
+// Den Duty link: time-outs, chores first and game time from the shop, every minute.
+ctx.denDuty.start();
 // Import finished torrent/usenet downloads into the library.
 // Steam wishlist and list feeds: every six hours, and once shortly after startup.
 setTimeout(() => void ctx.wishlist.syncAll(true).catch(() => {}), 30_000).unref();
