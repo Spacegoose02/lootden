@@ -1,8 +1,8 @@
 import { createReadStream } from "node:fs";
 import { stat } from "node:fs/promises";
 import type { Readable } from "node:stream";
-import type { FastifyInstance } from "fastify";
-import { EMULATORS, PLATFORMS, platformFor, RECOMPS } from "@lootden/shared";
+import type { FastifyInstance, FastifyRequest } from "fastify";
+import { EMULATORS, PLATFORMS, platformFor, recompInfo, RECOMPS, type RecompArch, type RecompOs } from "@lootden/shared";
 import { HttpProblem, requireAdmin, requireUser, type AppContext } from "../context.js";
 import { browserPlayable, playPage } from "../emulation/browser-play.js";
 import { addCustomRecomp, customRecomps, removeCustomRecomp } from "../emulation/recomps.js";
@@ -21,6 +21,42 @@ export function emulationRoutes(app: FastifyInstance, ctx: AppContext, ps2Dir: s
   app.get("/api/recomps", async (req) => {
     requireUser(req);
     return { builtIn: RECOMPS, added: customRecomps(ctx.db) };
+  });
+
+  // Recomp downloads through the server: fetched from GitHub once, then every PC gets them from here.
+  type Want = { Params: { id: string }; Querystring: { os?: string; arch?: string } };
+  const want = (req: FastifyRequest<Want>) => {
+    requireUser(req);
+    const info = recompInfo(req.params.id, customRecomps(ctx.db));
+    if (!info) throw new HttpProblem(404, "No such recomp");
+    const os: RecompOs = req.query.os === "linux" ? "linux" : "win32";
+    const arch: RecompArch = req.query.arch === "arm64" ? "arm64" : "x64";
+    return { info, os, arch, qs: `os=${os}&arch=${arch}` };
+  };
+
+  app.get<Want>("/api/recomps/:id/release", async (req) => {
+    const { info, os, arch, qs } = want(req);
+    try {
+      return { ...(await ctx.recompCache.release(info, os, arch)), download: `/api/recomps/${encodeURIComponent(info.id)}/file?${qs}` };
+    } catch (err) {
+      throw new HttpProblem(502, (err as Error).message);
+    }
+  });
+
+  app.get<Want>("/api/recomps/:id/file", async (req, reply) => {
+    const { info, os, arch } = want(req);
+    let found: Awaited<ReturnType<typeof ctx.recompCache.file>>;
+    try {
+      found = await ctx.recompCache.file(info, os, arch);
+    } catch (err) {
+      throw new HttpProblem(502, (err as Error).message);
+    }
+    const s = await stat(found.path);
+    reply.header("Content-Type", "application/octet-stream").header("Content-Length", s.size);
+    reply.header("X-Recomp-Version", encodeURIComponent(found.release.version));
+    reply.header("X-Recomp-Sha256", await ctx.recompCache.sha256Of(found.path));
+    reply.header("Content-Disposition", `attachment; filename*=UTF-8''${encodeURIComponent(found.release.fileName)}`);
+    return reply.send(createReadStream(found.path));
   });
 
   app.post("/api/recomps", async (req) => {

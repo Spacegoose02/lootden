@@ -30,6 +30,7 @@ import {
 import type { GameServerClient } from "./api.js";
 import { download, findFile, listFiles, readTools, writeTools, zipFiles, type ToolsOptions } from "./emulators.js";
 import { extractArchive } from "./extractor.js";
+import { checkGameCopy } from "./discs.js";
 import { findExecutable } from "./launcher.js";
 
 export { RECOMPS, recompInfo, recompsFor } from "@lootden/shared";
@@ -41,7 +42,11 @@ const hostArch = (): RecompArch => (process.arch === "arm64" ? "arm64" : "x64");
 const GITHUB = { "User-Agent": "LootDen", Accept: "application/vnd.github+json" };
 
 /** Tools options, plus the recomps an admin added on the server (LootDen's own are always known). */
-export type RecompOptions = ToolsOptions & { added?: RecompInfo[] };
+export type RecompOptions = ToolsOptions & {
+  added?: RecompInfo[];
+  /** The LootDen server: recomps download through it (fetched from GitHub once for the whole house), else straight from GitHub. */
+  api?: GameServerClient;
+};
 
 /** A recomp by id: LootDen's own, one the server lists, or one set up here before (so it plays offline). */
 async function resolveInfo(id: string, opts: { toolsDir: string; added?: RecompInfo[] }): Promise<RecompInfo> {
@@ -129,7 +134,22 @@ export async function installRecomp(id: string, opts: RecompOptions & { arch?: R
   const platform = opts.platform ?? hostOs();
   const emit = opts.onEvent ?? (() => {});
   emit({ message: `Finding the latest ${info.name}` });
-  const release = await latestRecompRelease(fetchImpl, info.repo, platform, opts.arch ?? hostArch());
+  const arch = opts.arch ?? hostArch();
+  let release: RecompRelease | null = null;
+  let getter: Fetch = fetchImpl;
+  let from = "GitHub";
+  if (opts.api) {
+    const api = opts.api;
+    try {
+      const r = await api.json<{ version: string; fileName: string; sha256: string | null; cached: boolean; download: string }>(`/api/recomps/${encodeURIComponent(id)}/release?os=${platform}&arch=${arch}`);
+      release = { version: r.version, fileName: r.fileName, sha256: r.sha256, url: api.urlFor(r.download) };
+      getter = ((url: string | URL | Request, init: RequestInit = {}) => fetch(url, { ...init, headers: api.headers((init.headers ?? {}) as Record<string, string>) })) as Fetch;
+      from = r.cached ? "your LootDen server" : "GitHub, through your LootDen server";
+    } catch {
+      // An older server, or it can't reach GitHub: go to GitHub from here.
+    }
+  }
+  release ??= await latestRecompRelease(fetchImpl, info.repo, platform, arch);
 
   const dir = recompDir(opts.toolsDir, id);
   const before = (await readTools(opts.toolsDir)).recomps[id];
@@ -142,7 +162,7 @@ export async function installRecomp(id: string, opts: RecompOptions & { arch?: R
   const tmp = await mkdtemp(path.join(opts.toolsDir, `.get-${id}-`));
   try {
     const file = path.join(tmp, release.fileName);
-    await download(fetchImpl, release.url, file, (received, total) => emit({ message: `Downloading ${info.name} ${release.version}`, received, total }), opts.signal);
+    await download(getter, release.url, file, (received, total) => emit({ message: `Downloading ${info.name} ${release!.version} from ${from}`, received, total }), opts.signal);
     if (release.sha256) {
       emit({ message: `Checking ${release.fileName}` });
       if ((await sha256File(file)) !== release.sha256) throw new Error(`${release.fileName} doesn't match the checksum GitHub has for it, so it wasn't installed. Try again.`);
@@ -356,6 +376,14 @@ export async function planRecomp(gameDir: string, recompId: string, opts: Recomp
     if (!have || !have.equals(z64)) await writeFile(stored, z64);
   } else {
     rom = await gameFile(gameDir, info);
+    const want = manifest?.game;
+    // A folder game ("Sonic Unleashed/default.xex") is handed over as its folder.
+    if (want?.kind === "folder" || (want?.kind === "iso_or_folder" && (rom === gameDir || /\.xex$/i.test(rom)))) rom = rom === gameDir ? gameDir : path.dirname(rom);
+    if (want && Object.keys(want.check).length) {
+      emit({ message: `Checking ${path.basename(rom)}` });
+      const problem = await checkGameCopy(rom, want.check);
+      if (problem) throw new Error(`${problem}. ${info.name} needs ${want.label}.`);
+    }
   }
   await writeFile(path.join(dataDir, "portable.txt"), "").catch(() => {});
 

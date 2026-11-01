@@ -13,7 +13,7 @@ export interface Platform {
   coverAspect: number;
   /** Accent colour for the system's header and badges. */
   color: string;
-  /** Emulator that runs it in the desktop app; null for PC. */
+  /** Emulator that runs it in the desktop app; null for PC, and for systems only recomps play (Xbox 360). */
   emulator: string | null;
   /** Files the emulator opens, best first. Archives count when the emulator reads them directly. */
   extensions: string[];
@@ -37,6 +37,8 @@ export const PLATFORMS: Platform[] = [
   p({ id: "ps2", name: "PlayStation 2", short: "PS2", aliases: ["playstation2"], coverAspect: 0.7, color: "#3b5fd9", emulator: "pcsx2", extensions: ["chd", "iso", "cso", "zso", "cue", "bin", "gz"], igdb: 8, rawg: 15, browserPlayer: "tabstationtoo" }),
   p({ id: "ps3", name: "PlayStation 3", short: "PS3", aliases: ["playstation3"], coverAspect: 0.86, color: "#d0d4da", emulator: "rpcs3", extensions: ["bin", "iso", "pkg"], igdb: 9, rawg: 16 }),
   p({ id: "xbox", name: "Xbox", short: "Xbox", aliases: ["xbox-original", "ogxbox"], coverAspect: 0.7, color: "#3fbf3f", emulator: "xemu", extensions: ["xiso", "iso"], igdb: 11, rawg: 80 }),
+  // No emulator in LootDen yet: Xbox 360 games play through their recomps (Unleashed Recompiled and others).
+  p({ id: "x360", name: "Xbox 360", short: "X360", aliases: ["xbox360", "360"], coverAspect: 0.7, color: "#5dc21e", emulator: null, extensions: ["iso", "xex", "zar"], igdb: 12, rawg: 14 }),
   p({ id: "psp", name: "PlayStation Portable", short: "PSP", aliases: [], coverAspect: 0.58, color: "#6c6f75", emulator: "retroarch", extensions: ["chd", "cso", "iso", "pbp"], igdb: 38, rawg: 17, browserCore: "psp" }),
   p({ id: "nes", name: "NES", short: "NES", aliases: ["famicom", "fc"], coverAspect: 0.73, color: "#e4002b", emulator: "retroarch", extensions: ["nes", "fds", "unf", "zip", "7z"], igdb: 18, rawg: 49, browserCore: "nes" }),
   p({ id: "snes", name: "Super Nintendo", short: "SNES", aliases: ["sfc", "superfamicom"], coverAspect: 1.38, color: "#7b5cc4", emulator: "retroarch", extensions: ["sfc", "smc", "zip", "7z"], igdb: 19, rawg: 79, browserCore: "snes" }),

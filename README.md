@@ -47,6 +47,9 @@ installs games from it on any PC in the house.
   from the emulator's. Releases that ship a `recomplauncher.json` are started the way it says,
   with their settings on the game's page, their setup step run once, and their own messages for
   exit codes. Admins can add more recomps by GitHub link, and the Emulation page shows updates.
+  The server downloads each recomp release once and every PC installs it from there. Xbox 360
+  games (`Emulation/xbox360/`) play through their recomps, and recomps with a Thunderstore
+  community (Zelda 64: Recompiled and others) install mods from the game's page.
 - Optional download tools for admins: Prowlarr search, qBittorrent, Transmission, Deluge
   and SABnzbd, a download manager for direct file-host links, import clean-up, a wanted
   list, virus scanning and alerts (Apprise).

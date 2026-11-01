@@ -13,6 +13,7 @@ export { missingSunshineApps, moonlightCommand, streamWithMoonlight, sunshineApp
 export { isRobloxPlayer, RobloxLogWatcher, setRobloxFullscreen, trackRoblox, withFullscreen } from "./roblox.js";
 export * from "./emulators.js";
 export * from "./recomps.js";
+export * from "./recompmods.js";
 export { backupSaves, expandSavePath, restoreSaves } from "./saves.js";
 export { installedTruckModKey, installTruckMod, linkTruckMod, listTruckMods, readTruckManifest, removeTruckMod, scanTruckMods, truckGameVersion, truckModsFolder, TRUCK_MODS_LIST } from "./truckmods.js";
 export { switchSaveSlot, type SaveSlotOptions } from "./saveslots.js";

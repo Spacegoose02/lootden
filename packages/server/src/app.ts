@@ -11,6 +11,7 @@ import type { ServerConfig } from "./config.js";
 import { HttpProblem, type AppContext } from "./context.js";
 import type { Db } from "./db/database.js";
 import type { FetchLike } from "./metadata/http.js";
+import { RecompCache } from "./emulation/recomp-cache.js";
 import { MetadataService } from "./metadata/service.js";
 import { NewsService } from "./news/service.js";
 import { DownloadManager } from "./connectors/manager.js";
@@ -214,6 +215,7 @@ export function buildContext(config: ServerConfig, db: Db, log: Log, opts: Build
     clients: new ClientDownloads(config.dataDir, opts.fetchImpl, db),
     saves: new SaveStore(db, config.dataDir),
     bios: new BiosStore(db, config.dataDir),
+    recompCache: new RecompCache(config.dataDir, opts.fetchImpl),
     updates,
     freeGames: new FreeGames(opts.fetchImpl, () => settings().itch.apiKey),
     auth: new AuthService(db, users, config),

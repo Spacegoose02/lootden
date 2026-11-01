@@ -33,6 +33,8 @@ export interface RecompInfo {
   note?: string;
   /** Added by an admin from a GitHub link, rather than built into LootDen. */
   custom?: boolean;
+  /** Mods from Thunderstore, when the release's recomplauncher.json doesn't say. */
+  mods?: RecompMods;
 }
 
 /**
@@ -66,7 +68,8 @@ export const RECOMPS: RecompInfo[] = [
     titles: ["majorasmask"],
     rom: { romId: "mm.n64.us.1.0", header: "ZELDA MAJORA'S MASK", country: "E", label: "the USA release of Majora's Mask (.z64, .n64 or .v64)" },
     programs: ["Zelda64Recompiled"],
-    note: "Needs the USA ROM. Mods, widescreen and high frame rates are in the game's own menu.",
+    mods: { thunderstore: "zelda-64-recompiled", data: "Zelda64Recompiled" },
+    note: "Needs the USA ROM. Mods from Thunderstore install from the game's page; widescreen and high frame rates are in the game's own menu.",
   },
   {
     id: "starfox64recomp",
@@ -222,6 +225,24 @@ export interface RecompManifest {
   prepare: { programs: string[]; args: string[]; label: string; timeout: number } | null;
   /** Messages for exit codes, shown instead of "it crashed". */
   exitCodes: Record<string, string>;
+  /** What the recomp is handed and how to tell it's the right game. */
+  game: RecompGame | null;
+  /** Where its mods come from and where they go. */
+  mods: RecompMods | null;
+}
+
+export interface RecompGame {
+  kind: "iso" | "folder" | "iso_or_folder";
+  label: string;
+  /** A file that should be in the folder, or in the top folder of an ISO 9660 or Xbox (XDVDFS) disc. */
+  check: { file?: string; iso9660?: string; xdvdfs?: string };
+}
+
+export interface RecompMods {
+  /** The community on thunderstore.io (thunderstore.io/c/<community>). */
+  thunderstore: string;
+  /** The recomp's data folder name; when it runs portable, its mods folder is beside the program. */
+  data: string;
 }
 
 export type RecompConfigFormat = "toml" | "ini" | "json";
@@ -299,7 +320,30 @@ export function parseRecompManifest(input: unknown): RecompManifest {
         }
       : null,
     exitCodes,
+    game: cleanGame(o.game),
+    mods: cleanMods(o.mods),
   };
+}
+
+function cleanGame(v: unknown): RecompGame | null {
+  if (!v || typeof v !== "object") return null;
+  const g = v as Record<string, unknown>;
+  const kind = g.kind === "folder" || g.kind === "iso_or_folder" ? g.kind : "iso";
+  const c = (g.check && typeof g.check === "object" ? g.check : {}) as Record<string, unknown>;
+  const name = (x: unknown) => (typeof x === "string" && x.length > 0 && x.length < 200 && !x.split(/[\\/]/).includes("..") ? x : undefined);
+  const check = { file: name(c.file), iso9660: name(c.iso9660), xdvdfs: name(c.xdvdfs) };
+  return {
+    kind,
+    label: typeof g.label === "string" ? g.label.slice(0, 200) : "your copy of the game",
+    check: Object.fromEntries(Object.entries(check).filter(([, x]) => x !== undefined)),
+  };
+}
+
+function cleanMods(v: unknown): RecompMods | null {
+  if (!v || typeof v !== "object") return null;
+  const m = v as Record<string, unknown>;
+  const ok = (x: unknown) => typeof x === "string" && /^[\w.-]{1,80}$/.test(x);
+  return ok(m.thunderstore) && ok(m.data) ? { thunderstore: m.thunderstore as string, data: m.data as string } : null;
 }
 
 const insideFolder = (p: string) => !p.split(/[\\/]/).includes("..") && !/^([a-z]:|[\\/])/i.test(p);

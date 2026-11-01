@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { EMULATORS, platformFor, recompsFor, type GameDetail, type RecompInfo } from "@lootden/shared";
 import { api, formatBytes } from "../api";
 import { useAuth } from "../auth";
-import { bridgeError, desktop, useDesktopGame, type Drive, type RecompSettingView, type RecompSetup } from "../desktop";
+import { bridgeError, desktop, useDesktopGame, type Drive, type RecompModsView, type RecompSettingView, type RecompSetup } from "../desktop";
 import { LaunchOptionsPanel, PlayWithButtons, useLaunchOptions } from "./LaunchOptions";
 
 /** Install / play / uninstall panel shown inside the desktop app. */
@@ -121,9 +121,10 @@ export function DesktopInstall({ game, autoFocus }: { game: GameDetail; autoFocu
     return (
       <div className="install panel">
         <div className="inline">
-          <button ref={button} className="primary" disabled={busy || running} onClick={() => run(() => bridge.play(game.id))}>
+          {(pcGame || emulatorName || running) && <button ref={button} className="primary" disabled={busy || running} onClick={() => run(() => bridge.play(game.id))}>
             {running ? (paused ? "Paused" : "Playing…") : emulatorName ? `▶ Play in ${emulatorName}` : launch.state?.profile?.defaultAction ? `▶ Play with ${launch.state.profile.actions.find((a) => a.id === launch.state!.profile!.defaultAction)?.name ?? "mods"}` : "▶ Play"}
-          </button>
+          </button>}
+          {!pcGame && !emulatorName && !running && !recomps.length && <span className="muted small">LootDen has no emulator for {platformFor(game.platform).name} yet.</span>}
           {!running && <PlayWithButtons profile={launch.state?.profile ?? null} disabled={busy} onPlay={(id) => void run(() => bridge.play(game.id, id))} />}
           {!running &&
             bridge.recomps &&
@@ -177,6 +178,9 @@ export function DesktopInstall({ game, autoFocus }: { game: GameDetail; autoFocu
         {error && <p className="error small">{error}</p>}
         {readyRecomps.map((r) => (
           <RecompSettingsPanel key={r.id} recomp={r} />
+        ))}
+        {readyRecomps.map((r) => (
+          <RecompModsPanel key={r.id} recomp={r} />
         ))}
         {launch.state && <LaunchOptionsPanel launchKey={`lootden:${game.id}`} title={game.title} state={launch.state} onSaved={() => void launch.reload()} />}
       </div>
@@ -288,6 +292,74 @@ function RecompSettingsPanel({ recomp }: { recomp: RecompInfo }) {
           {s.help && <span className="muted small"> {s.help}</span>}
         </label>
       ))}
+      {error && <p className="error small">{error}</p>}
+    </details>
+  );
+}
+
+/** Mods for a recomp from Thunderstore: the ones on this PC, and the community's most liked. */
+function RecompModsPanel({ recomp }: { recomp: RecompInfo }) {
+  const [data, setData] = useState<RecompModsView | null>(null);
+  const [query, setQuery] = useState("");
+  const [busy, setBusy] = useState<string | null>(null);
+  const [error, setError] = useState("");
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    if (open && !data) void desktop?.recompMods?.(recomp.id).then(setData, (e) => setError(bridgeError(e)));
+  }, [open, recomp.id]);
+  if (!desktop?.recompMods) return null;
+  const act = async (full: string, fn: () => Promise<RecompModsView["installed"]>) => {
+    setBusy(full);
+    setError("");
+    try {
+      const installed = await fn();
+      setData((d) => (d ? { ...d, installed } : d));
+    } catch (e) {
+      setError(bridgeError(e));
+    } finally {
+      setBusy(null);
+    }
+  };
+  const have = new Set(data?.installed.map((m) => m.full));
+  const q = query.trim().toLowerCase();
+  const shown = (data?.available ?? []).filter((m) => !have.has(m.full) && (!q || `${m.name} ${m.owner} ${m.description}`.toLowerCase().includes(q))).slice(0, 20);
+  return (
+    <details className="recomp-settings" onToggle={(e) => setOpen((e.target as HTMLDetailsElement).open)}>
+      <summary>{recomp.name} mods</summary>
+      {!data && !error && <p className="muted small">Loading mods from Thunderstore…</p>}
+      {data && (
+        <>
+          {data.installed.length > 0 && (
+            <ul className="bios-list">
+              {data.installed.map((m) => (
+                <li key={m.full}>
+                  <span className="ok">✓</span> {m.name} <span className="muted small">{m.version}{m.dep ? " · needed by another mod" : ""}</span>{" "}
+                  <button className="small ghost" disabled={!!busy} onClick={() => void act(m.full, () => desktop!.removeRecompMod!(recomp.id, m.full))}>
+                    Remove
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+          {data.others.length > 0 && <p className="muted small">Also in the mods folder, put there by hand: {data.others.join(", ")}</p>}
+          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder={`Search ${data.available.length} mods`} aria-label="Search mods" />
+          <ul className="bios-list">
+            {shown.map((m) => (
+              <li key={m.full}>
+                {m.name} <span className="muted small">by {m.owner} · {m.version} · {m.downloads.toLocaleString()} downloads</span>{" "}
+                <button className="small" disabled={!!busy} onClick={() => void act(m.full, () => desktop!.installRecompMod!(recomp.id, m.full))}>
+                  {busy === m.full ? "Installing…" : "Install"}
+                </button>
+                {m.description && <div className="muted small">{m.description}</div>}
+              </li>
+            ))}
+          </ul>
+          <p className="muted small">
+            From <a href={`https://thunderstore.io/c/${data.community}/`} target="_blank" rel="noreferrer">thunderstore.io/c/{data.community}</a>. Mods take effect the next
+            time the game starts; turn them on or off in its own Mods menu.
+          </p>
+        </>
+      )}
       {error && <p className="error small">{error}</p>}
     </details>
   );
