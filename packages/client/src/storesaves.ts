@@ -87,10 +87,10 @@ export async function globPaths(pattern: string): Promise<string[]> {
 }
 
 /** The saves (and settings) a store game has on this PC right now. */
-export async function findStoreSaves(locations: SaveLocation[], installDir: string | null): Promise<FoundSave[]> {
+export async function findStoreSaves(locations: SaveLocation[], installDir: string | null, env: (name: string) => string | undefined = placeholder): Promise<FoundSave[]> {
   const found = new Map<string, FoundSave>();
   for (const l of locations) {
-    const pattern = fillTemplate(l.template, installDir);
+    const pattern = fillTemplate(l.template, installDir, env);
     if (!pattern) continue;
     for (const p of await globPaths(pattern)) {
       const key = path.resolve(p).toLowerCase();

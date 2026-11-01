@@ -86,6 +86,19 @@ installs games from it on any PC in the house.
 - **Export and backup**: download your library as a spreadsheet (CSV) or JSON from Profile; daily
   database backups (kept for as many days as you choose), download, upload and restore under
   Settings, Backups.
+- **Wishlist prices**: with a free IsThereAnyDeal key, each wishlist game shows its cheapest shop
+  right now and its lowest price ever, and LootDen alerts you (bell and Apprise) when one hits its
+  lowest price, a discount you choose, or your own alert price.
+- **Save backups for other stores' games**: the app finds Steam, GOG, Epic, Rockstar and other
+  games' saves through [Ludusavi](https://github.com/mtkennerly/ludusavi-manifest)'s list of save
+  locations, backs them up after you play (switch under Profile, This computer) or on demand, and
+  restores them on any PC.
+- **More stores**: Amazon Games, Battle.net, the Rockstar Games Launcher and the Riot Client's
+  installed games show up and start from LootDen; Humble Bundle (DRM-free games) and PlayStation
+  (PS4 and PS5 games you've played, with play time) connect under Game libraries.
+- **ProtonDB and Steam Deck badges** on Steam games' pages.
+- **Home Assistant**: sensors over MQTT (with discovery) for who's playing what, games, PCs online
+  and downloads, under Settings, Home Assistant.
 - `lootden` command-line client and a Playnite plugin.
 
 ## Running the server
