@@ -22,6 +22,7 @@ export { scanStoreGames, STORE_SCANNERS, type StoreScanner } from "./stores/inde
 export { steamLibraryCover } from "./stores/steam.js";
 export { LAUNCHER_SCHEME, resolveLauncherLink } from "./stores/launchers.js";
 export { findLocalScreenshots, type LocalScreenshot } from "./localshots.js";
+export { applyTruckLoadOrder, enableTruckTextSaves, oldModsFolder, readTruckProfile, retireTruckModFiles, steamWorkshopSubscriptions, truckProfiles } from "./truckmodlist.js";
 export { downloadWorkshopItem, ensureSteamCmd, installWorkshopItem, listWorkshopItems, removeWorkshopItem, steamCmdResult, type InstalledWorkshopItem } from "./workshop.js";
 export { isStoreLaunchUrl, robloxPlaceOf, robloxPlayId } from "@lootden/shared";
 export { cleanPolicy, KID_SEARCH, KID_SITES, safeSearchUrl, siteAllowed, type BrowserPolicy } from "@lootden/shared";

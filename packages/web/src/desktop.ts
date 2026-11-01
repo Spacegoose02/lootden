@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { GameDetail, GlobalLaunchScripts, InstalledTruckMod, LaunchProfile, LocalStoreGame, TruckGame, TruckModFile } from "@lootden/shared";
+import type { ActiveTruckMod, DuplicateModGroup, GameDetail, GlobalLaunchScripts, InstalledTruckMod, LaunchProfile, LocalStoreGame, ModLinkCheck, TruckGame, TruckModFile, TruckProfile } from "@lootden/shared";
 
 export interface Drive {
   path: string;
@@ -61,6 +61,8 @@ export type Progress =
   | { gameId: string; type: "workshop"; itemId: string; line: string }
   /** ATS/ETS2 mods being added (gameId is "truck-mods:<game>"). */
   | { gameId: string; type: "truckMods"; game: TruckGame; line: string; done: boolean; error: boolean }
+  /** The mod list's page checks (gameId is "truck-mods:<game>"). */
+  | { gameId: string; type: "truckModCheck"; game: TruckGame; done: number; total: number; line: string; finished: boolean }
   | { gameId: string; type: "saves"; backupId?: number; size?: number; error?: string }
   | { gameId: string; type: "prepare"; message: string; done?: boolean; error?: boolean; newId?: string }
   /** Play time heads-ups and time's up (shown by FunLayer, not on the game's page). */
@@ -189,6 +191,14 @@ export interface DesktopBridge {
   addTruckModFile?(game: TruckGame, share: boolean): Promise<InstalledTruckMod | null>;
   openTruckModFolder?(game: TruckGame): Promise<void>;
   pickTruckModFolder?(game: TruckGame, reset?: boolean): Promise<string>;
+  /** The truck mod list's work on this PC: folder scan, page checks, updates, load order (newer apps only). */
+  truckModScan?(game: TruckGame): Promise<TruckModScan>;
+  checkTruckModLinks?(game: TruckGame, items: Array<{ id: number; url: string; name: string }>): Promise<Array<{ id: number; check: ModLinkCheck }>>;
+  stopTruckModCheck?(): Promise<void>;
+  updateTruckMod?(game: TruckGame, url: string, files: string[]): Promise<void>;
+  retireTruckModFiles?(game: TruckGame, files: string[]): Promise<string[]>;
+  applyTruckLoadOrder?(game: TruckGame, profileDir: string, mods: ActiveTruckMod[]): Promise<{ backup: string; profile: TruckProfile }>;
+  enableTruckTextSaves?(game: TruckGame): Promise<boolean>;
   /** The built-in web browser, over LootDen, on its start page or a web page (newer apps only). */
   openBrowser?(url?: string): Promise<void>;
   /** This PC's store scanner settings, and adding a folder to it through the folder picker (newer apps only). */
@@ -288,6 +298,18 @@ export function useDesktopGame(gameId: string) {
 export interface StoreScanSettings {
   stores: Array<{ id: string; name: string; enabled: boolean }>;
   folders: string[];
+}
+
+/** What the desktop app finds for a truck game on this PC, for the mod list and load order. */
+export interface TruckModScan {
+  modFolder: string;
+  gameFolder: string;
+  gameVersion: string | null;
+  files: TruckModFile[];
+  duplicates: DuplicateModGroup[];
+  /** Workshop items Steam has downloaded for the game (the subscriptions). */
+  workshop: Array<{ id: string; updatedAt: string | null; sizeBytes: number }>;
+  profiles: TruckProfile[];
 }
 
 /** A truck game's mod folder on this PC, as the desktop app sees it. */

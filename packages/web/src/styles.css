@@ -4455,6 +4455,79 @@ html[data-lootden-frame] .lightbox {
 .truck-mods code {
   overflow-wrap: anywhere;
 }
+.truck-mod-tracker .segmented {
+  margin: 0.5rem 0;
+}
+.truck-paste {
+  display: grid;
+  gap: 0.5rem;
+  margin: 0.5rem 0;
+}
+.truck-paste textarea {
+  width: 100%;
+  font-family: inherit;
+}
+.truck-profile {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.5rem;
+  justify-content: flex-start;
+  margin: 0.5rem 0;
+}
+.truck-retired {
+  opacity: 0.6;
+}
+.truck-edit {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.5rem;
+}
+.truck-edit label {
+  display: grid;
+  gap: 0.2rem;
+}
+.truck-edit-wide {
+  grid-column: 1 / -1;
+}
+.truck-dups {
+  margin: 0.75rem 0;
+}
+.truck-dups summary {
+  cursor: pointer;
+}
+.truck-note {
+  border: 1px solid var(--warn, #ffd166);
+  border-radius: 8px;
+  padding: 0.5rem 0.75rem;
+  margin: 0.5rem 0;
+}
+.truck-order {
+  margin: 0.25rem 0 0.75rem;
+  padding-left: 2rem;
+  display: grid;
+  gap: 0.15rem;
+}
+.truck-order li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+}
+.truck-order .truck-missing > span:first-child {
+  opacity: 0.6;
+}
+.truck-order-tools {
+  margin-left: auto;
+  display: inline-flex;
+  gap: 0.15rem;
+}
+.truck-draft {
+  border: 1px solid color-mix(in srgb, currentColor 15%, transparent);
+  border-radius: 8px;
+  padding: 0.5rem 0.75rem;
+  margin: 0.5rem 0;
+}
 
 /* ---------- Now Playing and PCs ------------------------------------------- */
 

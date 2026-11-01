@@ -100,6 +100,7 @@ import { isExternalLink, isFile, onOrigin, permissionAllowed } from "./links.js"
 import { SettingsStore, type DesktopSettings } from "./settings.js";
 import { WebBrowser } from "./browser.js";
 import { TruckMods } from "./truckmods.js";
+import { TruckModList } from "./truckmodlist.js";
 import { downloadUpdate, installKind, launchUpdate, pickUpdate, verifyUpdate, type AvailableUpdate } from "./updater.js";
 
 /** Emulators live in the app's data folder unless the user moved them. */
@@ -2563,6 +2564,10 @@ void app.whenReady().then(async () => {
   registerIpc();
   truckMods = new TruckMods({ settings: () => settings, client, send, fromServer }, () => (existsSync(bundled7za()) ? bundled7za() : ""));
   truckMods.registerIpc();
+  new TruckModList(
+    { send, fromServer, openBrowser: (url) => browser.open(url), bundled7za: () => (existsSync(bundled7za()) ? bundled7za() : "") },
+    truckMods,
+  ).registerIpc();
   browser = new WebBrowser({
     settings: () => settings,
     mainWindow: () => win,
