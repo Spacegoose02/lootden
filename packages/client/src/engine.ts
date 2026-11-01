@@ -6,6 +6,7 @@ export { extractArchive, findSevenZip } from "./extractor.js";
 export { adoptFolder, detectSetup, findCopies, listInstalled, saveManifest, uninstallGame, type GameRef, type InstalledGame } from "./installed.js";
 export { installGame, isManifest, LEGACY_MANIFEST_NAME, MANIFEST_NAME, pickGame, type InstallEvent, type InstallOptions } from "./installer.js";
 export { findExecutable, launchAndTrack, listProcesses, processesIn, saveExecutable } from "./launcher.js";
+export { commandFor, isLaunchUrl, launchActionAndTrack, runLaunchSteps, stepTarget, suspendProcesses, type Spawner } from "./launchactions.js";
 export { firstExisting, pcReport, runningStoreGames, streamingPaths } from "./presence.js";
 export { missingSunshineApps, moonlightCommand, streamWithMoonlight, sunshineAppFor, syncSunshine } from "./streaming.js";
 export { isRobloxPlayer, trackRoblox } from "./roblox.js";

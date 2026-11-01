@@ -64,6 +64,13 @@ installs games from it on any PC in the house.
   game time bought in Den Duty's rewards shop turns into bonus time here, reaching a family goal
   unlocks a game night, and Den Duty's family wall shows who's playing, the next game night and
   a screenshot slideshow.
+- **Launch options** (desktop app, per PC): extra ways to start a game, such as SMAPI for Stardew
+  Valley or a mod launcher that has to wait for GTA V to load first (start, wait so many seconds,
+  start the next program), plus scripts and programs to run before a game starts and after it
+  closes, for one game or every game. Works for other stores' installed games too.
+- **Discord status, launch splash and pause**: show what you're playing on Discord, cover the screen
+  with the game's art while it loads (handheld mode or always), and pause a running game with
+  Ctrl+Shift+P or the Pause button. Each one is switched on or off under Profile, This computer.
 - `lootden` command-line client and a Playnite plugin.
 
 ## Running the server

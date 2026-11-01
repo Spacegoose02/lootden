@@ -2,6 +2,7 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import type { Bookmark, BrowserPolicy, KeptAllowance, SearchEngine } from "@lootden/client";
+import type { GlobalLaunchScripts, LaunchProfile } from "@lootden/shared";
 
 export interface DesktopSettings {
   serverUrl: string;
@@ -52,6 +53,18 @@ export interface DesktopSettings {
   truckModFolders?: Partial<Record<"ats" | "ets2", string>>;
   /** Sunshine's web login on this PC (the password sealed with the OS keychain when it can be), and the LootDen games added to it. */
   sunshine?: { user: string; pass: string; sealed: boolean; streamGames: string[] };
+  /** Launch options per game on this PC (keyed by launchKey): extra ways to start it and steps before and after. */
+  launchProfiles?: Record<string, LaunchProfile>;
+  /** Steps every game runs before it starts and after it closes. */
+  launchScripts?: GlobalLaunchScripts;
+  /** Programs the person allowed launch options to start, so changing a profile only asks about new ones. */
+  allowedPrograms?: string[];
+  /** "Playing …" on Discord, through a Discord application's id. */
+  discord?: { enabled: boolean; clientId: string };
+  /** A full-screen picture of the game while it loads: "handheld" only in handheld mode. */
+  splash?: "off" | "handheld" | "on";
+  /** Ctrl+Shift+P (or the game page) pauses and resumes the running game. */
+  suspendKey?: boolean;
 }
 
 export function defaultSettings(): DesktopSettings {

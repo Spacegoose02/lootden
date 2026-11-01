@@ -25,10 +25,15 @@ export function storeInstallUrl(g: StoreGame): string | null {
  * Starts a store game: the PC's own launcher link (Heroic on Linux) when it has one, else the
  * store's. With install, a game this PC doesn't have opens the launcher's install instead.
  */
-export async function launchStoreGame(g: StoreGame, local?: LocalStoreGame, install = false): Promise<void> {
+export async function launchStoreGame(g: StoreGame, local?: LocalStoreGame, install = false, actionId?: string): Promise<void> {
   const url = local?.launchUrl ?? (install ? storeInstallUrl(g) : g.launchUrl);
   if (!url) return;
   if (!desktop?.launchStore) return void (window.location.href = url);
+  // Installed here with launch options (or steps every game runs): the app runs them around the game.
+  if (local && !install && desktop.playStore && desktop.launchOptions && g.addon !== ROBLOX_ADDON) {
+    const opts = await desktop.launchOptions(`store:${g.addon}:${g.externalId}`).catch(() => null);
+    if (opts && (opts.profile || opts.global.before.length || opts.global.after.length)) return desktop.playStore(g.addon, g.externalId, url, actionId);
+  }
   try {
     await desktop.launchStore(url);
   } catch (e) {

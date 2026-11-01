@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { GameDetail, InstalledTruckMod, LocalStoreGame, TruckGame, TruckModFile } from "@lootden/shared";
+import type { GameDetail, GlobalLaunchScripts, InstalledTruckMod, LaunchProfile, LocalStoreGame, TruckGame, TruckModFile } from "@lootden/shared";
 
 export interface Drive {
   path: string;
@@ -54,7 +54,9 @@ export type Progress =
   | { gameId: string; type: "warning"; message: string }
   | { gameId: string; type: "done"; gameDir: string }
   | { gameId: string; type: "error" | "cancelled"; message: string }
-  | { gameId: string; type: "playing" }
+  | { gameId: string; type: "playing"; action?: string }
+  /** The game was paused or picked up again (suspend). */
+  | { gameId: string; type: "suspended" | "resumed" }
   | { gameId: string; type: "stopped"; seconds: number }
   | { gameId: string; type: "workshop"; itemId: string; line: string }
   /** ATS/ETS2 mods being added (gameId is "truck-mods:<game>"). */
@@ -93,6 +95,23 @@ export interface AppSettings {
   looksHandheld?: boolean;
   trayAvailable: boolean;
   loginItemSupported: boolean;
+  /** Launch splash, the suspend key and Discord status (newer apps only). */
+  splash?: "off" | "handheld" | "on";
+  suspendKey?: boolean;
+  discordEnabled?: boolean;
+  discordClientId?: string;
+}
+
+export type AppSettingsPatch = Partial<Pick<AppSettings, "closeToTray" | "autoUpdate" | "openAtLogin" | "handheld" | "fullscreen" | "browserLinks" | "splash" | "suspendKey" | "discordEnabled" | "discordClientId">>;
+
+/** A game's launch options on this PC, with every game's steps and the folder relative paths start in. */
+export interface LaunchOptionsState {
+  profile: LaunchProfile | null;
+  global: GlobalLaunchScripts;
+  /** Null when the game isn't installed here. */
+  dir: string | null;
+  suspendKey: boolean;
+  platform: string;
 }
 
 /** An installed game as this PC knows it: its manifest, the server's details last time it had them, and its cached cover. */
@@ -113,7 +132,17 @@ export interface DesktopBridge {
   installed(): Promise<InstalledGame[]>;
   install(gameId: string, dir?: string): Promise<{ gameDir: string }>;
   cancel(gameId: string): Promise<void>;
-  play(gameId: string): Promise<{ executable: string } | null>;
+  /** actionId picks one of the game's launch options; "" is the game's own way (apps from 0.25 take it). */
+  play(gameId: string, actionId?: string): Promise<{ executable: string } | null>;
+  /** Launch options on this PC: extra ways to start a game and steps before and after it (apps from 0.25). */
+  launchOptions?(key: string): Promise<LaunchOptionsState>;
+  setLaunchOptions?(key: string, profile: LaunchProfile | null, title?: string): Promise<LaunchProfile | null>;
+  setLaunchScripts?(scripts: GlobalLaunchScripts): Promise<GlobalLaunchScripts>;
+  pickProgram?(key: string): Promise<string | null>;
+  /** Another store's game started with its launch options (steps before and after, Now Playing). */
+  playStore?(addon: string, externalId: string, url: string, actionId?: string): Promise<void>;
+  /** Pauses or resumes a running game (the newest when none is named). */
+  suspend?(gameId?: string): Promise<{ gameId: string; suspended: boolean } | null>;
   uninstall(gameId: string): Promise<boolean>;
   openFolder(gameId: string): Promise<void>;
   /** A game installed on this PC with its last known details and cover, for when the server no longer has it. Newer apps only. */
@@ -169,7 +198,7 @@ export interface DesktopBridge {
   goOffline?(): Promise<boolean>;
   toggleFullscreen(): Promise<boolean>;
   /** Tray, start-up and update options (missing in apps before 0.9.1). */
-  appSettings?(patch?: Partial<Pick<AppSettings, "closeToTray" | "autoUpdate" | "openAtLogin" | "handheld" | "fullscreen" | "browserLinks">>): Promise<AppSettings>;
+  appSettings?(patch?: AppSettingsPatch): Promise<AppSettings>;
   appUpdate?(action?: "status" | "check" | "install"): Promise<AppUpdate>;
   /** Quits the app for real (closing the window only hides it to the tray). */
   quit?(): Promise<void>;
