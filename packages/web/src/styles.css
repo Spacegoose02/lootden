@@ -4419,3 +4419,24 @@ html[data-lootden-frame] .lightbox {
     flex-wrap: wrap;
   }
 }
+
+/* ---------- Truck game mods (ATS, ETS2) ------------------------------------ */
+
+.truck-fit-ok {
+  border-color: var(--good, #59ff9a);
+  color: var(--good, #59ff9a);
+}
+.truck-fit-outdated {
+  border-color: var(--bad, #ff5c7a);
+  color: var(--bad, #ff5c7a);
+}
+.truck-fit-newer {
+  border-color: var(--warn, #ffd166);
+  color: var(--warn, #ffd166);
+}
+.truck-mod-list .pkg-title strong {
+  overflow-wrap: anywhere;
+}
+.truck-mods code {
+  overflow-wrap: anywhere;
+}

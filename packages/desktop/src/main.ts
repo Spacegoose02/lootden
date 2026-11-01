@@ -59,6 +59,7 @@ import type { Allowance } from "@lootden/shared";
 import { isExternalLink, isFile, onOrigin, permissionAllowed } from "./links.js";
 import { SettingsStore, type DesktopSettings } from "./settings.js";
 import { WebBrowser } from "./browser.js";
+import { TruckMods } from "./truckmods.js";
 import { downloadUpdate, installKind, launchUpdate, pickUpdate, verifyUpdate, type AvailableUpdate } from "./updater.js";
 
 /** Emulators live in the app's data folder unless the user moved them. */
@@ -83,6 +84,8 @@ const launchFullscreen = process.argv.includes("--fullscreen");
 /** The "Web browser" jump list task. */
 const launchBrowser = process.argv.includes("--browser");
 let browser: WebBrowser;
+/** ATS and ETS2 mods: browser downloads into the game's mod folder, shared through the server. */
+let truckMods: TruckMods;
 
 // Keep settings from before the rename: the app's data folder used to be "Game Manager".
 const legacyUserData = path.join(app.getPath("appData"), "Game Manager");
@@ -1776,6 +1779,8 @@ app.userAgentFallback = app.userAgentFallback.replace(/ (?:Electron|LootDen|@loo
 void app.whenReady().then(async () => {
   settings = new SettingsStore(path.join(app.getPath("userData"), "settings.json"));
   registerIpc();
+  truckMods = new TruckMods({ settings: () => settings, client, send, fromServer }, () => (existsSync(bundled7za()) ? bundled7za() : ""));
+  truckMods.registerIpc();
   browser = new WebBrowser({
     settings: () => settings,
     mainWindow: () => win,
@@ -1788,6 +1793,7 @@ void app.whenReady().then(async () => {
     policy: browserPolicy,
     preload: path.join(__dirname, "browser-preload.cjs"),
     icon: path.join(__dirname, "..", "build", "icon.png"),
+    onDownload: (item, wc, owner) => truckMods.handleDownload(item, wc, owner),
   });
   browser.registerIpc();
   createTray();

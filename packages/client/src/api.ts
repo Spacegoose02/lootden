@@ -1,4 +1,4 @@
-import type { ActivityEvent, Allowance, GameDetail, PlayLimits, GameSummary, HealthResponse, LibraryStats, SaveBackup, User } from "@lootden/shared";
+import type { ActivityEvent, Allowance, GameDetail, PlayLimits, GameSummary, HealthResponse, LibraryStats, SaveBackup, TruckGame, TruckMod, User } from "@lootden/shared";
 import type { ClientConfig } from "./config.js";
 
 export class ApiError extends Error {
@@ -177,6 +177,51 @@ export class GameServerClient {
     const res = await fetch(this.base + pathname, { headers: this.headers() });
     if (!res.ok) throw new ApiError(`GET ${pathname} failed with ${res.status}`, res.status);
     return new Uint8Array(await res.arrayBuffer());
+  }
+  /** The mods kept on the server for a truck game (ATS, ETS2). */
+  listTruckMods(game: TruckGame) {
+    return this.json<TruckMod[]>(`/api/truck-mods?game=${game}`);
+  }
+  /** Keeps a mod on the server so other PCs can add it; the same file name for the game replaces the old one. */
+  async uploadTruckMod(game: TruckGame, filePath: string, info: { fileName: string; title?: string | null; sourceUrl?: string | null; modVersion?: string | null; compatibleVersions?: string[] }): Promise<TruckMod> {
+    const { createReadStream } = await import("node:fs");
+    const { stat } = await import("node:fs/promises");
+    const { Readable } = await import("node:stream");
+    const size = (await stat(filePath)).size;
+    const qs = new URLSearchParams({ game, name: info.fileName });
+    if (info.title) qs.set("title", info.title);
+    if (info.sourceUrl) qs.set("source", info.sourceUrl);
+    if (info.modVersion) qs.set("version", info.modVersion);
+    if (info.compatibleVersions?.length) qs.set("compat", info.compatibleVersions.join(","));
+    const res = await fetch(`${this.base}/api/truck-mods?${qs}`, {
+      method: "POST",
+      headers: this.headers({ "Content-Type": "application/octet-stream", "Content-Length": String(size) }),
+      body: Readable.toWeb(createReadStream(filePath)) as ReadableStream,
+      duplex: "half",
+    } as RequestInit);
+    if (!res.ok) {
+      const detail = await res.json().then((b: { error?: string }) => b.error ?? "", () => "");
+      throw new ApiError(res.status === 404 ? "This server doesn't keep truck mods yet; update it to share mods between PCs" : `Couldn't keep the mod on the server (${res.status})${detail ? `: ${detail}` : ""}`, res.status);
+    }
+    return (await res.json()) as TruckMod;
+  }
+  /** Streams a truck mod's file from the server to dest. */
+  async downloadTruckMod(id: number, dest: string, onProgress?: (got: number, total: number) => void): Promise<void> {
+    const { createWriteStream } = await import("node:fs");
+    const { Readable, Transform } = await import("node:stream");
+    const { pipeline } = await import("node:stream/promises");
+    const res = await fetch(`${this.base}/api/truck-mods/${id}/file`, { headers: this.headers() });
+    if (!res.ok || !res.body) throw new ApiError(`Couldn't get the mod from the server (${res.status})`, res.status);
+    const total = Number(res.headers.get("content-length") ?? 0);
+    let got = 0;
+    const count = new Transform({
+      transform(chunk: Buffer, _enc, done) {
+        got += chunk.length;
+        onProgress?.(got, total);
+        done(null, chunk);
+      },
+    });
+    await pipeline(Readable.fromWeb(res.body as never), count, createWriteStream(dest));
   }
   fileUrl(gameId: string, index: number): string {
     return `${this.base}/api/games/${encodeURIComponent(gameId)}/files/${index}`;

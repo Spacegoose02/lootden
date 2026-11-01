@@ -22,6 +22,7 @@ import type { Scanner } from "./connectors/scan.js";
 import type { WantedService } from "./news/wanted.js";
 import type { RequestService } from "./news/requests.js";
 import type { SteamWorkshop } from "./workshop/steam.js";
+import type { TruckModStore } from "./truckmods/store.js";
 import type { VersionChecker } from "./news/version-check.js";
 import type { JournalStore } from "./users/journal.js";
 import type { NexusMods } from "./news/nexus.js";
@@ -64,6 +65,8 @@ export interface AppContext {
   wanted: WantedService;
   requests: RequestService;
   workshop: SteamWorkshop;
+  /** ATS and ETS2 mods shared between PCs. */
+  truckMods: TruckModStore;
   versions: VersionChecker;
   journal: JournalStore;
   nexus: NexusMods;
