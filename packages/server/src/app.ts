@@ -79,6 +79,11 @@ import { AchievementService } from "./users/achievements.js";
 import { achievementRoutes } from "./routes/achievements.js";
 import { MarkStore } from "./users/marks.js";
 import { BackupService } from "./settings/backups.js";
+import { CompatService } from "./integrations/compat.js";
+import { LudusaviManifest } from "./saves/ludusavi.js";
+import { PriceService } from "./integrations/prices.js";
+import { HomeAssistantBridge, type HouseState } from "./integrations/homeassistant.js";
+import { integrationRoutes } from "./routes/integrations.js";
 import { organizeRoutes } from "./routes/organize.js";
 import { presenceRoutes } from "./routes/presence.js";
 import { LibraryRefresh } from "./catalog/refresh.js";
@@ -172,7 +177,27 @@ export function buildContext(config: ServerConfig, db: Db, log: Log, opts: Build
   addons.extraGames = (userId) => roblox.storeGames(userId);
   const family = new FamilyService(db, library, users, () => requests, notifier);
   const presence = new PresenceService(db, users, library, family, opts.wake);
-  presence.onChange = () => live.publish("playing");
+  const houseState = (): HouseState => {
+    const playing = presence.nowPlaying({ id: null, admin: true, kid: false });
+    return {
+      people: users.list().map((u) => {
+        const p = playing.find((x) => x.userId === u.id);
+        return {
+          id: u.id,
+          name: u.displayName,
+          playing: p ? { title: p.title, device: p.device, startedAt: p.startedAt, remainingMinutes: p.remainingSeconds == null ? null : Math.round(p.remainingSeconds / 60), picture: p.coverUrl } : null,
+        };
+      }),
+      games: (db.prepare("SELECT COUNT(*) AS n FROM games").get() as { n: number }).n,
+      pcsOnline: presence.pcs().filter((pc) => pc.online).length,
+      downloads: (db.prepare("SELECT COUNT(*) AS n FROM downloads WHERE status = 'downloading'").get() as { n: number }).n,
+    };
+  };
+  const homeAssistant = new HomeAssistantBridge(db, houseState, () => config.publicUrl ?? "", log);
+  presence.onChange = () => {
+    live.publish("playing");
+    homeAssistant.changed();
+  };
   const libraryRefresh = new LibraryRefresh(library, presence);
   libraryRefresh.onChange = () => live.publish("library");
   const denDuty = new DenDutyLink(db, vault, users, family, presence, opts.fetchImpl);
@@ -222,6 +247,10 @@ export function buildContext(config: ServerConfig, db: Db, log: Log, opts: Build
     achievements: new AchievementService(db, addons, opts.fetchImpl),
     marks: new MarkStore(db),
     backups: new BackupService(db, config.dataDir),
+    compat: new CompatService(db, opts.fetchImpl),
+    ludusavi: new LudusaviManifest(config.dataDir, opts.fetchImpl),
+    prices: new PriceService(db, wishlist, notifier, opts.fetchImpl),
+    homeAssistant,
     helper: new HelperService(db, vault, config.anthropicApiKey, () => zonedParts(new Date(), family.timeZone()).date, opts.helperAi),
     shelves: new ShelfStore(db, library),
     timeToBeat: timeToBeat(metadata.igdb, new HowLongToBeat(opts.fetchImpl), () => settings().hltb.enabled !== false),
@@ -313,6 +342,7 @@ export function buildApp(config: ServerConfig, db: Db, opts: BuildOptions = {}):
   addonRoutes(app, ctx);
   achievementRoutes(app, ctx);
   organizeRoutes(app, ctx);
+  integrationRoutes(app, ctx);
   robloxRoutes(app, ctx);
   directRoutes(app, ctx);
   liveRoutes(app, ctx);

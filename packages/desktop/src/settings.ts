@@ -65,6 +65,8 @@ export interface DesktopSettings {
   splash?: "off" | "handheld" | "on";
   /** Ctrl+Shift+P (or the game page) pauses and resumes the running game. */
   suspendKey?: boolean;
+  /** Back up other stores' games' saves (found through Ludusavi's list) after playing them. Off only when false. */
+  storeSaves?: boolean;
 }
 
 export function defaultSettings(): DesktopSettings {

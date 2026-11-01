@@ -2790,6 +2790,21 @@ label.field {
 .launcher-roblox {
   --launcher: #e2231a;
 }
+.launcher-amazon {
+  --launcher: #ff9900;
+}
+.launcher-rockstar {
+  --launcher: #fcaf17;
+}
+.launcher-riot {
+  --launcher: #d13639;
+}
+.launcher-humble {
+  --launcher: #cb272c;
+}
+.launcher-playstation {
+  --launcher: #0070d1;
+}
 .launcher-filter {
   flex-wrap: wrap;
 }
@@ -4842,3 +4857,20 @@ html[data-lootden-frame] .lightbox {
 .rules-editor input, .rules-editor select { width: 100%; }
 .badge.also-on { opacity: 0.85; }
 .select-list td:first-child { width: 2rem; }
+
+/* ProtonDB / Steam Deck badges, wishlist prices */
+.compat-badges { display: flex; flex-wrap: wrap; gap: 0.35rem; margin: 0.4rem 0; }
+.compat-badges a.badge { text-decoration: none; }
+.badge.proton-platinum { background: #b4c7dc; color: #111; }
+.badge.proton-gold { background: #cfb53b; color: #111; }
+.badge.proton-silver { background: #a6a6a6; color: #111; }
+.badge.proton-bronze { background: #cd7f32; color: #111; }
+.badge.proton-borked { background: #ff4f4f; color: #111; }
+.badge.deck-verified { background: #59bf40; color: #111; }
+.badge.deck-playable { background: #ffc82c; color: #111; }
+.badge.deck-unsupported { background: #6b6b6b; color: #fff; }
+.wish-price { display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem; }
+.wish-price .price { font-weight: 700; text-decoration: none; }
+.wish-price .price.on-sale { color: var(--good); }
+.badge.sale { margin-left: 0.3rem; background: var(--good); color: #111; }
+.price-settings summary { cursor: pointer; }

@@ -349,7 +349,8 @@ export class AddonRegistry {
         }
         const res = await this.fetchImpl(url, { ...init, redirect: "manual", signal: init.signal ?? AbortSignal.timeout(30_000) });
         const location = res.status >= 300 && res.status < 400 ? res.headers.get("location") : null;
-        if (!location) return res;
+        // An add-on that asked for redirects by hand (a sign-in that redirects to an app link) gets them.
+        if (!location || init.redirect === "manual") return res;
         url = new URL(location, url);
       }
       throw new Error("Too many redirects");

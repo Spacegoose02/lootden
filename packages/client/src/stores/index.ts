@@ -6,6 +6,7 @@ import { gogScanner } from "./gog.js";
 import { steamScanner } from "./steam.js";
 import { ubisoftScanner } from "./ubisoft.js";
 import { xboxScanner } from "./xbox.js";
+import { amazonScanner, battlenetScanner, riotScanner, rockstarScanner } from "./launchers.js";
 
 /**
  * Finds the games a store's launcher has installed on this PC (Steam's library folders,
@@ -21,7 +22,7 @@ export interface StoreScanner {
   scan(): Promise<LocalStoreGame[]>;
 }
 
-export const STORE_SCANNERS: StoreScanner[] = [steamScanner, gogScanner, epicScanner, xboxScanner, ubisoftScanner, eaScanner];
+export const STORE_SCANNERS: StoreScanner[] = [steamScanner, gogScanner, epicScanner, xboxScanner, ubisoftScanner, eaScanner, amazonScanner, battlenetScanner, rockstarScanner, riotScanner];
 
 /** What this PC's scanners look at; kept per PC in the desktop app's settings, as drives and launchers differ. */
 export interface StoreScanOptions {

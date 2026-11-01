@@ -135,6 +135,12 @@ export function AppOptions() {
               Ctrl+Shift+P pauses and resumes the game that's running (a Pause button also shows on its page). Paused time doesn't count as play time. Online games may disconnect while paused.
             </label>
           )}
+          {opts.storeSaves !== undefined && (
+            <label className="check">
+              <input type="checkbox" checked={opts.storeSaves} onChange={(e) => void set({ storeSaves: e.target.checked })} />
+              Back up other stores' games' saves after playing (found through Ludusavi's list of save locations)
+            </label>
+          )}
           {opts.discordEnabled !== undefined && (
             <div className="field">
               <label className="check">

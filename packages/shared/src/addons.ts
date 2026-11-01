@@ -107,6 +107,6 @@ export interface LocalStoreGame {
  * Link schemes store launchers register. Only these open from a store game's Play button, so
  * an add-on can't hand the app an arbitrary program to run.
  */
-export const STORE_LAUNCH_SCHEMES = ["steam:", "com.epicgames.launcher:", "goggalaxy:", "heroic:", "itch:", "uplay:", "origin2:", "battlenet:", "xbox:", "msxbox:", "roblox:"];
+export const STORE_LAUNCH_SCHEMES = ["steam:", "com.epicgames.launcher:", "goggalaxy:", "heroic:", "itch:", "uplay:", "origin2:", "battlenet:", "xbox:", "msxbox:", "roblox:", "amazon-games:", "lootden-launcher:"];
 
 export const isStoreLaunchUrl = (url: string) => STORE_LAUNCH_SCHEMES.some((s) => url.toLowerCase().startsWith(s));

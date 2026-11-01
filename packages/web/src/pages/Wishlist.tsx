@@ -4,6 +4,8 @@ import { RequestButton } from "./Requests";
 import { api, formatBytes, type WishItem, type WishlistState } from "../api";
 import { useAuth } from "../auth";
 import { FindDownloads } from "../components/FindDownloads";
+import { PriceSettingsPanel, WishPriceLine } from "../components/Integrations";
+import type { WishPrices } from "../api";
 
 type Filter = "all" | "wanted" | "missing" | "owned" | "upcoming";
 
@@ -30,9 +32,11 @@ export function Wishlist() {
   const [filter, setFilter] = useState<Filter>("all");
   const [title, setTitle] = useState("");
   const [finding, setFinding] = useState<WishItem | null>(null);
+  const [prices, setPrices] = useState<WishPrices | null>(null);
 
   useEffect(() => {
     api.wishlist().then(setData, (e: Error) => setMsg({ text: e.message, error: true }));
+    api.wishPrices().then(setPrices, () => setPrices(null));
   }, []);
 
   const run = async (fn: () => Promise<WishlistState>, done?: string) => {
@@ -99,6 +103,7 @@ export function Wishlist() {
         </form>
       )}
       {msg && <p className={msg.error ? "error" : "notice"}>{msg.text}</p>}
+      {prices?.settings && <PriceSettingsPanel data={prices} onChange={setPrices} />}
 
       {data && (
         <div className="segmented" role="tablist" aria-label="Show">
@@ -139,6 +144,7 @@ export function Wishlist() {
                   </span>
                 ))}
               </span>
+              {prices && !w.libraryId && <WishPriceLine wishId={w.id} data={prices} canEdit={!kid} onChange={setPrices} />}
               {isAdmin && !w.libraryId && <WantedLine w={w} busy={busy} run={run} />}
               <span className="inline wrap wish-actions">
                 {w.url && (

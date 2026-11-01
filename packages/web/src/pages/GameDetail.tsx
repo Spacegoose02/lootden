@@ -13,6 +13,7 @@ import { ReleaseLookup } from "../components/ReleaseLookup";
 import { SavesPanel } from "../components/SavesPanel";
 import { ShelfButton } from "../components/Shelves";
 import { MarkButtons, TagsPanel } from "../components/Marks";
+import { CompatBadges } from "../components/Integrations";
 import { TOGETHER_TAGS } from "@lootden/shared";
 import { UpdatesPanel } from "../components/UpdatesPanel";
 import { PreparePanel } from "../components/PreparePanel";
@@ -111,6 +112,7 @@ export function GameDetail() {
             </p>
           )}
           <Badges game={game} />
+          {game.platform === "pc" && <CompatBadges steamAppId={game.metadata?.steamAppId} />}
           {me?.user && !isAddon && <ShelfButton gameId={game.id} />}
           {me?.user && !isAddon && <MarkButtons gameKey={game.id} />}
           {me?.user && !isAddon && game.platform === "pc" && <SendToPcButton gameId={game.id} title={game.title} sizeBytes={game.sizeBytes} />}
