@@ -40,6 +40,19 @@ export interface PcReport {
   moonlight?: boolean;
   /** LootDen games added to Sunshine on this PC, so they can be streamed from it. */
   streamGames?: string[];
+  /**
+   * The version of each LootDen PC game installed here, when known, so the server can tell
+   * when a PC holds a newer copy than the library (see LibraryRefresh).
+   */
+  copies?: PcCopy[];
+}
+
+/** A LootDen game installed on a PC, at the version the PC knows it's at. */
+export interface PcCopy {
+  gameId: string;
+  version: string;
+  /** The version came from the game's exe: it was updated outside LootDen. */
+  fromExe?: boolean;
 }
 
 /** POST /api/me/presence: the desktop app's heartbeat. */
@@ -54,7 +67,45 @@ export type PcCommand =
   | { id: string; kind: "message"; text: string; from: string }
   | { id: string; kind: "close"; gameId: string; from: string; text?: string }
   /** Send to PC: download and install a LootDen game there. */
-  | { id: string; kind: "install"; gameId: string; title: string; from: string };
+  | { id: string; kind: "install"; gameId: string; title: string; from: string }
+  /**
+   * Refresh the library copy: zip this PC's install of the game and upload it to the server
+   * in place of the library's older copy. `ticket` lets the upload through without an admin
+   * profile signed in on that PC; it works once, for this game only.
+   */
+  | { id: string; kind: "refresh-copy"; gameId: string; title: string; version: string; ticket: string; from: string };
+
+/** A library game that a household PC has a newer copy of than the server does. */
+export interface RefreshCandidate {
+  gameId: string;
+  title: string;
+  coverUrl: string | null;
+  /** The library copy's own version (null when its name doesn't say). */
+  libraryVersion: string | null;
+  /** Newest version the server has counting its updates. */
+  latestVersion: string | null;
+  /** Updates on the server that the refresh makes unnecessary (moved out afterwards). */
+  updates: Array<{ id: string; title: string; version: string | null; sizeBytes: number }>;
+  /** Other full copies of the game, older than the PC's, that go too. */
+  oldCopies: Array<{ id: string; title: string; version: string | null; sizeBytes: number }>;
+  sizeBytes: number;
+  /** PCs with a newer copy, newest version first. */
+  pcs: Array<{ device: string; version: string; fromExe: boolean; online: boolean }>;
+}
+
+/** A refresh an admin started: where it's at. */
+export interface RefreshJob {
+  ticket: string;
+  gameId: string;
+  title: string;
+  device: string;
+  version: string;
+  state: "waiting" | "uploading" | "done" | "failed";
+  message: string | null;
+  startedAt: string;
+  /** The game's id once the new copy is in (it changes with the file name). */
+  newGameId: string | null;
+}
 
 /** The server's answer to a heartbeat. */
 export interface PresenceAnswer {

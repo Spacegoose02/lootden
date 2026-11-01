@@ -9,6 +9,7 @@ import {
   type NowPlaying,
   type PcCommand,
   type PcDisk,
+  type PcCopy,
   type PcInfo,
   type PlaySource,
   type PresenceAnswer,
@@ -38,6 +39,7 @@ interface PcRow {
   sunshine: number;
   moonlight: number;
   stream_games: string;
+  copies: string;
   last_seen: string;
   last_user: number | null;
 }
@@ -138,7 +140,7 @@ export class PresenceService {
     this.savePc(device, userId, input.pc);
     if (changed) this.onChange();
     // Messages and closes go stale in ten minutes; Send to PC waits a day for the PC to come on.
-    const queue = (this.commands.get(device) ?? []).filter((c) => t - c.at < (c.kind === "install" ? 86400_000 : 10 * 60_000));
+    const queue = (this.commands.get(device) ?? []).filter((c) => t - c.at < (c.kind === "install" || c.kind === "refresh-copy" ? 86400_000 : 10 * 60_000));
     this.commands.delete(device);
     return { commands: queue.map(({ at: _at, ...c }) => c as PcCommand), nextInSeconds: PRESENCE_INTERVAL_SECONDS };
   }
@@ -220,11 +222,20 @@ export class PresenceService {
   }
 
   /** A parent's message or "close the game", for that PC's next heartbeat. */
-  send(device: string, from: string, cmd: { kind: "message"; text: unknown } | { kind: "close"; gameId: unknown; text?: unknown } | { kind: "install"; gameId: string; title: string }): PcCommand {
+  send(
+    device: string,
+    from: string,
+    cmd:
+      | { kind: "message"; text: unknown }
+      | { kind: "close"; gameId: unknown; text?: unknown }
+      | { kind: "install"; gameId: string; title: string }
+      | { kind: "refresh-copy"; gameId: string; title: string; version: string; ticket: string },
+  ): PcCommand {
     const known = [...this.live.values()].some((l) => l.device === device) || this.pcRow(device);
     if (!known) throw new Error("No such PC");
     let command: PcCommand;
     if (cmd.kind === "install") command = { id: randomUUID(), kind: "install", gameId: cmd.gameId, title: cmd.title, from };
+    else if (cmd.kind === "refresh-copy") command = { id: randomUUID(), ...cmd, from };
     else if (cmd.kind === "message") command = { id: randomUUID(), kind: "message", text: cleanPcMessage(cmd.text), from };
     else {
       const gameId = String(cmd.gameId ?? "");
@@ -268,13 +279,20 @@ export class PresenceService {
         })
       : json<PcDisk[]>(before?.disks, []);
     const streamGames = Array.isArray(pc?.streamGames) ? [...new Set(pc!.streamGames.slice(0, 2000).map((x) => String(x).slice(0, 300)))] : json<string[]>(before?.stream_games, []);
+    const copies: PcCopy[] = Array.isArray(pc?.copies)
+      ? pc!.copies.slice(0, 2000).flatMap((c) =>
+          typeof c?.gameId === "string" && typeof c.version === "string" && c.version.trim()
+            ? [{ gameId: c.gameId.slice(0, 300), version: c.version.trim().slice(0, 40), ...(c.fromExe ? { fromExe: true } : {}) }]
+            : [],
+        )
+      : json<PcCopy[]>(before?.copies, []);
     const str = (x: unknown, keep: string | null | undefined) => (typeof x === "string" ? x.slice(0, 40) : (keep ?? null));
     const flag = (x: unknown, keep: number | undefined) => (typeof x === "boolean" ? (x ? 1 : 0) : (keep ?? 0));
     this.db
       .prepare(
-        `INSERT INTO pcs (name, macs, addresses, platform, app_version, disks, sunshine, moonlight, stream_games, last_seen, last_user) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `INSERT INTO pcs (name, macs, addresses, platform, app_version, disks, sunshine, moonlight, stream_games, copies, last_seen, last_user) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(name) DO UPDATE SET macs = excluded.macs, addresses = excluded.addresses, platform = excluded.platform, app_version = excluded.app_version,
-           disks = excluded.disks, sunshine = excluded.sunshine, moonlight = excluded.moonlight, stream_games = excluded.stream_games, last_seen = excluded.last_seen, last_user = excluded.last_user`,
+           disks = excluded.disks, sunshine = excluded.sunshine, moonlight = excluded.moonlight, stream_games = excluded.stream_games, copies = excluded.copies, last_seen = excluded.last_seen, last_user = excluded.last_user`,
       )
       .run(
         name,
@@ -286,6 +304,7 @@ export class PresenceService {
         flag(pc?.sunshine, before?.sunshine),
         flag(pc?.moonlight, before?.moonlight),
         JSON.stringify(streamGames),
+        JSON.stringify(copies),
         new Date(this.clock()).toISOString(),
         userId,
       );
@@ -312,6 +331,13 @@ export class PresenceService {
         .filter((l) => l.device === r.name)
         .map((l) => ({ title: l.game.title, name: this.users.byId(l.userId)?.displayName ?? "Someone", startedAt: l.game.startedAt })),
     }));
+  }
+
+  /** Each PC's installed LootDen games with their versions, as last reported, and whether it's on now. */
+  copiesByPc(): Array<{ device: string; online: boolean; copies: PcCopy[] }> {
+    const cutoff = this.clock() - PRESENCE_TIMEOUT_SECONDS * 1000;
+    const rows = this.db.prepare("SELECT name, copies, last_seen FROM pcs").all() as Array<{ name: string; copies: string; last_seen: string }>;
+    return rows.map((r) => ({ device: r.name, online: Date.parse(r.last_seen) >= cutoff, copies: json<PcCopy[]>(r.copies, []) }));
   }
 
   /** PCs that stream this game with Sunshine, on first. */
