@@ -47,6 +47,8 @@ import { SteamWorkshop } from "./workshop/steam.js";
 import { workshopRoutes } from "./routes/workshop.js";
 import { TruckModStore } from "./truckmods/store.js";
 import { truckModRoutes } from "./routes/truckmods.js";
+import { TruckModListStore } from "./truckmods/list.js";
+import { truckModListRoutes } from "./routes/truckmodlist.js";
 import { VersionChecker } from "./news/version-check.js";
 import { JournalStore } from "./users/journal.js";
 import { NexusMods } from "./news/nexus.js";
@@ -199,6 +201,7 @@ export function buildContext(config: ServerConfig, db: Db, log: Log, opts: Build
     requests,
     workshop: new SteamWorkshop(opts.fetchImpl),
     truckMods: new TruckModStore(db, config.dataDir),
+    truckModList: new TruckModListStore(db),
     versions: new VersionChecker(db, library, updates, notifier, () => settings().itch.apiKey, opts.fetchImpl),
     journal: new JournalStore(db),
     nexus: new NexusMods(() => settings().nexus.apiKey, opts.fetchImpl),
@@ -286,6 +289,7 @@ export function buildApp(config: ServerConfig, db: Db, opts: BuildOptions = {}):
   requestRoutes(app, ctx);
   workshopRoutes(app, ctx);
   truckModRoutes(app, ctx);
+  truckModListRoutes(app, ctx);
   extraRoutes(app, ctx);
   sourceRoutes(app, ctx);
   addonRoutes(app, ctx);

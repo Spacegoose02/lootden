@@ -640,6 +640,37 @@ const MIGRATIONS: string[] = [
   -- LootDen games installed on each PC with the version it knows they're at, to spot PCs with newer copies.
   ALTER TABLE pcs ADD COLUMN copies TEXT NOT NULL DEFAULT '[]';
   `,
+  `
+  -- The household's list of truck game mods (ATS, ETS2): where each comes from, the versions written
+  -- down for it, its files, and what the last check of its page found (JSON, see ModLinkCheck).
+  CREATE TABLE truck_mod_list (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    game TEXT NOT NULL,
+    name TEXT NOT NULL,
+    source_url TEXT,
+    workshop_id TEXT,
+    category TEXT,
+    game_version TEXT,
+    mod_version TEXT,
+    notes TEXT,
+    files TEXT NOT NULL DEFAULT '[]',
+    extra TEXT NOT NULL DEFAULT '[]',
+    retired INTEGER NOT NULL DEFAULT 0,
+    link_check TEXT,
+    updated_at TEXT NOT NULL
+  );
+  CREATE INDEX truck_mod_list_game ON truck_mod_list(game);
+  -- In-game load orders kept for every PC: the active mods, top of the Mod Manager first (JSON).
+  CREATE TABLE truck_load_orders (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    game TEXT NOT NULL,
+    name TEXT NOT NULL COLLATE NOCASE,
+    mods TEXT NOT NULL DEFAULT '[]',
+    updated_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    updated_at TEXT NOT NULL,
+    UNIQUE (game, name)
+  );
+  `,
 ];
 
 export function openDatabase(file: string): Db {
