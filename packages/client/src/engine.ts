@@ -8,7 +8,7 @@ export { installGame, isManifest, LEGACY_MANIFEST_NAME, MANIFEST_NAME, pickGame,
 export { findExecutable, launchAndTrack, listProcesses, processesIn, saveExecutable } from "./launcher.js";
 export { firstExisting, pcReport, runningStoreGames, streamingPaths } from "./presence.js";
 export { missingSunshineApps, moonlightCommand, streamWithMoonlight, sunshineAppFor, syncSunshine } from "./streaming.js";
-export { isRobloxPlayer, trackRoblox } from "./roblox.js";
+export { isRobloxPlayer, setRobloxFullscreen, trackRoblox, withFullscreen } from "./roblox.js";
 export * from "./emulators.js";
 export { backupSaves, expandSavePath, restoreSaves } from "./saves.js";
 export { installedTruckModKey, installTruckMod, linkTruckMod, listTruckMods, readTruckManifest, removeTruckMod, scanTruckMods, truckGameVersion, truckModsFolder, TRUCK_MODS_LIST } from "./truckmods.js";

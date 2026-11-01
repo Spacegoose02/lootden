@@ -3,6 +3,7 @@ import { rm } from "node:fs/promises";
 import { after, before, describe, it } from "node:test";
 import { isStoreLaunchUrl, parseRobloxPlace, robloxPlaceOf } from "@lootden/shared";
 import { ageRatingOf } from "../src/roblox/catalog.js";
+import { posterSvg, RobloxPosters, titleLines } from "../src/roblox/poster.js";
 import { makeApp, makeLibrary, sessionCookie } from "./helpers.js";
 
 let root: string;
@@ -34,6 +35,7 @@ const roblox = (async (input: string | URL | Request, init?: RequestInit) => {
   }
   if (url.host === "thumbnails.roblox.com" && url.pathname.endsWith("/icons")) return Response.json({ data: [{ targetId: 383310974, state: "Completed", imageUrl: "https://tr.rbxcdn.com/icon.png" }] });
   if (url.host === "thumbnails.roblox.com") return Response.json({ data: [{ universeId: 383310974, thumbnails: [{ imageUrl: "https://tr.rbxcdn.com/shot.png" }] }] });
+  if (url.host === "tr.rbxcdn.com") return new Response(url.pathname === "/icon.png" ? "icon" : "shot", { headers: { "content-type": "image/png" } });
   if (url.pathname.endsWith("/get-age-recommendation")) {
     assert.deepEqual(JSON.parse(String(init?.body)), { universeId: "383310974" });
     return Response.json({ ageRecommendationDetails: { ageRecommendationSummary: { ageRecommendation: { displayName: "Ages 9+", minimumAge: 9 } } } });
@@ -94,9 +96,20 @@ describe("Roblox games", () => {
     assert.deepEqual(page.info.ageRatings, [{ organization: "Roblox", rating: "Ages 9+" }]);
     assert.equal(page.backgroundUrl, "https://tr.rbxcdn.com/shot.png");
     assert.equal((await app.inject({ url: "/api/store-games/roblox/383310974", headers: other.headers })).statusCode, 404);
-    const cover = await app.inject({ url: "/api/store-games/roblox/383310974/cover", headers: kid.headers });
-    assert.equal(cover.statusCode, 302);
-    assert.equal(cover.headers.location, "https://tr.rbxcdn.com/icon.png");
+    // The cover is a portrait poster with Roblox's square icon and wide screenshot inside it.
+    assert.match(mine[0].coverUrl, /^\/api\/store-games\/roblox\/383310974\/cover\?v=[0-9a-f]{10}$/);
+    assert.equal(page.coverUrl, mine[0].coverUrl);
+    const cover = await app.inject({ url: mine[0].coverUrl, headers: kid.headers });
+    assert.equal(cover.statusCode, 200);
+    assert.match(String(cover.headers["content-type"]), /^image\/svg\+xml/);
+    assert.match(cover.body, /viewBox="0 0 600 900"/);
+    assert.match(cover.body, /href="data:image\/png;base64,aWNvbg=="/, "the icon, inlined");
+    assert.match(cover.body, /href="data:image\/png;base64,c2hvdA=="/, "the screenshot, inlined");
+    assert.match(cover.body, />Adopt Me!</);
+    assert.ok(!cover.body.includes("rbxcdn.com"), "nothing for the browser to fetch");
+    assert.equal((await app.inject({ url: mine[0].coverUrl, headers: other.headers })).statusCode, 404);
+    const bg = await app.inject({ url: "/api/store-games/roblox/383310974/background", headers: kid.headers });
+    assert.equal(bg.headers.location, "https://tr.rbxcdn.com/shot.png");
     assert.equal((await app.inject({ method: "PUT", url: "/api/store-games/roblox/383310974", headers: kid.headers, payload: { title: "Mine" } })).statusCode, 400, "nothing to rematch");
 
     // Everyone, then removed.
@@ -121,5 +134,27 @@ describe("Roblox games", () => {
     const looked = (await app.inject({ method: "POST", url: "/api/roblox/lookup", headers: admin.headers, payload: { input: "920587237" } })).json();
     assert.equal(looked.name, "Adopt Me!");
     assert.deepEqual((await app.inject({ url: "/api/roblox", headers: admin.headers })).json(), [], "looking up doesn't add");
+  });
+});
+
+describe("Roblox posters", () => {
+  it("wraps long names, escapes them, and only fetches from Roblox's image servers", async () => {
+    assert.deepEqual(titleLines("Adopt Me!", 16), ["Adopt Me!"]);
+    assert.deepEqual(titleLines("Work at a Pizza Place", 12), ["Work at a", "Pizza Place"]);
+    assert.equal(titleLines("one two three four five six seven", 5).length, 3);
+    assert.match(titleLines("one two three four five six seven", 5)[2]!, /…$/);
+    const svg = posterSvg({ universeId: "1", name: `<script>"x"</script> & co` }, null, null);
+    assert.ok(!svg.includes("<script>"));
+    assert.match(svg, /&#60;script&#62;/);
+
+    const fetched: string[] = [];
+    const posters = new RobloxPosters((async (u: string | URL | Request) => {
+      fetched.push(String(u));
+      return new Response("x", { headers: { "content-type": "image/png" } });
+    }) as typeof fetch);
+    const g = { universeId: "2", placeId: "3", name: "Test", description: null, creator: null, iconUrl: "https://evil.example/icon.png", thumbnailUrl: "https://t1.rbxcdn.com/shot.png", ageRating: null, genre: null, maxPlayers: null, everyone: true, userIds: [], addedAt: "", refreshedAt: "" };
+    const out = await posters.poster(g);
+    assert.deepEqual(fetched, ["https://t1.rbxcdn.com/shot.png"]);
+    assert.equal((out.match(/data:image\/png/g) ?? []).length, 2, "the screenshot (href and xlink:href); no icon");
   });
 });

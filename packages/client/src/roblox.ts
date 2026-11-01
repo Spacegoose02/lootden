@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { readdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { listProcesses, type RunningProcess } from "./launcher.js";
 
@@ -63,4 +64,47 @@ export async function trackRoblox(opts: RobloxTrackOptions = {}): Promise<number
     if (opts.stop?.aborted) left.forEach(kill);
     await sleep();
   }
+}
+
+/**
+ * Folders where the Roblox player keeps its settings (GlobalBasicSettings_<n>.xml): the Windows
+ * player under %LOCALAPPDATA%\Roblox, Sober (Linux) in its Flatpak data.
+ */
+export function robloxSettingsDirs(platform: NodeJS.Platform = process.platform, env: NodeJS.ProcessEnv = process.env): string[] {
+  if (platform === "win32") return env.LOCALAPPDATA ? [path.win32.join(env.LOCALAPPDATA, "Roblox")] : [];
+  const home = env.HOME;
+  return home ? [path.posix.join(home, ".var/app/org.vinegarhq.Sober/data/sober/appData")] : [];
+}
+
+/** The settings with full screen switched on. Unchanged when it already is. */
+export function withFullscreen(xml: string): string {
+  const flag = /<bool\s+name="Fullscreen"\s*>\s*(true|false)\s*<\/bool>/i;
+  const m = flag.exec(xml);
+  if (m) return m[1]!.toLowerCase() === "true" ? xml : xml.replace(flag, '<bool name="Fullscreen">true</bool>');
+  // Never switched yet: Roblox reads it from the game settings' Properties.
+  const props = /<Properties>/i.exec(xml);
+  return props ? `${xml.slice(0, props.index + props[0].length)}\n\t\t\t<bool name="Fullscreen">true</bool>${xml.slice(props.index + props[0].length)}` : xml;
+}
+
+/**
+ * Sets the Roblox player to start in full screen, as if the player had pressed F11 last time.
+ * Roblox reads this when it starts, so it's done before the roblox:// link opens. Settings files
+ * that aren't there (Roblox never run on this PC) are left alone. Returns the files changed.
+ */
+export async function setRobloxFullscreen(dirs: string[] = robloxSettingsDirs()): Promise<string[]> {
+  const changed: string[] = [];
+  for (const dir of dirs) {
+    const names = await readdir(dir).catch(() => [] as string[]);
+    for (const name of names.filter((n) => /^GlobalBasicSettings_\d+\.xml$/i.test(n))) {
+      const file = path.join(dir, name);
+      const xml = await readFile(file, "utf8").catch(() => null);
+      if (xml === null) continue;
+      const next = withFullscreen(xml);
+      if (next !== xml) {
+        await writeFile(file, next, "utf8");
+        changed.push(file);
+      }
+    }
+  }
+  return changed;
 }
