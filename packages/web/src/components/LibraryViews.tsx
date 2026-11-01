@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import type { GameSummary } from "@lootden/shared";
-import { api, BACKLOG, BACKLOG_LABELS, formatBytes, formatPlaytime, type BacklogData, type BacklogStatus, type LibraryStatsDetail } from "../api";
+import { api, BACKLOG, BACKLOG_LABELS, formatBytes, formatPlaytime, type BacklogData, type BacklogStatus, type LibraryStatsDetail, type PlayHistory } from "../api";
 import { useAuth } from "../auth";
 import { Cover } from "./Cover";
 import { GameGrid } from "./GameCard";
@@ -91,7 +91,7 @@ function Roulette() {
 }
 
 /** Horizontal bars, each scaled to the largest value. */
-function Bars({ rows, format = String }: { rows: Array<{ label: string; value: number; to?: string }>; format?: (n: number) => string }) {
+export function Bars({ rows, format = String }: { rows: Array<{ label: string; value: number; to?: string }>; format?: (n: number) => string }) {
   const max = Math.max(1, ...rows.map((r) => r.value));
   return (
     <ul className="bars">
@@ -111,7 +111,7 @@ function Bars({ rows, format = String }: { rows: Array<{ label: string; value: n
 }
 
 /** Vertical columns for a time series. */
-function Columns({ rows }: { rows: Array<{ label: string; value: number; title: string }> }) {
+export function Columns({ rows }: { rows: Array<{ label: string; value: number; title: string }> }) {
   const max = Math.max(1, ...rows.map((r) => r.value));
   return (
     <div className="columns" role="img" aria-label={rows.map((r) => `${r.title}: ${r.value}`).join(", ")}>
@@ -178,6 +178,7 @@ export function Stats() {
           <h2>Biggest games</h2>
           <Bars rows={s.biggest.map((g) => ({ label: g.title, value: g.bytes, to: `/games/${g.id}` }))} format={formatBytes} />
         </section>
+        <PlayHistoryStats />
         <StoreStats />
         {s.playtime.length > 1 && (
           <section className="panel">
@@ -221,6 +222,88 @@ function StoreStats() {
         <section className="panel">
           <h2>Most played on other stores</h2>
           <Bars rows={top.map((g) => ({ label: `${g.title} (${g.store})`, value: g.playtimeSeconds! }))} format={formatPlaytime} />
+        </section>
+      )}
+    </>
+  );
+}
+
+/** When and what this person played lately (everyone, for admins who ask), from the app's sessions. */
+function PlayHistoryStats() {
+  const { me } = useAuth();
+  const [days, setDays] = useState(30);
+  const [everyone, setEveryone] = useState(false);
+  const [h, setH] = useState<PlayHistory | null>(null);
+  useEffect(() => {
+    api.playHistory(days, everyone).then(setH, () => setH(null));
+  }, [days, everyone]);
+  if (!h) return null;
+  const hours = (s: number) => Math.round((s / 3600) * 10) / 10;
+  const step = h.perDay.length > 60 ? 7 : 1;
+  // Long ranges are grouped into weeks so the columns stay readable.
+  const columns: Array<{ label: string; value: number; title: string }> = [];
+  for (let i = 0; i < h.perDay.length; i += step) {
+    const chunk = h.perDay.slice(i, i + step);
+    const d = new Date(`${chunk[0]!.day}T12:00:00`);
+    columns.push({
+      label: step === 1 ? (h.perDay.length > 14 ? String(d.getDate()) : d.toLocaleDateString(undefined, { weekday: "narrow" })) : d.toLocaleDateString(undefined, { month: "short", day: "numeric" }),
+      value: hours(chunk.reduce((n, x) => n + x.seconds, 0)),
+      title: step === 1 ? chunk[0]!.day : `Week of ${chunk[0]!.day}`,
+    });
+  }
+  return (
+    <>
+      <section className="panel play-history wide">
+        <div className="inline wrap">
+          <h2>Play time, last {days} days</h2>
+          <select value={days} onChange={(e) => setDays(Number(e.target.value))} aria-label="How far back">
+            <option value={7}>7 days</option>
+            <option value={30}>30 days</option>
+            <option value={90}>90 days</option>
+            <option value={365}>A year</option>
+          </select>
+          {me?.role === "admin" && (
+            <label className="check small">
+              <input type="checkbox" checked={everyone} onChange={(e) => setEveryone(e.target.checked)} /> Everyone
+            </label>
+          )}
+        </div>
+        <p className="muted small">
+          {formatPlaytime(h.totalSeconds)} in {h.sessionCount} session{h.sessionCount === 1 ? "" : "s"} (hours per {step === 1 ? "day" : "week"} below).
+        </p>
+        <Columns rows={columns} />
+      </section>
+      <section className="panel">
+        <h2>When you play</h2>
+        <Bars rows={h.perWeekday.map((d) => ({ label: d.day, value: d.seconds }))} format={formatPlaytime} />
+        <Columns rows={h.perHour.filter((_, i) => i % 2 === 0).map((x, i) => ({ label: String(x.hour), value: hours(x.seconds + (h.perHour[i * 2 + 1]?.seconds ?? 0)), title: `${x.hour}:00–${x.hour + 2}:00` }))} />
+      </section>
+      {h.genres.length > 0 && (
+        <section className="panel">
+          <h2>Play time by genre</h2>
+          <Bars rows={h.genres.map((g) => ({ label: g.name, value: g.seconds, to: `/library?genre=${encodeURIComponent(g.name)}` }))} format={formatPlaytime} />
+        </section>
+      )}
+      {h.devices.length > 1 && (
+        <section className="panel">
+          <h2>Play time by PC</h2>
+          <Bars rows={h.devices.map((d) => ({ label: d.name, value: d.seconds }))} format={formatPlaytime} />
+        </section>
+      )}
+      {h.recent.length > 0 && (
+        <section className="panel">
+          <h2>Latest sessions</h2>
+          <ul className="session-list">
+            {h.recent.slice(0, 10).map((r) => (
+              <li key={`${r.gameId}-${r.startedAt}`}>
+                {/^(roblox|store):/.test(r.gameId) ? r.title : <Link to={`/games/${r.gameId}`}>{r.title}</Link>}{" "}
+                <small className="muted">
+                  {new Date(r.startedAt).toLocaleString(undefined, { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })} · {formatPlaytime(r.seconds)}
+                  {r.device ? ` · ${r.device}` : ""}
+                </small>
+              </li>
+            ))}
+          </ul>
         </section>
       )}
     </>

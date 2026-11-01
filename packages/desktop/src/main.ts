@@ -70,6 +70,7 @@ import {
   runLaunchSteps,
   stepTarget,
   suspendProcesses,
+  findLocalScreenshots,
 } from "@lootden/client";
 import {
   cleanLaunchProfile,
@@ -721,6 +722,20 @@ function updateScreenshotKey(gamesRunning: boolean): void {
 let lastPlayingNow: RunningGame[] = [];
 let shooting = false;
 
+/** Puts a picture on the family screenshot wall, as a JPEG. */
+async function uploadScreenshot(image: Electron.NativeImage, gameId: string | null, title: string | null): Promise<void> {
+  const jpeg = image.toJPEG(88);
+  const q = new URLSearchParams({ width: String(image.getSize().width), height: String(image.getSize().height) });
+  if (gameId) q.set("gameId", gameId);
+  if (title) q.set("title", title);
+  const api = clientFor(currentPlayer()) ?? (await client());
+  const res = await net.fetch(`${origin()}/api/screenshots?${q}`, { method: "POST", headers: api.headers({ "content-type": "image/jpeg" }), body: new Uint8Array(jpeg) });
+  if (!res.ok) throw new Error(((await res.json().catch(() => ({}))) as { error?: string }).error ?? `The server answered ${res.status}`);
+}
+
+/** Screenshots found on this PC, by the token the page gets instead of their path. */
+const localShots = new Map<string, string>();
+
 /** Takes the screen the mouse is on and puts it on the family screenshot wall, with the game running. */
 async function shareScreenshot(): Promise<void> {
   if (shooting) return;
@@ -731,14 +746,8 @@ async function shareScreenshot(): Promise<void> {
     const sources = await desktopCapturer.getSources({ types: ["screen"], thumbnailSize: size });
     const source = sources.find((x) => x.display_id === String(display.id)) ?? sources[0];
     if (!source || source.thumbnail.isEmpty()) throw new Error("Couldn't capture the screen");
-    const jpeg = source.thumbnail.toJPEG(88);
     const game = lastPlayingNow[0];
-    const q = new URLSearchParams({ width: String(source.thumbnail.getSize().width), height: String(source.thumbnail.getSize().height) });
-    if (game && (game.source === "lootden" || game.source === "emulated")) q.set("gameId", game.gameId);
-    if (game) q.set("title", game.title);
-    const api = clientFor(currentPlayer()) ?? (await client());
-    const res = await net.fetch(`${origin()}/api/screenshots?${q}`, { method: "POST", headers: api.headers({ "content-type": "image/jpeg" }), body: new Uint8Array(jpeg) });
-    if (!res.ok) throw new Error(((await res.json().catch(() => ({}))) as { error?: string }).error ?? `The server answered ${res.status}`);
+    await uploadScreenshot(source.thumbnail, game && (game.source === "lootden" || game.source === "emulated") ? game.gameId : null, game?.title ?? null);
     if (Notification.isSupported()) new Notification({ title: "📸 Shared with the family", body: game ? `Your ${game.title} screenshot is on the wall.` : "Your screenshot is on the wall.", silent: true }).show();
   } catch (err) {
     if (Notification.isSupported()) new Notification({ title: "Couldn't share the screenshot", body: (err as Error).message }).show();
@@ -2091,6 +2100,39 @@ function registerIpc(): void {
       },
     );
   }
+
+  /** A game's screenshots already on this PC (Steam's and Xbox Game Bar's), as thumbnails. */
+  ipcMain.handle("gm:localScreenshots", async (e, q: { steamAppId?: unknown; title?: unknown }) => {
+    fromServer(e);
+    const title = typeof q?.title === "string" ? q.title.slice(0, 200) : "";
+    const steamAppId = typeof q?.steamAppId === "string" && /^\d{1,10}$/.test(q.steamAppId) ? q.steamAppId : null;
+    const found = (await findLocalScreenshots({ steamAppId, title })).slice(0, 60);
+    return found.map((f) => {
+      const token = randomBytes(9).toString("hex");
+      localShots.set(token, f.path);
+      const img = nativeImage.createFromPath(f.path);
+      const thumb = img.isEmpty() ? null : img.resize({ width: 360 }).toDataURL();
+      return { token, from: f.from, takenAt: f.takenAt, bytes: f.bytes, thumb, name: path.basename(f.path) };
+    });
+  });
+
+  /** Shares one of those screenshots to the family wall. */
+  ipcMain.handle("gm:shareLocalScreenshot", async (e, token: string, gameId?: string | null, title?: string | null) => {
+    fromServer(e);
+    const file = typeof token === "string" ? localShots.get(token) : undefined;
+    if (!file) throw new Error("That screenshot isn't on this PC any more");
+    let img = nativeImage.createFromPath(file);
+    if (img.isEmpty()) throw new Error("Couldn't read that picture");
+    // 4K and up is shrunk to keep the wall quick.
+    if (img.getSize().width > 3840) img = img.resize({ width: 3840 });
+    await uploadScreenshot(img, typeof gameId === "string" && gameId ? gameId : null, typeof title === "string" ? title.slice(0, 200) : null);
+  });
+
+  ipcMain.handle("gm:openLocalScreenshot", async (e, token: string) => {
+    fromServer(e);
+    const file = typeof token === "string" ? localShots.get(token) : undefined;
+    if (file) await shell.openPath(file);
+  });
 
   /** The built-in web browser, on its start page or a web page. */
   ipcMain.handle("gm:openBrowser", (e, url?: string) => {

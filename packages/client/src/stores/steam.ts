@@ -7,7 +7,7 @@ import { parseVdf, type Vdf } from "./vdf.js";
 import { regQuery } from "./windows.js";
 
 /** Where Steam usually lives: the registry's answer on Windows, the usual folders on Linux (including Flatpak). */
-async function steamRoots(platform: NodeJS.Platform): Promise<string[]> {
+export async function steamRoots(platform: NodeJS.Platform): Promise<string[]> {
   if (platform === "win32") {
     const fromRegistry = [...(await regQuery("HKCU\\Software\\Valve\\Steam", false)).values()][0]?.SteamPath ?? null;
     return [fromRegistry, "C:\\Program Files (x86)\\Steam", "C:\\Program Files\\Steam"].filter((p): p is string => !!p).map((p) => path.normalize(p));

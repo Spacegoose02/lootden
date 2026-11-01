@@ -22,7 +22,7 @@ export function GameLibraries({ admin }: { admin: boolean }) {
   if (!list) return msg ? <p className="error">{msg.text}</p> : null;
   const shown = list.filter((a) => a.enabled || admin);
   return (
-    <section className="panel game-libraries">
+    <section className="panel game-libraries" id="libraries">
       <h2>Game libraries</h2>
       <p className="muted small">
         Connect your accounts on other stores and their games show up under <Link to="/library?tab=all&source=stores">your Library</Link>, next to what's on this server. Only you see your accounts and games. They're kept with your LootDen account, not on this device, so every device you sign in on gets them without entering anything again; keys and tokens are stored encrypted and never sent back to a browser.
