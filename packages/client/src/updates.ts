@@ -1,9 +1,9 @@
-import { copyFile, mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { chmod, copyFile, mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { archiveKindOf, compareVersion, effectiveVersion, groupArchiveSets, setupKindOf, type GameDetail } from "@lootden/shared";
+import { archiveKindOf, compareVersion, effectiveVersion, groupArchiveSets, setupKindOf, versionFromName, type GameDetail } from "@lootden/shared";
 import type { GameServerClient } from "./api.js";
 import { extractArchive, findSevenZip } from "./extractor.js";
-import { saveManifest, type InstalledGame } from "./installed.js";
+import { exeStampOf, knownVersion, saveManifest, versionTag, type InstalledGame } from "./installed.js";
 import { installGame, isManifest, type InstallEvent } from "./installer.js";
 import { findSetup, installerArgs } from "./prepare.js";
 
@@ -21,6 +21,8 @@ export interface AppliedUpdate {
   /** "files": copied over the game, with a backup. "installer": its setup program was run. */
   mode: "files" | "installer";
   appliedAt: string;
+  /** The computer that applied it (missing in records from older apps). */
+  device?: string;
   replaced: number;
   added: number;
 }
@@ -104,6 +106,29 @@ async function sharesMore(dir: string, match: string, other: string): Promise<bo
   return a >= b;
 }
 
+const LOCKED = new Set(["EPERM", "EBUSY", "EACCES"]);
+
+/**
+ * Copies a file over another one. Windows refuses (EPERM) to overwrite a read-only file, and
+ * one that antivirus or the game's launcher briefly has open, so the read-only flag is cleared
+ * and the copy retried for a while before giving up with a message that says what to do.
+ */
+export async function copyOver(from: string, to: string, waits = [100, 250, 500, 1000, 2000], copy: (from: string, to: string) => Promise<void> = copyFile): Promise<void> {
+  for (let i = 0; ; i++) {
+    try {
+      return await copy(from, to);
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException).code ?? "";
+      if (!LOCKED.has(code)) throw err;
+      if (i >= waits.length) {
+        throw Object.assign(new Error(`Windows wouldn't let LootDen replace ${to} (${code}). Close the game and its launcher, then try again.`), { code, cause: err });
+      }
+      await chmod(to, 0o666).catch(() => {});
+      await new Promise((r) => setTimeout(r, waits[i]));
+    }
+  }
+}
+
 /** Why an update shouldn't go on this copy, or null when it fits. */
 export function updateProblem(update: Pick<GameDetail, "kind" | "title" | "version" | "fromVersion" | "id">, installed: Pick<InstalledGame, "version" | "updates" | "exeVersion">): string | null {
   if (installed.updates?.some((u) => u.id === update.id)) return `${update.title} is already applied`;
@@ -151,10 +176,13 @@ export async function applyUpdate(api: GameServerClient, updateId: string, insta
       id: update.id,
       title: update.title,
       kind: update.kind,
-      previousVersion: installed.version ?? null,
-      version: update.kind === "update" ? (update.version ?? installed.version ?? null) : (installed.version ?? null),
+      previousVersion: knownVersion(installed),
+      // Always recorded, so the next update can be checked against it: the server's version,
+      // or the one in the update's name ("... 1.0.141.3207 to 1.0.141.13368").
+      version: update.kind === "update" ? (update.version ?? versionFromName(update.title) ?? knownVersion(installed)) : knownVersion(installed),
       mode: setup ? "installer" : "files",
       appliedAt: new Date().toISOString(),
+      device: versionTag("update").device,
       replaced: 0,
       added: 0,
     };
@@ -180,14 +208,20 @@ export async function applyUpdate(api: GameServerClient, updateId: string, insta
         } else added.push(rel);
         // The list is written as we go, so an interrupted update can still be undone.
         await mkdir(path.dirname(dest), { recursive: true });
-        await copyFile(path.join(root, ...rel.split("/")), dest);
+        await copyOver(path.join(root, ...rel.split("/")), dest);
         if ((replaced.length + added.length) % 200 === 0) await writeChanges(backup, target, replaced, added);
       }
       await writeChanges(backup, target, replaced, added);
       record.replaced = replaced.length;
       record.added = added.length;
     }
-    await saveManifest(installed.dir, { version: record.version, updates: [...(installed.updates ?? []).filter((u) => u.id !== update.id), record] });
+    await saveManifest(installed.dir, {
+      version: record.version,
+      versionSetBy: versionTag("update"),
+      // The exe as this update left it, so only a later change from outside counts as one.
+      exeStamp: await exeStampOf(installed),
+      updates: [...(installed.updates ?? []).filter((u) => u.id !== update.id), record],
+    });
     return record;
   } finally {
     // A scratch folder that's still locked is left for next time, rather than turning a
@@ -220,8 +254,13 @@ export async function undoUpdate(installed: InstalledGame, updateId: string): Pr
     return p;
   };
   for (const rel of changes.added) await rm(inside(rel), { force: true });
-  for (const rel of changes.replaced) await copyFile(path.join(backup, "files", ...rel.split("/")), inside(rel));
+  for (const rel of changes.replaced) await copyOver(path.join(backup, "files", ...rel.split("/")), inside(rel));
   await rm(backup, { recursive: true, force: true });
-  await saveManifest(installed.dir, { version: record.previousVersion, updates: updates.filter((u) => u.id !== updateId) });
+  await saveManifest(installed.dir, {
+    version: record.previousVersion,
+    versionSetBy: versionTag("undo"),
+    exeStamp: await exeStampOf(installed),
+    updates: updates.filter((u) => u.id !== updateId),
+  });
   return record;
 }

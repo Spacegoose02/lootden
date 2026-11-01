@@ -6,7 +6,8 @@ import { after, before, describe, it } from "node:test";
 import { effectiveVersion } from "@lootden/shared";
 import { exeVersion, parseVersionResource } from "../src/exeversion.js";
 import { hoistSingleFolder, renameRetrying } from "../src/installer.js";
-import { updateProblem } from "../src/updates.js";
+import { copyOver, updateProblem } from "../src/updates.js";
+import { listInstalled } from "../src/installed.js";
 
 let work: string;
 before(async () => {
@@ -68,11 +69,75 @@ describe("versions read from a game's executable", () => {
     assert.deepEqual(effectiveVersion({ version: null, exeVersion: "1.0.0.0" }), { version: null, fromExe: false });
   });
 
+  it("ignores a generic exe stamp older than the version the update needs", () => {
+    // CFB 27 on the ROG Ally: the exe says 1.0.0.0, LootDen applied 1.0.141.3207 but the
+    // manifest's own version was lost, so the next update must not read 1.0.0.0 as "outside LootDen".
+    const next = { id: "u2", title: "CFB 27 patch", kind: "update" as const, version: "1.0.141.13368", fromVersion: "1.0.141.3207" };
+    assert.deepEqual(effectiveVersion({ version: null, exeVersion: "1.0.0.0" }, next), { version: null, fromExe: false });
+    assert.equal(updateProblem(next, { version: null, exeVersion: "1.0.0.0" }), null);
+    // The newest applied update's version stands in for a missing manifest version.
+    const applied = [{ version: null }, { version: "1.0.141.3207" }];
+    assert.deepEqual(effectiveVersion({ version: null, exeVersion: "1.0.0.0", updates: applied }, next), { version: "1.0.141.3207", fromExe: false });
+    assert.equal(updateProblem(next, { version: null, exeVersion: "1.0.0.0", updates: applied as never }), null);
+  });
+
   it("says an update is already on when the game was updated outside LootDen", () => {
     const update = { id: "u1", title: "CFB 27 patch", kind: "update" as const, version: "1.0.141.13368", fromVersion: "1.0.141.3207" };
     assert.equal(updateProblem(update, { version: "1.0.141.3207", exeVersion: "1.0.141.3207" }), null);
     assert.match(updateProblem(update, { version: "1.0.141.3207", exeVersion: "1.0.141.13368" }) ?? "", /updated outside LootDen/);
     assert.match(updateProblem(update, { version: null, exeVersion: "1.0.141.13368" }) ?? "", /updated outside LootDen/);
+  });
+});
+
+describe("the version LootDen keeps for each game", () => {
+  it("backfills a lost version and stamps the exe, so a generic exe version is never read as an outside update", async () => {
+    const root = path.join(work, "games");
+    const dir = path.join(root, "CFB 27");
+    await mkdir(dir, { recursive: true });
+    await writeFile(path.join(dir, "game.exe"), peWith(versionResource([1, 0, 0, 0])));
+    const applied = { id: "u1", title: "CFB 27 1.0.141.3207", kind: "update", previousVersion: null, version: "1.0.141.3207", mode: "files", appliedAt: "2026-10-16T00:00:00Z", replaced: 1, added: 0 };
+    await writeFile(path.join(dir, ".lootden.json"), JSON.stringify({ gameId: "g1", title: "CFB 27", platform: "pc", executable: "game.exe", version: null, updates: [applied] }));
+
+    const [g] = await listInstalled([root]);
+    assert.equal(g!.version, "1.0.141.3207");
+    assert.equal(g!.versionSetBy?.how, "backfill");
+    assert.equal(g!.exeVersion, null);
+    const saved = JSON.parse(await readFile(path.join(dir, ".lootden.json"), "utf8"));
+    assert.equal(saved.version, "1.0.141.3207");
+    assert.ok(saved.exeStamp?.size > 0);
+    assert.equal(updateProblem({ id: "u2", title: "next", kind: "update", version: "1.0.141.13368", fromVersion: "1.0.141.3207" }, g!), null);
+
+    // The exe replaced from outside LootDen: now its version counts.
+    await writeFile(path.join(dir, "game.exe"), Buffer.concat([peWith(versionResource([1, 0, 141, 13368])), Buffer.alloc(8)]));
+    const [later] = await listInstalled([root]);
+    assert.equal(later!.exeVersion, "1.0.141.13368");
+    assert.match(updateProblem({ id: "u2", title: "next", kind: "update", version: "1.0.141.13368", fromVersion: "1.0.141.3207" }, later!) ?? "", /updated outside LootDen/);
+  });
+});
+
+describe("copying update files over the game", () => {
+  it("retries a copy Windows refuses, then explains what to do", async () => {
+    const src = path.join(work, "new.png");
+    const dest = path.join(work, "old.png");
+    await writeFile(src, "new");
+    await writeFile(dest, "old");
+    let tries = 0;
+    const { copyFile } = await import("node:fs/promises");
+    await copyOver(src, dest, [1, 1, 1], async (a, b) => {
+      if (++tries < 3) throw Object.assign(new Error("operation not permitted"), { code: "EPERM" });
+      await copyFile(a, b);
+    });
+    assert.equal(tries, 3);
+    assert.equal(await readFile(dest, "utf8"), "new");
+
+    await assert.rejects(
+      copyOver(src, dest, [1], async () => {
+        throw Object.assign(new Error("operation not permitted"), { code: "EPERM" });
+      }),
+      { code: "EPERM", message: /Close the game and its launcher/ },
+    );
+    // Other errors aren't retried.
+    await assert.rejects(copyOver(path.join(work, "missing.png"), dest, [1]), { code: "ENOENT" });
   });
 });
 

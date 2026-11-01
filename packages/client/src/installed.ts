@@ -1,6 +1,7 @@
 import { readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
-import { safeFolderName, setupKindOf } from "@lootden/shared";
+import { effectiveVersion, safeFolderName, setupKindOf } from "@lootden/shared";
 import { isManifest, LEGACY_MANIFEST_NAME, MANIFEST_NAME } from "./installer.js";
 import type { AppliedUpdate } from "./updates.js";
 import { exeVersion } from "./exeversion.js";
@@ -24,12 +25,56 @@ export interface InstalledGame {
   version?: string | null;
   /** Updates and DLC applied to this copy, oldest first. */
   updates?: AppliedUpdate[];
+  /** Which computer last set version, when, and how. */
+  versionSetBy?: VersionTag | null;
   /**
-   * The version stamped on the game's executable, read each time games are listed (not saved).
+   * The executable's size and modified time when LootDen last wrote or checked it. While the
+   * exe still matches, nothing outside LootDen has touched the game.
+   */
+  exeStamp?: ExeStamp | null;
+  /**
+   * The version stamped on the game's executable, read each time games are listed (not saved),
+   * and only when the exe changed since LootDen last saw it (so null while it hasn't).
    * Shows an update made outside LootDen, such as by the game's own launcher.
    */
   exeVersion?: string | null;
 }
+
+export interface VersionTag {
+  how: "install" | "update" | "undo" | "backfill";
+  device: string;
+  at: string;
+}
+
+export interface ExeStamp {
+  size: number;
+  mtimeMs: number;
+}
+
+/** A tag for a version LootDen is writing now, on this computer. */
+export function versionTag(how: VersionTag["how"]): VersionTag {
+  return { how, device: os.hostname(), at: new Date().toISOString() };
+}
+
+/** The version LootDen knows a copy is at: the manifest's, or the newest an applied update recorded. */
+export function knownVersion(g: Pick<InstalledGame, "version" | "updates">): string | null {
+  return g.version ?? [...(g.updates ?? [])].reverse().find((u) => u.version)?.version ?? null;
+}
+
+function exePath(g: Pick<InstalledGame, "dir" | "executable">): string | null {
+  if (!g.executable) return null;
+  return path.isAbsolute(g.executable) ? g.executable : path.join(g.dir, g.executable);
+}
+
+/** The game's executable as it is now, or null when it has none (yet). */
+export async function exeStampOf(g: Pick<InstalledGame, "dir" | "executable">): Promise<ExeStamp | null> {
+  const exe = exePath(g);
+  if (!exe) return null;
+  const s = await stat(exe).catch(() => null);
+  return s?.isFile() ? { size: s.size, mtimeMs: Math.round(s.mtimeMs) } : null;
+}
+
+const sameStamp = (a: ExeStamp | null | undefined, b: ExeStamp | null) => !!a && !!b && a.size === b.size && a.mtimeMs === b.mtimeMs;
 
 /** The manifest file's contents: .lootden.json, or .game-manager.json from before the rename. */
 async function readManifestFile(dir: string): Promise<Record<string, unknown> | null> {
@@ -57,6 +102,8 @@ async function readManifest(dir: string): Promise<InstalledGame | null> {
       installedDir: m.installedDir,
       version: m.version ?? null,
       updates: Array.isArray(m.updates) ? m.updates : [],
+      versionSetBy: m.versionSetBy ?? null,
+      exeStamp: m.exeStamp ?? null,
     };
   } catch {
     return null;
@@ -96,10 +143,35 @@ async function withSetupKnown(g: InstalledGame): Promise<InstalledGame> {
   return { ...g, needsSetup };
 }
 
+/**
+ * Fills in what an install from an older app is missing, once: the version, from the newest
+ * update LootDen applied to it.
+ */
+async function withVersionKnown(g: InstalledGame): Promise<InstalledGame> {
+  if (g.version) return g;
+  const version = knownVersion(g);
+  if (!version) return g;
+  const versionSetBy = versionTag("backfill");
+  await saveManifest(g.dir, { version, versionSetBy }).catch(() => {});
+  return { ...g, version, versionSetBy };
+}
+
+/**
+ * Reads the exe's version only when the exe changed since LootDen last wrote or checked it,
+ * which is the sign the game was updated outside LootDen. An install from an older app has no
+ * stamp yet: it's saved now, unless the exe already reads newer than what LootDen knows.
+ */
 async function withExeVersion(g: InstalledGame): Promise<InstalledGame> {
-  if (g.platform !== "pc" || !g.executable) return g;
-  const exe = path.isAbsolute(g.executable) ? g.executable : path.join(g.dir, g.executable);
-  return { ...g, exeVersion: await exeVersion(exe) };
+  if (g.platform !== "pc") return g;
+  const stamp = await exeStampOf(g);
+  if (!stamp) return g;
+  if (sameStamp(g.exeStamp, stamp)) return { ...g, exeVersion: null };
+  const read = { ...g, exeVersion: await exeVersion(exePath(g)!) };
+  if (!g.exeStamp && !effectiveVersion(read).fromExe) {
+    await saveManifest(g.dir, { exeStamp: stamp }).catch(() => {});
+    return { ...read, exeStamp: stamp, exeVersion: null };
+  }
+  return read;
 }
 
 /** Finds installed games by their manifest in each install folder (one level deep). */
@@ -118,7 +190,7 @@ export async function listInstalled(installDirs: string[]): Promise<InstalledGam
       const key = path.resolve(path.join(root, name)).toLowerCase();
       if (m && !seen.has(key)) {
         seen.add(key);
-        out.push(await withExeVersion(await withSetupKnown(m)));
+        out.push(await withExeVersion(await withVersionKnown(await withSetupKnown(m))));
       }
     }
   }

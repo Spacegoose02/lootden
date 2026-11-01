@@ -200,17 +200,22 @@ function sameScheme(exe: string, other: string): boolean {
 
 /**
  * The version a copy of a game is really at, for checking an update against it: what LootDen
- * recorded, or the executable's own version when that's newer and in the same numbering,
- * which happens when the game was updated outside LootDen (its launcher, or a patch by hand).
+ * recorded (or, when the manifest lost it, the newest version an applied update recorded), or
+ * the executable's own version when that's newer than both what LootDen knows and what the
+ * update expects, and numbered the same way. That happens when the game was updated outside
+ * LootDen (its launcher, or a patch by hand). An exe stamp older than that is a generic one
+ * ("1.0.0.0" on a game at 1.0.141.3207) and says nothing about the copy, so it's ignored.
  */
 export function effectiveVersion(
-  local: { version?: string | null; exeVersion?: string | null },
+  local: { version?: string | null; exeVersion?: string | null; updates?: Array<{ version?: string | null }> | null },
   update?: { version?: string | null; fromVersion?: string | null },
 ): { version: string | null; fromExe: boolean } {
-  const recorded = local.version ?? null;
+  const applied = (local.updates ?? []).map((u) => u.version).filter((x): x is string => !!x);
+  const recorded = local.version ?? applied[applied.length - 1] ?? null;
   const exe = local.exeVersion ?? null;
-  const ref = recorded ?? update?.fromVersion ?? update?.version ?? null;
-  if (!exe || !ref || !sameScheme(exe, ref)) return { version: recorded, fromExe: false };
+  const known = recorded ?? update?.fromVersion ?? update?.version ?? null;
+  if (!exe || !known || !sameScheme(exe, known)) return { version: recorded, fromExe: false };
   if (recorded && compareVersion(exe, recorded) <= 0) return { version: recorded, fromExe: false };
+  if (update?.fromVersion && compareVersion(exe, update.fromVersion) < 0) return { version: recorded, fromExe: false };
   return { version: exe, fromExe: true };
 }
