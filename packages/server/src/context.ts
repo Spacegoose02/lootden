@@ -38,6 +38,7 @@ import type { ShelfStore } from "./users/shelves.js";
 import type { HelperService } from "./helper/service.js";
 import type { RobloxCatalog } from "./roblox/catalog.js";
 import type { PresenceService } from "./users/presence.js";
+import type { LibraryRefresh } from "./catalog/refresh.js";
 import type { DenDutyLink } from "./users/denduty.js";
 import type { GameNights } from "./users/gamenight.js";
 import type { ScreenshotWall } from "./users/screenshots.js";
@@ -88,6 +89,8 @@ export interface AppContext {
   shelves: ShelfStore;
   /** Now Playing, parents' messages to PCs and the household's PCs (Wake-on-LAN). */
   presence: PresenceService;
+  /** Refreshing library copies from PCs with newer ones. */
+  libraryRefresh: LibraryRefresh;
   /** The link to Den Duty, the family's chore tracker: game locks, chores first, game time. */
   denDuty: DenDutyLink;
   /** Family game nights: the picker, plans and their calendar feed. */

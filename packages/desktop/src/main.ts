@@ -13,6 +13,8 @@ import {
   isManifest,
   runLocalSetup,
   saveManifest,
+  exeStampOf,
+  versionTag,
   biosFromServer,
   emulatorInfo,
   emulatorOverview,
@@ -63,7 +65,7 @@ import {
   UpdateMismatchError,
   type InstallEvent,
 } from "@lootden/client";
-import { PRESENCE_INTERVAL_SECONDS, type Allowance, type LocalStoreGame, type PcCommand, type PlaySource, type RunningGame } from "@lootden/shared";
+import { effectiveVersion, PRESENCE_INTERVAL_SECONDS, type Allowance, type LocalStoreGame, type PcCommand, type PcCopy, type PlaySource, type RunningGame } from "@lootden/shared";
 import { isExternalLink, isFile, onOrigin, permissionAllowed } from "./links.js";
 import { SettingsStore, type DesktopSettings } from "./settings.js";
 import { WebBrowser } from "./browser.js";
@@ -421,6 +423,8 @@ let beating = false;
 let installRemote: ((gameId: string) => Promise<unknown>) | null = null;
 /** Starts an installed game (lootden://play links, which Sunshine uses); set once the IPC handlers exist. */
 let playRemote: ((gameId: string) => Promise<unknown>) | null = null;
+/** Uploads this PC's copy of a game as the library copy, when an admin asks; set once the IPC handlers exist. */
+let refreshRemote: ((cmd: Extract<PcCommand, { kind: "refresh-copy" }>) => Promise<void>) | null = null;
 /** Commands already carried out, so a repeat delivery does nothing twice. */
 const handledCommands = new Set<string>();
 
@@ -430,6 +434,24 @@ function markRunning(gameId: string, title: string, source: PlaySource, stop?: A
   lastPlayingNow = [...nowRunning.values()].map((r) => r.game);
   updateScreenshotKey(true);
   scheduleHeartbeat(1000);
+}
+
+let copiesCache: { at: number; copies: PcCopy[] } | null = null;
+
+/**
+ * The version of each LootDen PC game installed here, for the server to spot copies newer than
+ * the library's (refreshed every ten minutes; reading exe versions isn't free).
+ */
+async function copiesForPresence(): Promise<PcCopy[]> {
+  if (copiesCache && Date.now() - copiesCache.at < 10 * 60_000) return copiesCache.copies;
+  const games = await listInstalled(await searchDirs()).catch(() => []);
+  const copies = games.flatMap((g) => {
+    if (g.platform !== "pc" || (g.needsSetup && !g.installedDir)) return [];
+    const { version, fromExe } = effectiveVersion(g);
+    return version ? [{ gameId: g.gameId, version, ...(fromExe ? { fromExe } : {}) }] : [];
+  });
+  copiesCache = { at: Date.now(), copies };
+  return copies;
 }
 
 async function storeGamesForPresence(): Promise<LocalStoreGame[]> {
@@ -472,6 +494,10 @@ function runCommand(cmd: PcCommand): void {
     );
     return;
   }
+  if (cmd.kind === "refresh-copy") {
+    void refreshRemote?.(cmd);
+    return;
+  }
   const mine = nowRunning.get(cmd.gameId);
   const title = mine?.game.title ?? cmd.gameId;
   playNotice(cmd.gameId, `${cmd.from} is closing ${title}`, `${cmd.text ? `${cmd.text} ` : ""}Save your game now: it closes in 60 seconds.`);
@@ -495,7 +521,11 @@ async function heartbeat(): Promise<void> {
     lastPlayingNow = playingNow;
     updateScreenshotKey(playingNow.length > 0);
     const api = clientFor(currentPlayer()) ?? (await client());
-    const answer = await api.presence({ device: os.hostname(), playing: playingNow, pc: { ...(await pcReport(app.getVersion())), streamGames: settings.get().sunshine?.streamGames ?? [] } });
+    const answer = await api.presence({
+      device: os.hostname(),
+      playing: playingNow,
+      pc: { ...(await pcReport(app.getVersion())), streamGames: settings.get().sunshine?.streamGames ?? [], copies: await copiesForPresence() },
+    });
     for (const cmd of answer.commands) runCommand(cmd);
   } catch {
     // Offline, signed out or an older server: try again next time.
@@ -1531,6 +1561,39 @@ function registerIpc(): void {
       await rm(workDir, { recursive: true, force: true }).catch(() => {});
     }
   });
+
+  /**
+   * An admin asked for this PC's copy as the new library copy (it's newer than the server's):
+   * zip it, upload it with the request's ticket, then link this copy to the new library entry.
+   */
+  refreshRemote = async (cmd) => {
+    const api = await client();
+    const fail = (message: string) => {
+      playNotice(cmd.gameId, `Couldn't upload ${cmd.title}`, message);
+      void api.failRefresh(cmd.ticket, message).catch(() => {});
+    };
+    if (nowRunning.has(cmd.gameId)) return fail(`${cmd.title} is being played on this PC. Ask again once it's closed.`);
+    if (running.has(cmd.gameId)) return fail(`This PC is already working on ${cmd.title}.`);
+    const local = (await listInstalled(await searchDirs())).find((g) => g.gameId === cmd.gameId);
+    if (!local) return fail(`${cmd.title} isn't installed on this PC any more.`);
+    running.set(cmd.gameId, new AbortController());
+    const workDir = path.join(path.dirname(local.dir), `.refresh-${cmd.gameId}`);
+    playNotice(cmd.gameId, `Uploading ${cmd.title} to the library`, `${cmd.from} asked for this PC's copy (v${cmd.version}). It's zipped and uploaded in the background.`);
+    try {
+      const game = await uploadInstalledFolder(api, cmd.gameId, local.installedDir ?? local.dir, { workDir, sevenZip: await prepSevenZip(), version: cmd.version, ticket: cmd.ticket, onStep: prepareStep(cmd.gameId) });
+      // The library entry has a new id now; this copy is it, at the version that was uploaded.
+      await saveManifest(local.dir, { gameId: game.id, title: game.title, source: game.source, needsSetup: null, version: cmd.version, versionSetBy: versionTag("update"), exeStamp: await exeStampOf(local) });
+      copiesCache = null;
+      send({ gameId: cmd.gameId, type: "prepare", message: "Uploaded. The library copy is now this PC's.", done: true, newId: game.id });
+      playNotice(game.id, `${cmd.title} is in the library`, `Everyone now gets v${cmd.version}.`);
+    } catch (err) {
+      send({ gameId: cmd.gameId, type: "prepare", message: (err as Error).message, done: true, error: true });
+      fail((err as Error).message);
+    } finally {
+      running.delete(cmd.gameId);
+      await rm(workDir, { recursive: true, force: true }).catch(() => {});
+    }
+  };
 
   ipcMain.handle("gm:uninstall", async (e, gameId: string) => {
     fromServer(e);

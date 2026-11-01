@@ -4,7 +4,7 @@ import path from "node:path";
 import { safeFolderName, type GameDetail } from "@lootden/shared";
 import type { GameServerClient } from "./api.js";
 import { extractArchive, type SevenZip } from "./extractor.js";
-import { installGame, type InstallEvent } from "./installer.js";
+import { installGame, LEGACY_MANIFEST_NAME, MANIFEST_NAME, type InstallEvent } from "./installer.js";
 
 export type PrepareStep =
   | { step: "download"; event: InstallEvent }
@@ -61,10 +61,13 @@ export async function installerArgs(setup: string, target: string): Promise<stri
   return [];
 }
 
-/** Zips a folder's contents with 7-Zip (store-fast: games barely compress). */
+/**
+ * Zips a folder's contents with 7-Zip (store-fast: games barely compress). LootDen's own
+ * files stay out: update backups, and the install manifest (it names this PC's copy).
+ */
 export function zipFolder(sevenZip: SevenZip, folder: string, zipPath: string): Promise<void> {
   return new Promise((resolve, reject) => {
-    const child = spawn(sevenZip.path, ["a", "-tzip", "-mx1", "-bd", "-y", zipPath, "*", "-xr!.lootden-backup"], { cwd: folder, stdio: ["ignore", "ignore", "pipe"], windowsHide: true });
+    const child = spawn(sevenZip.path, ["a", "-tzip", "-mx1", "-bd", "-y", zipPath, "*", "-xr!.lootden-backup", `-x!${MANIFEST_NAME}`, `-x!${LEGACY_MANIFEST_NAME}`], { cwd: folder, stdio: ["ignore", "ignore", "pipe"], windowsHide: true });
     let err = "";
     child.stderr.on("data", (d) => (err += d.toString()));
     child.on("error", reject);
@@ -73,7 +76,12 @@ export function zipFolder(sevenZip: SevenZip, folder: string, zipPath: string): 
 }
 
 /** Zips an already-installed game and uploads it in place of the disc or installer copy. */
-export async function uploadInstalledFolder(api: GameServerClient, gameId: string, folder: string, opts: Pick<PrepareOptions, "workDir" | "sevenZip" | "version" | "onStep">): Promise<GameDetail> {
+export async function uploadInstalledFolder(
+  api: GameServerClient,
+  gameId: string,
+  folder: string,
+  opts: Pick<PrepareOptions, "workDir" | "sevenZip" | "version" | "onStep"> & { ticket?: string },
+): Promise<GameDetail> {
   const s = await stat(folder).catch(() => null);
   if (!s?.isDirectory() || (await readdir(folder)).length === 0) throw new Error(`${folder} is empty or missing`);
   await mkdir(opts.workDir, { recursive: true });
@@ -82,7 +90,7 @@ export async function uploadInstalledFolder(api: GameServerClient, gameId: strin
   opts.onStep?.({ step: "zip", folder });
   await zipFolder(opts.sevenZip, folder, zip);
   opts.onStep?.({ step: "upload", bytes: (await stat(zip)).size });
-  const game = await api.uploadPrepared(gameId, zip, opts.version, (sent, bytes) => opts.onStep?.({ step: "upload", bytes, sent }));
+  const game = await api.uploadPrepared(gameId, zip, opts.version, (sent, bytes) => opts.onStep?.({ step: "upload", bytes, sent }), opts.ticket);
   await rm(zip, { force: true });
   opts.onStep?.({ step: "done", game });
   return game;

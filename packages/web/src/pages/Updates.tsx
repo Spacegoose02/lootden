@@ -2,7 +2,9 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { versionLabel as v, type GameSummary } from "@lootden/shared";
 import { api, formatBytes } from "../api";
+import { useAuth } from "../auth";
 import { Cover } from "../components/Cover";
+import { RefreshFromPc } from "../components/RefreshFromPc";
 import { KindBadge, UpdateActions, useInstalled, versionLabel, versionProblem } from "../components/UpdateActions";
 
 type Filter = "all" | "ready" | "updates" | "dlc" | "only";
@@ -17,6 +19,7 @@ export function Updates() {
   const [error, setError] = useState("");
   const [filter, setFilter] = useState<Filter>("all");
   const [installed, refreshInstalled] = useInstalled();
+  const { me } = useAuth();
 
   useEffect(() => {
     Promise.all([api.games({ kind: "addon", sort: "added", order: "desc" }), api.games()]).then(
@@ -59,6 +62,7 @@ export function Updates() {
       <p className="muted">
         Patches and DLC on the server, apart from full games. Apply one to a game installed on this PC; the files it replaces are kept so it can be undone.
       </p>
+      {me?.role === "admin" && <RefreshFromPc />}
       <div className="tabs">
         {(
           [

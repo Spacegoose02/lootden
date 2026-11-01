@@ -76,6 +76,7 @@ import { gameNightRoutes } from "./routes/gamenight.js";
 import { ScreenshotWall } from "./users/screenshots.js";
 import { screenshotRoutes } from "./routes/screenshots.js";
 import { presenceRoutes } from "./routes/presence.js";
+import { LibraryRefresh } from "./catalog/refresh.js";
 import { ShelfStore } from "./users/shelves.js";
 import { HelperService, type HelperAi } from "./helper/service.js";
 import { helperRoutes } from "./routes/helper.js";
@@ -167,6 +168,8 @@ export function buildContext(config: ServerConfig, db: Db, log: Log, opts: Build
   const family = new FamilyService(db, library, users, () => requests, notifier);
   const presence = new PresenceService(db, users, library, family, opts.wake);
   presence.onChange = () => live.publish("playing");
+  const libraryRefresh = new LibraryRefresh(library, presence);
+  libraryRefresh.onChange = () => live.publish("library");
   const denDuty = new DenDutyLink(db, vault, users, family, presence, opts.fetchImpl);
   family.externalLock = (userId) => denDuty.lockFor(userId);
   const gameNights = new GameNights(db, library, users, family, denDuty);
@@ -207,6 +210,7 @@ export function buildContext(config: ServerConfig, db: Db, log: Log, opts: Build
     live,
     family,
     presence,
+    libraryRefresh,
     denDuty,
     gameNights,
     screenshots: new ScreenshotWall(db, config.dataDir, users, library),

@@ -3,7 +3,7 @@ export { ApiError, GameServerClient } from "./api.js";
 export { CONFIG_KEYS, configDir, configPath, defaults, loadConfig, saveConfigValue, type ClientConfig } from "./config.js";
 export { listDrives, type Drive } from "./drives.js";
 export { extractArchive, findSevenZip } from "./extractor.js";
-export { adoptFolder, detectSetup, findCopies, listInstalled, saveManifest, uninstallGame, type GameRef, type InstalledGame } from "./installed.js";
+export { adoptFolder, detectSetup, exeStampOf, findCopies, listInstalled, saveManifest, uninstallGame, versionTag, type GameRef, type InstalledGame } from "./installed.js";
 export { installGame, isManifest, LEGACY_MANIFEST_NAME, MANIFEST_NAME, pickGame, type InstallEvent, type InstallOptions } from "./installer.js";
 export { findExecutable, launchAndTrack, listProcesses, processesIn, saveExecutable } from "./launcher.js";
 export { firstExisting, pcReport, runningStoreGames, streamingPaths } from "./presence.js";
