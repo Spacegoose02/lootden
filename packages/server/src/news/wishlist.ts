@@ -4,7 +4,7 @@ import type { Library } from "../catalog/library.js";
 import { titleKey } from "../metadata/calendar.js";
 import { cleanTitle } from "../metadata/titles.js";
 import type { FetchLike } from "../metadata/http.js";
-import { steamHeader } from "../metadata/steam.js";
+import { steamCover } from "../metadata/steam.js";
 
 export type WishSource = { kind: "steam" | "manual"; name: string } | { kind: "feed"; id: number; name: string };
 
@@ -159,6 +159,21 @@ interface StoreItem {
   id?: number;
   name?: string;
   release?: { steam_release_date?: number; is_coming_soon?: boolean; custom_release_date_message?: string; coming_soon_display?: string };
+  /** File names under asset_url_format ("steam/apps/123/<hash>/${FILENAME}?t=…"). */
+  assets?: { asset_url_format?: string; library_capsule?: string; library_capsule_2x?: string; main_capsule?: string; header?: string };
+}
+
+const STEAM_ASSETS = "https://shared.akamai.steamstatic.com/store_item_assets/";
+
+/**
+ * A store item's cover: the tall library capsule (600x900) when it has one, else the header.
+ * Newer apps keep their art under hashed paths, so the old fixed URLs 404 for them.
+ */
+export function steamArt(item: StoreItem | undefined): string | null {
+  const a = item?.assets;
+  const file = a?.library_capsule ?? a?.library_capsule_2x ?? a?.header ?? a?.main_capsule;
+  if (!a?.asset_url_format || !file) return null;
+  return STEAM_ASSETS + a.asset_url_format.replace("${FILENAME}", file);
 }
 
 const day = (unix: number) => new Date(unix * 1000).toISOString().slice(0, 10);
@@ -378,7 +393,7 @@ export class WishlistService {
             title: d?.name ?? `Steam app ${appId}`,
             steamAppId: appId,
             url: `https://store.steampowered.com/app/${appId}/`,
-            image: `https://cdn.cloudflare.steamstatic.com/steam/apps/${appId}/header.jpg`,
+            image: steamArt(d) ?? steamCover(String(appId)),
             releaseDate: release?.steam_release_date && !release.custom_release_date_message ? day(release.steam_release_date) : null,
             dateText: coming ? (release?.custom_release_date_message ?? release?.coming_soon_display ?? "Coming soon") : null,
           },
@@ -401,7 +416,7 @@ export class WishlistService {
 
   /**
    * Covers for entries that came without one (a feed with no images, a title added by hand):
-   * the Steam store's header for the game of the same name. A match also links the entry to
+   * the Steam store's tall cover for the game of the same name. A match also links the entry to
    * that Steam app, unless another entry already has it.
    */
   async fillCovers(): Promise<number> {
@@ -418,9 +433,8 @@ export class WishlistService {
       const appId = r.steam_app_id ?? (await this.steamMatch(r.title).catch(() => null));
       if (!appId) continue;
       const taken = this.db.prepare("SELECT 1 FROM wishlist WHERE steam_app_id = ? AND id != ?").get(appId, r.id);
-      this.db
-        .prepare("UPDATE wishlist SET image = ?, steam_app_id = COALESCE(steam_app_id, ?) WHERE id = ?")
-        .run(steamHeader(String(appId)), taken ? null : appId, r.id);
+      const art = steamArt((await this.storeItems([appId])).get(appId)) ?? steamCover(String(appId));
+      this.db.prepare("UPDATE wishlist SET image = ?, steam_app_id = COALESCE(steam_app_id, ?) WHERE id = ?").run(art, taken ? null : appId, r.id);
       filled++;
     }
     return filled;
@@ -447,14 +461,14 @@ export class WishlistService {
       const input = {
         ids: appIds.slice(i, i + 100).map((appid) => ({ appid })),
         context: { language: "english", country_code: "US" },
-        data_request: { include_release: true },
+        data_request: { include_release: true, include_assets: true },
       };
       try {
         const res = await this.fetchImpl(`https://api.steampowered.com/IStoreBrowseService/GetItems/v1/?input_json=${encodeURIComponent(JSON.stringify(input))}`, { headers: UA });
         if (!res.ok) continue;
         for (const it of ((await res.json()) as { response?: { store_items?: StoreItem[] } }).response?.store_items ?? []) {
           const id = it.appid ?? it.id;
-          if (id && it.name) out.set(id, it);
+          if (id && (it.name || it.assets)) out.set(id, it);
         }
       } catch {
         /* names fall back to "Steam app 123" and fill in on the next sync */

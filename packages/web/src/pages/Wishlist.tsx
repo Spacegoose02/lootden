@@ -27,6 +27,8 @@ export function Wishlist() {
   const isAdmin = me?.role === "admin";
   const kid = !!me?.user?.kidMode;
   const [data, setData] = useState<WishlistState | null>(null);
+  // Covers whose address didn't load: they show the letter instead of a broken image.
+  const [brokenArt, setBrokenArt] = useState<Set<string>>(() => new Set());
   const [msg, setMsg] = useState<{ text: string; error?: boolean } | null>(null);
   const [busy, setBusy] = useState(false);
   const [filter, setFilter] = useState<Filter>("all");
@@ -131,7 +133,11 @@ export function Wishlist() {
         {items.map((w) => (
           <div key={w.id} className="wish-card">
             <Link to={w.libraryId ? `/games/${w.libraryId}` : w.steamAppId ? `/discover/steam/${w.steamAppId}` : `/discover?q=${encodeURIComponent(w.title)}`} className="wish-art">
-              {w.image ? <img src={w.image} alt="" loading="lazy" referrerPolicy="no-referrer" /> : <span className="wish-blank">{w.title.slice(0, 1)}</span>}
+              {w.image && !brokenArt.has(w.image) ? (
+                <img src={w.image} alt="" loading="lazy" referrerPolicy="no-referrer" onError={() => setBrokenArt((b) => new Set(b).add(w.image!))} />
+              ) : (
+                <span className="wish-blank">{w.title.slice(0, 1)}</span>
+              )}
               {w.libraryId && <span className="tag in-library">In library</span>}
             </Link>
             <div className="wish-body">
