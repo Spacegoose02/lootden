@@ -48,6 +48,8 @@ export interface DesktopSettings {
   browserPolicy?: BrowserPolicy;
   /** Links from LootDen's pages open in the built-in browser instead of the system one. "auto" does so in handheld mode. */
   browserLinks?: "auto" | "on" | "off";
+  /** ATS and ETS2 mod folders picked on this PC (a custom -homedir); missing means the usual one in Documents. */
+  truckModFolders?: Partial<Record<"ats" | "ets2", string>>;
 }
 
 export function defaultSettings(): DesktopSettings {

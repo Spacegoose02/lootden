@@ -1,6 +1,6 @@
 import { useEffect, useState, type CSSProperties } from "react";
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { browserRomFile, platformFor, type GameDetail as Game } from "@lootden/shared";
+import { browserRomFile, platformFor, truckGameFor, type GameDetail as Game } from "@lootden/shared";
 import { api, formatBytes, type ApiError, type Candidate, type Ps2BrowserStatus } from "../api";
 import { useAuth } from "../auth";
 import { Badges } from "../components/Badges";
@@ -14,6 +14,7 @@ import { TOGETHER_TAGS } from "@lootden/shared";
 import { UpdatesPanel } from "../components/UpdatesPanel";
 import { PreparePanel } from "../components/PreparePanel";
 import { JournalPanel, ModsPanel, WorkshopPanel, VersionBanner } from "../components/GameExtras";
+import { TruckModsPanel } from "../components/TruckMods";
 import { bridgeError, desktop, type LocalGameCopy } from "../desktop";
 import { LocalGame } from "../components/LocalGame";
 import { launchStoreGame, storeKey, useStoreGames } from "../components/StoreGameCard";
@@ -204,6 +205,7 @@ export function GameDetail() {
       {game.platform === "pc" && !isAddon && <ModsPanel gameId={game.id} title={game.title} />}
 
       {game.platform === "pc" && !isAddon && !me?.user?.kidMode && <WorkshopPanel gameId={game.id} isAdmin={me?.role === "admin"} installedHere={!!installed?.some((g) => g.gameId === game.id)} />}
+      {game.platform === "pc" && !me?.user?.kidMode && truckGameFor(game.metadata?.steamAppId, game.title) && <TruckModsPanel game={truckGameFor(game.metadata?.steamAppId, game.title)!} />}
 
       {!isAddon && <PreparePanel game={game} />}
 

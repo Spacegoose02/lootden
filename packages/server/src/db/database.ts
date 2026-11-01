@@ -102,6 +102,9 @@ const MIGRATIONS: string[] = [
     external_id TEXT,
     name TEXT NOT NULL,
     source_url TEXT,
+    -- From the mod's manifest.sii, read by the app that added it: its version, and the game versions it's for (JSON array).
+    mod_version TEXT,
+    compatible TEXT NOT NULL DEFAULT '[]',
     added_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
     added_at TEXT NOT NULL,
     status TEXT NOT NULL DEFAULT 'downloading',
@@ -195,6 +198,9 @@ const MIGRATIONS: string[] = [
     external_id TEXT,
     name TEXT NOT NULL,
     source_url TEXT,
+    -- From the mod's manifest.sii, read by the app that added it: its version, and the game versions it's for (JSON array).
+    mod_version TEXT,
+    compatible TEXT NOT NULL DEFAULT '[]',
     added_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
     added_at TEXT NOT NULL,
     status TEXT NOT NULL DEFAULT 'downloading',
@@ -548,6 +554,26 @@ const MIGRATIONS: string[] = [
   `
   -- Bandit's web searches per person per day (each one is billed by Anthropic).
   ALTER TABLE helper_usage ADD COLUMN searches INTEGER NOT NULL DEFAULT 0;
+  `,
+  `
+  -- Mods for the truck games (ATS, ETS2), kept on the server so every PC can add them. One row per game and file name:
+  -- a newer download of the same file replaces the old one.
+  CREATE TABLE truck_mods (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    game TEXT NOT NULL,
+    title TEXT NOT NULL,
+    file_name TEXT NOT NULL COLLATE NOCASE,
+    file TEXT NOT NULL,
+    size INTEGER NOT NULL,
+    source_url TEXT,
+    -- From the mod's manifest.sii, read by the app that added it: its version, and the game versions it's for (JSON array).
+    mod_version TEXT,
+    compatible TEXT NOT NULL DEFAULT '[]',
+    added_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    added_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    UNIQUE (game, file_name)
+  );
   `,
 ];
 

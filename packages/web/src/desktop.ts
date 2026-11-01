@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { GameDetail, LocalStoreGame } from "@lootden/shared";
+import type { GameDetail, InstalledTruckMod, LocalStoreGame, TruckGame, TruckModFile } from "@lootden/shared";
 
 export interface Drive {
   path: string;
@@ -57,6 +57,8 @@ export type Progress =
   | { gameId: string; type: "playing" }
   | { gameId: string; type: "stopped"; seconds: number }
   | { gameId: string; type: "workshop"; itemId: string; line: string }
+  /** ATS/ETS2 mods being added (gameId is "truck-mods:<game>"). */
+  | { gameId: string; type: "truckMods"; game: TruckGame; line: string; done: boolean; error: boolean }
   | { gameId: string; type: "saves"; backupId?: number; size?: number; error?: string }
   | { gameId: string; type: "prepare"; message: string; done?: boolean; error?: boolean; newId?: string }
   /** Play time heads-ups and time's up (shown by FunLayer, not on the game's page). */
@@ -123,6 +125,13 @@ export interface DesktopBridge {
   workshopItems?(gameId: string): Promise<InstalledWorkshopItem[]>;
   installWorkshopItem?(gameId: string, itemId: string, title: string): Promise<InstalledWorkshopItem>;
   removeWorkshopItem?(gameId: string, itemId: string): Promise<void>;
+  /** ATS and ETS2 mods on this PC (newer apps only): the mod folder, what's in it, and adding or removing mods. */
+  truckModsLocal?(game: TruckGame): Promise<TruckModsLocal>;
+  installTruckMod?(game: TruckGame, id: number): Promise<InstalledTruckMod>;
+  removeTruckMod?(game: TruckGame, key: string): Promise<void>;
+  addTruckModFile?(game: TruckGame, share: boolean): Promise<InstalledTruckMod | null>;
+  openTruckModFolder?(game: TruckGame): Promise<void>;
+  pickTruckModFolder?(game: TruckGame, reset?: boolean): Promise<string>;
   /** The built-in web browser, over LootDen, on its start page or a web page (newer apps only). */
   openBrowser?(url?: string): Promise<void>;
   /** This PC's store scanner settings, and adding a folder to it through the folder picker (newer apps only). */
@@ -212,6 +221,17 @@ export function useDesktopGame(gameId: string) {
 export interface StoreScanSettings {
   stores: Array<{ id: string; name: string; enabled: boolean }>;
   folders: string[];
+}
+
+/** A truck game's mod folder on this PC, as the desktop app sees it. */
+export interface TruckModsLocal {
+  folder: string;
+  /** The folder was picked on this PC (not the usual one in Documents). */
+  custom: boolean;
+  /** From the game's game.log.txt; null until the game has run once. */
+  gameVersion: string | null;
+  installed: InstalledTruckMod[];
+  files: TruckModFile[];
 }
 
 export interface InstalledWorkshopItem {

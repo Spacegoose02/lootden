@@ -1,4 +1,4 @@
-import { BaseWindow, dialog, ipcMain, session, shell, WebContentsView, type BrowserWindow, type IpcMainInvokeEvent, type Session, type WebContents } from "electron";
+import { BaseWindow, dialog, ipcMain, session, shell, WebContentsView, type BrowserWindow, type IpcMainInvokeEvent, type DownloadItem, type Session, type WebContents } from "electron";
 import {
   addressToUrl,
   cleanBookmarks,
@@ -57,6 +57,8 @@ export interface BrowserDeps {
   /** What the signed-in person may open (see BrowserPolicy), asked of the server each time the browser opens. */
   policy: () => Promise<BrowserPolicy | null>;
   icon: string;
+  /** Takes a download for itself (truck mods into the game's mod folder); false lets it go on as usual. */
+  onDownload?: (item: DownloadItem, wc: WebContents | undefined, owner: BaseWindow | null) => boolean;
 }
 
 /** Permissions sites may have without asking; camera and microphone are asked for, the rest refused. */
@@ -501,6 +503,15 @@ export class WebBrowser {
           if (response === 0) this.mediaAllowed.add(site);
           callback(response === 0 && !wc.isDestroyed());
         });
+    });
+    // Mods for the truck games go straight to the game (not on kid-safe browsing, where the server turns them away anyway).
+    ses.on("will-download", (_e, item, wc) => {
+      if (this.kids) return;
+      try {
+        this.deps.onDownload?.(item, wc, this.win);
+      } catch {
+        /* a normal download, then */
+      }
     });
     ses.setPermissionCheckHandler((_wc, permission, requestingOrigin) => SITE_PERMISSIONS.has(permission) || (permission === "media" && this.mediaAllowed.has(requestingOrigin)));
   }

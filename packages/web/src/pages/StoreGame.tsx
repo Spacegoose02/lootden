@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
-import { ROBLOX_ADDON, type GameListing, type LocalStoreGame, type StoreGame as StoreGameT, type StoreGameDetail } from "@lootden/shared";
+import { ROBLOX_ADDON, truckGameForSteamApp, type GameListing, type LocalStoreGame, type StoreGame as StoreGameT, type StoreGameDetail } from "@lootden/shared";
 import { api, formatPlaytime } from "../api";
 import { bridgeError, desktop } from "../desktop";
 import { ArtworkPicker } from "../components/ArtworkEditor";
 import { WorkshopPanel } from "../components/GameExtras";
+import { TruckModsPanel } from "../components/TruckMods";
 import { GameMedia } from "../components/GameMedia";
 import { useAuth } from "../auth";
 import { listingDate } from "../components/Listing";
@@ -119,6 +120,7 @@ export function StoreGame() {
 
       {info && <GameMedia game={info} />}
       {addon === "steam" && /^\d+$/.test(id) && !me?.user?.kidMode && <WorkshopPanel steamAppId={id} isAdmin={me?.role === "admin"} installedHere={!!local} />}
+      {addon === "steam" && truckGameForSteamApp(id) && !me?.user?.kidMode && <TruckModsPanel game={truckGameForSteamApp(id)!} />}
     </article>
   );
 }

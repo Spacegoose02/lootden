@@ -9,6 +9,7 @@ export { findExecutable, launchAndTrack, saveExecutable } from "./launcher.js";
 export { isRobloxPlayer, trackRoblox } from "./roblox.js";
 export * from "./emulators.js";
 export { backupSaves, expandSavePath, restoreSaves } from "./saves.js";
+export { installedTruckModKey, installTruckMod, linkTruckMod, listTruckMods, readTruckManifest, removeTruckMod, scanTruckMods, truckGameVersion, truckModsFolder, TRUCK_MODS_LIST } from "./truckmods.js";
 export { switchSaveSlot, type SaveSlotOptions } from "./saveslots.js";
 export { offlineAllowance, watchPlayTime, type KeptAllowance, type PlayWatchOptions } from "./playtime.js";
 export { findSetup, prepareGame, runLocalSetup, uploadInstalledFolder, type PrepareStep } from "./prepare.js";
