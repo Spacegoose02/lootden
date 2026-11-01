@@ -6,6 +6,7 @@ import { bridgeError, desktop } from "../desktop";
 import { ArtworkPicker } from "../components/ArtworkEditor";
 import { JournalPanel, WorkshopPanel } from "../components/GameExtras";
 import { GameAchievementsPanel } from "../components/Achievements";
+import { MarkButtons, TagsPanel } from "../components/Marks";
 import { LocalScreenshots } from "../components/LocalScreenshots";
 import { TruckModsPanel } from "../components/TruckMods";
 import { TruckModListPanel } from "../components/TruckModList";
@@ -127,6 +128,12 @@ export function StoreGame() {
       {editing && <StoreGameEditor addon={addon} id={id} title={localTitle} detail={detail} onChange={setDetail} />}
 
       {me?.user && addon !== ROBLOX_ADDON && <JournalPanel gameId={`store:${addon}:${id}`} />}
+      {me?.user && (
+        <div className="inline mark-row">
+          <MarkButtons gameKey={`store:${addon}:${id}`} />
+        </div>
+      )}
+      {me?.user && <TagsPanel gameKey={`store:${addon}:${id}`} />}
       {me?.user && (addon === "steam" || addon === "xbox") && <GameAchievementsPanel store={{ addon, id }} journalId={`store:${addon}:${id}`} />}
       {info && <GameMedia game={info} />}
       {addon !== ROBLOX_ADDON && <LocalScreenshots title={game.title} steamAppId={addon === "steam" ? id : null} />}

@@ -151,6 +151,23 @@ vault can do it.
   with the game's title. The app hands the page tokens and thumbnails, never paths
   (`gm:localScreenshots`, `gm:shareLocalScreenshot`).
 
+## Organizing, export and backup (unreleased)
+
+- **Marks** (`users/marks.ts`, `game_marks` table, helpers in `shared/src/organize.ts`): per
+  person tags, custom fields, favourite and hidden for a game key (a library game id or
+  `store:<addon>:<id>`). `PATCH /api/me/marks/:key`, `POST /api/me/marks/bulk` (also sets journal
+  status and adds to a shelf), `GET /api/me/marks`, `GET /api/me/tags`.
+- **Smart shelves**: `shelves.rules` (JSON `SmartRules`, null for a normal shelf). The shelf view
+  works the games out with `smartShelfGames` each time; games can't be added by hand.
+- **Duplicates**: `duplicateKey` (title without punctuation, editions and ™) merges the same game
+  across stores on the Library page, and store games that are already library games are hidden.
+- **Export**: `GET /api/me/export/library.csv|json`; CSV cells starting with = + - @ are quoted
+  with a leading apostrophe.
+- **Backups** (`settings/backups.ts`): `VACUUM INTO` copies in `<data>/backups`, daily on a timer
+  when switched on, oldest pruned past `keep`. Restoring stages the file as `restore-pending.db`;
+  `applyPendingRestore` swaps it in at the next start, before the database opens, keeping the old
+  one as `.before-restore`. Uploads are checked to be a LootDen SQLite database first.
+
 ## Game version tags (0.24.2)
 
 Every LootDen install and applied update saves the game's version in `.lootden.json`, with

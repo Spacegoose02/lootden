@@ -4901,3 +4901,17 @@ html[data-lootden-frame] .lightbox {
 .local-shot-open { padding: 0; border: 0; background: none; border-radius: 10px; overflow: hidden; aspect-ratio: 16 / 9; display: grid; place-items: center; }
 .local-shot-open img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .local-shot figcaption { display: flex; justify-content: space-between; align-items: center; gap: 0.4rem; }
+
+/* Organizing: tags, custom fields, bulk edit, smart shelves, duplicates */
+.tag-chips { display: flex; flex-wrap: wrap; gap: 0.4rem; align-items: center; }
+.tag-chip { display: inline-flex; align-items: center; gap: 0.2rem; padding: 0.1rem 0.25rem 0.1rem 0.6rem; border-radius: 999px; background: var(--panel); font-size: 0.85rem; }
+.tag-chip button { padding: 0 0.3rem; min-height: 0; line-height: 1.2; }
+.custom-fields { display: grid; grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr)); gap: 0.4rem 1rem; margin: 0.75rem 0; }
+.custom-fields dt { font-size: 0.8rem; opacity: 0.7; }
+.custom-fields dd { margin: 0; }
+.mark-row { margin: 0.5rem 0; }
+.bulk-bar { position: sticky; bottom: 0.75rem; z-index: 5; display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; padding: 0.6rem 0.8rem; margin: 0.75rem 0; border-radius: 0.6rem; background: var(--panel-solid); box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35); border: 1px solid var(--border); }
+.rules-editor { display: grid; grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr)); gap: 0.5rem 0.75rem; padding: 0.75rem; margin: 0.25rem 0 0.5rem; border-radius: 0.5rem; background: var(--panel); align-items: end; }
+.rules-editor input, .rules-editor select { width: 100%; }
+.badge.also-on { opacity: 0.85; }
+.select-list td:first-child { width: 2rem; }

@@ -8,7 +8,7 @@ export type Db = DatabaseSync;
  * Ordered schema migrations. Append only: never edit a migration that has shipped,
  * add a new one instead. user_version tracks how many have run.
  */
-const MIGRATIONS: string[] = [
+export const MIGRATIONS: string[] = [
   `
   CREATE TABLE games (
     id TEXT PRIMARY KEY,
@@ -687,6 +687,20 @@ const MIGRATIONS: string[] = [
     PRIMARY KEY (user_id, source, source_id)
   );
   CREATE INDEX play_sessions_user_game ON play_sessions(user_id, game_id, ended_at);
+  `,
+  `
+  -- Each person's favourites, hidden games, tags and custom fields; smart shelves' rules.
+  CREATE TABLE game_marks (
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    game_key TEXT NOT NULL,
+    favourite INTEGER NOT NULL DEFAULT 0,
+    hidden INTEGER NOT NULL DEFAULT 0,
+    tags TEXT NOT NULL DEFAULT '[]',
+    fields TEXT NOT NULL DEFAULT '{}',
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY (user_id, game_key)
+  );
+  ALTER TABLE shelves ADD COLUMN rules TEXT;
   `,
 ];
 

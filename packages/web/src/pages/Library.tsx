@@ -12,6 +12,8 @@ import { Backlog, Stats } from "../components/LibraryViews";
 import { FamilyRecap } from "../components/Family";
 import { ShelvesTab } from "../components/Shelves";
 import { TOGETHER_TAGS } from "@lootden/shared";
+import { BulkBar, useMarks, useTagList } from "../components/Marks";
+import { Link } from "react-router-dom";
 
 const SORTS = [
   ["title", "Title"],
@@ -92,6 +94,14 @@ function AllGames() {
   const storesOnly = !!source && source !== "lootden";
   const oneStore = storesOnly && source !== "stores" ? source : "";
   const [prefs, setPrefs] = useViewPrefs("library");
+  const marks = useMarks();
+  const tagList = useTagList();
+  const tag = params.get("tag") ?? "";
+  const favourites = params.get("fav") === "1";
+  const showHidden = params.get("hidden") === "1";
+  /** Bulk edit: picking games in a list instead of opening them. */
+  const [selecting, setSelecting] = useState(false);
+  const [picked, setPicked] = useState<Set<string>>(new Set());
   const [platforms, setPlatforms] = useState<Array<{ id: string; count: number }>>([]);
   // What's installed: this PC's copies in the app, else installs on any of this person's devices.
   const [installedIds, setInstalledIds] = useState<Set<string>>(() => shownBefore.installed ?? new Set());
@@ -146,13 +156,17 @@ function AllGames() {
     let out = onlyInstalled ? games.filter((g) => installedIds.has(g.id)) : games;
     if (format) out = out.filter((g) => formatOf(g) === format);
     if (together) out = out.filter((g) => (together === "any" ? !!g.together?.length : g.together?.includes(together as never)));
+    if (!showHidden) out = out.filter((g) => !marks.get(g.id).hidden);
+    if (favourites) out = out.filter((g) => marks.get(g.id).favourite);
+    if (tag) out = out.filter((g) => marks.get(g.id).tags.some((t) => t.toLowerCase() === tag.toLowerCase()));
     if (sort === "played") {
       const last = new Map<string, string>();
       for (const s of states) if (s.lastPlayedAt && (last.get(s.gameId) ?? "") < s.lastPlayedAt) last.set(s.gameId, s.lastPlayedAt);
       out = [...out].sort((a, b) => (last.get(b.id) ?? "").localeCompare(last.get(a.id) ?? "") || a.title.localeCompare(b.title));
     }
     return out;
-  }, [games, onlyInstalled, installedIds, sort, states, format, together]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [games, onlyInstalled, installedIds, sort, states, format, together, showHidden, favourites, tag, marks.all]);
   const shelf = system !== "all" && system !== "pc" ? platformFor(system).coverAspect : undefined;
 
   return (
@@ -220,10 +234,30 @@ function AllGames() {
             </option>
           ))}
         </select>
+        {tagList.length > 0 && (
+          <select value={tag} onChange={(e) => set("tag", e.target.value)} aria-label="Tag">
+            <option value="">Any tag</option>
+            {tagList.map((t) => (
+              <option key={t} value={t}>
+                🏷 {t}
+              </option>
+            ))}
+          </select>
+        )}
         <label className="check">
           <input type="checkbox" checked={kidSafe} onChange={(e) => set("kidSafe", e.target.checked ? "true" : "")} />
           Kid-safe only
         </label>
+        <label className="check">
+          <input type="checkbox" checked={favourites} onChange={(e) => set("fav", e.target.checked ? "1" : "")} />♥ Favourites
+        </label>
+        <label className="check">
+          <input type="checkbox" checked={showHidden} onChange={(e) => set("hidden", e.target.checked ? "1" : "")} />
+          Show hidden
+        </label>
+        <button className={selecting ? "secondary active" : "ghost"} aria-pressed={selecting} onClick={() => { setSelecting(!selecting); setPicked(new Set()); }}>
+          {selecting ? "Stop selecting" : "Select…"}
+        </button>
         {(installedIds.size > 0 || store.installed.size > 0) && (
           <div className="segmented pill-toggle" role="radiogroup" aria-label="Show">
             <button role="radio" aria-checked={!onlyInstalled} className={onlyInstalled ? "" : "active"} onClick={() => set("installed", "")}>
@@ -240,10 +274,78 @@ function AllGames() {
       {storesOnly ? null : shown === null ? <p className="muted">Loading…</p> : shown.length === 0 ? <p className="muted">No games match.</p> : (
         <>
           <p className="muted count">{shown.length} games</p>
-          <GameCollection games={shown} prefs={prefs} isInstalled={(g) => installedIds.has(g.id)} aspect={shelf} />
+          {selecting ? (
+            <>
+              <BulkBar keys={[...picked]} onDone={() => {}} onClear={() => { setSelecting(false); setPicked(new Set()); }} />
+              <SelectList games={shown} picked={picked} onChange={setPicked} />
+            </>
+          ) : (
+            <GameCollection games={shown} prefs={prefs} isInstalled={(g) => installedIds.has(g.id)} aspect={shelf} />
+          )}
         </>
       )}
-      {source !== "lootden" && store.games && <StoreSection games={store.games} installed={store.installed} scanned={store.scanned} search={search} store={oneStore} all={storesOnly} onlyInstalled={onlyInstalled} limit={storesOnly ? undefined : 48} />}
+      {source !== "lootden" && store.games && !selecting && (
+        <StoreSection
+          games={store.games}
+          installed={store.installed}
+          scanned={store.scanned}
+          search={search}
+          store={oneStore}
+          all={storesOnly}
+          onlyInstalled={onlyInstalled}
+          limit={storesOnly ? undefined : 48}
+          keep={(g) => {
+            const m = marks.get(`store:${g.addon}:${g.externalId}`);
+            return (showHidden || !m.hidden) && (!favourites || m.favourite) && (!tag || m.tags.some((t) => t.toLowerCase() === tag.toLowerCase()));
+          }}
+          libraryIds={storesOnly || !shown ? undefined : new Set(shown.map((g) => g.id))}
+        />
+      )}
     </>
+  );
+}
+
+/** Bulk edit: the shown games as a list with tick boxes. */
+function SelectList({ games, picked, onChange }: { games: GameSummary[]; picked: Set<string>; onChange: (s: Set<string>) => void }) {
+  const marks = useMarks();
+  const all = games.length > 0 && games.every((g) => picked.has(g.id));
+  const toggle = (id: string) => {
+    const next = new Set(picked);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    onChange(next);
+  };
+  return (
+    <table className="table select-list">
+      <thead>
+        <tr>
+          <th>
+            <input type="checkbox" checked={all} aria-label="Select every game shown" onChange={() => onChange(all ? new Set() : new Set(games.map((g) => g.id)))} />
+          </th>
+          <th>Game</th>
+          <th>Tags</th>
+        </tr>
+      </thead>
+      <tbody>
+        {games.map((g) => {
+          const m = marks.get(g.id);
+          return (
+            <tr key={g.id} className={picked.has(g.id) ? "picked" : undefined} onClick={() => toggle(g.id)}>
+              <td>
+                <input type="checkbox" checked={picked.has(g.id)} aria-label={`Select ${g.title}`} onChange={() => toggle(g.id)} onClick={(e) => e.stopPropagation()} />
+              </td>
+              <td>
+                {m.favourite ? "♥ " : ""}
+                <Link to={`/games/${g.id}`} onClick={(e) => e.stopPropagation()}>
+                  {g.title}
+                </Link>
+                {m.hidden ? <span className="muted small"> (hidden)</span> : null}
+              </td>
+              <td className="muted small">{m.tags.join(", ")}</td>
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
   );
 }

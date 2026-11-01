@@ -132,6 +132,19 @@ export function Profile() {
           <AchievementSummaryPanel />
 
           <section className="panel">
+            <h2>Export my library</h2>
+            <p className="muted small">Everything in your library and on your stores, with play time, status, rating, tags, favourites and your own fields. Open it in a spreadsheet, or keep it as a backup.</p>
+            <div className="inline">
+              <a className="button" href="/api/me/export/library.csv" download>
+                Spreadsheet (CSV)
+              </a>
+              <a className="button ghost" href="/api/me/export/library.json" download>
+                JSON
+              </a>
+            </div>
+          </section>
+
+          <section className="panel">
             <h2>My games</h2>
             {states.length === 0 ? (
               <p className="muted">Nothing installed yet. Installs and play time from the LootDen app show up here.</p>

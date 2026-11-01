@@ -78,6 +78,14 @@ installs games from it on any PC in the house.
   100%) work for other stores' games too.
 - **Screenshots on this PC**: a game's Steam and Xbox Game Bar screenshots show on its page in the
   app, one click from the family wall.
+- **Organizing**: your own tags and custom fields (like "Mods installed"), favourites, hiding
+  games, and Select… on the Library page to tag, favourite, hide, set a status or shelve many
+  games at once. **Smart shelves** fill themselves from rules (genre, tag, status, never played,
+  installed, controller, rating, release year, recently added). A game you own on several stores
+  shows once, with a "+N" badge.
+- **Export and backup**: download your library as a spreadsheet (CSV) or JSON from Profile; daily
+  database backups (kept for as many days as you choose), download, upload and restore under
+  Settings, Backups.
 - `lootden` command-line client and a Playnite plugin.
 
 ## Running the server

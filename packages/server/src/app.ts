@@ -79,6 +79,9 @@ import { ScreenshotWall } from "./users/screenshots.js";
 import { screenshotRoutes } from "./routes/screenshots.js";
 import { AchievementService } from "./users/achievements.js";
 import { achievementRoutes } from "./routes/achievements.js";
+import { MarkStore } from "./users/marks.js";
+import { BackupService } from "./settings/backups.js";
+import { organizeRoutes } from "./routes/organize.js";
 import { presenceRoutes } from "./routes/presence.js";
 import { LibraryRefresh } from "./catalog/refresh.js";
 import { ShelfStore } from "./users/shelves.js";
@@ -220,6 +223,8 @@ export function buildContext(config: ServerConfig, db: Db, log: Log, opts: Build
     gameNights,
     screenshots: new ScreenshotWall(db, config.dataDir, users, library),
     achievements: new AchievementService(db, addons, opts.fetchImpl),
+    marks: new MarkStore(db),
+    backups: new BackupService(db, config.dataDir),
     helper: new HelperService(db, vault, config.anthropicApiKey, () => zonedParts(new Date(), family.timeZone()).date, opts.helperAi),
     shelves: new ShelfStore(db, library),
     timeToBeat: timeToBeat(metadata.igdb, new HowLongToBeat(opts.fetchImpl), () => settings().hltb.enabled !== false),
@@ -238,6 +243,20 @@ export function buildApp(config: ServerConfig, db: Db, opts: BuildOptions = {}):
     trustProxy: config.headerAuth.trustedProxies.length ? config.headerAuth.trustedProxies : false,
   });
   const ctx = buildContext(config, db, app.log, opts);
+  // Smart shelves see the person looking's statuses, tags and play.
+  ctx.shelves.ruleContext = (userId) => {
+    const statuses = new Map(ctx.journal.statuses(userId).map((s) => [s.gameId, s.status as string]));
+    const marks = ctx.marks.all(userId);
+    const states = ctx.users.gameStates(userId);
+    const played = new Set(states.filter((s) => s.playtimeSeconds > 0 || s.lastPlayedAt).map((s) => s.gameId));
+    const installed = new Set(states.filter((s) => s.installedAt && !s.uninstalledAt).map((s) => s.gameId));
+    return {
+      status: (id) => statuses.get(id) ?? null,
+      marks: (id) => marks.get(id) ?? { favourite: false, hidden: false, tags: [], fields: {} },
+      played: (id) => played.has(id),
+      installed: (id) => installed.has(id),
+    };
+  };
 
   app.register(cookie);
   // Raw uploads: images for game artwork (buffered, small) and app files for the
@@ -297,6 +316,7 @@ export function buildApp(config: ServerConfig, db: Db, opts: BuildOptions = {}):
   sourceRoutes(app, ctx);
   addonRoutes(app, ctx);
   achievementRoutes(app, ctx);
+  organizeRoutes(app, ctx);
   robloxRoutes(app, ctx);
   directRoutes(app, ctx);
   liveRoutes(app, ctx);

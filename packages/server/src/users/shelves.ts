@@ -1,6 +1,6 @@
-import type { GameSummary } from "@lootden/shared";
+import { cleanSmartRules, smartShelfGames, type GameSummary, type RuleContext, type SmartRules } from "@lootden/shared";
 import type { Library } from "../catalog/library.js";
-import { now, type Db } from "../db/database.js";
+import { json, now, type Db } from "../db/database.js";
 
 /** A shelf of games: someone's own, or a household shelf an admin made for everyone. */
 export interface Shelf {
@@ -15,6 +15,8 @@ export interface Shelf {
   ownerId: number | null;
   /** The person looking can change it. */
   mine: boolean;
+  /** A smart shelf fills itself with the games that match these; null for one filled by hand. */
+  rules: SmartRules | null;
   games: GameSummary[];
 }
 
@@ -27,6 +29,7 @@ interface ShelfRow {
   household: number;
   on_home: number;
   position: number;
+  rules: string | null;
 }
 
 export interface ShelfInput {
@@ -35,6 +38,8 @@ export interface ShelfInput {
   description?: string | null;
   household?: boolean;
   onHome?: boolean;
+  /** Smart shelf rules; null makes it an ordinary shelf again. */
+  rules?: unknown;
 }
 
 /** One emoji (or a short symbol), so a shelf's icon can't carry markup or a paragraph. */
@@ -45,6 +50,9 @@ const cleanEmoji = (x: unknown) => {
 
 /** Hand-made shelves ("Halloween picks", "Dad's retro corner") shown in the Library and on Home. */
 export class ShelfStore {
+  /** What smart shelves know about the person looking (statuses, tags, play); set once the stores exist. */
+  ruleContext: (userId: number) => RuleContext = () => ({ status: () => null, marks: () => ({ favourite: false, hidden: false, tags: [], fields: {} }), played: () => false, installed: () => false });
+
   constructor(
     private readonly db: Db,
     private readonly library: Library,
@@ -64,8 +72,24 @@ export class ShelfStore {
   }
 
   private view(r: ShelfRow, userId: number, games: Map<string, GameSummary>): Shelf {
+    const rules = r.rules ? json<SmartRules | null>(r.rules, null) : null;
+    if (rules) {
+      return {
+        id: r.id,
+        name: r.name,
+        emoji: r.emoji,
+        description: r.description,
+        household: r.household === 1,
+        onHome: r.on_home === 1,
+        ownerId: r.user_id,
+        mine: r.user_id === userId,
+        rules,
+        games: smartShelfGames([...games.values()], rules, this.ruleContext(userId)),
+      };
+    }
     const ids = (this.db.prepare("SELECT game_id FROM shelf_games WHERE shelf_id = ? ORDER BY position, added_at").all(r.id) as Array<{ game_id: string }>).map((x) => x.game_id);
     return {
+      rules: null,
       id: r.id,
       name: r.name,
       emoji: r.emoji,
@@ -97,9 +121,10 @@ export class ShelfStore {
     const household = input.household === true;
     if (household && !admin) throw new Error("Only admins make household shelves");
     const position = (this.db.prepare("SELECT COALESCE(MAX(position), 0) + 1 AS p FROM shelves").get() as { p: number }).p;
+    const rules = cleanSmartRules(input.rules);
     const r = this.db
-      .prepare("INSERT INTO shelves (user_id, name, emoji, description, household, on_home, position, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?) RETURNING id")
-      .get(userId, name, cleanEmoji(input.emoji), String(input.description ?? "").trim().slice(0, 200) || null, household ? 1 : 0, input.onHome === false ? 0 : 1, position, now()) as { id: number };
+      .prepare("INSERT INTO shelves (user_id, name, emoji, description, household, on_home, position, created_at, rules) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id")
+      .get(userId, name, cleanEmoji(input.emoji), String(input.description ?? "").trim().slice(0, 200) || null, household ? 1 : 0, input.onHome === false ? 0 : 1, position, now(), rules ? JSON.stringify(rules) : null) as { id: number };
     return r.id;
   }
 
@@ -109,13 +134,17 @@ export class ShelfStore {
     const name = input.name === undefined ? r.name : String(input.name).trim().slice(0, 60);
     if (!name) throw new Error("Give the shelf a name");
     this.db
-      .prepare("UPDATE shelves SET name = ?, emoji = ?, description = ?, household = ?, on_home = ? WHERE id = ?")
+      .prepare("UPDATE shelves SET name = ?, emoji = ?, description = ?, household = ?, on_home = ?, rules = ? WHERE id = ?")
       .run(
         name,
         input.emoji === undefined ? r.emoji : cleanEmoji(input.emoji),
         input.description === undefined ? r.description : String(input.description ?? "").trim().slice(0, 200) || null,
         input.household === undefined ? r.household : input.household ? 1 : 0,
         input.onHome === undefined ? r.on_home : input.onHome ? 1 : 0,
+        input.rules === undefined ? r.rules : (() => {
+          const rules = cleanSmartRules(input.rules);
+          return rules ? JSON.stringify(rules) : null;
+        })(),
         id,
       );
   }
@@ -126,7 +155,7 @@ export class ShelfStore {
   }
 
   addGame(id: number, userId: number, admin: boolean, gameId: string): void {
-    this.editable(id, userId, admin);
+    if (this.editable(id, userId, admin).rules) throw new Error("This smart shelf fills itself; change its rules instead");
     if (!this.library.get(gameId, false)) throw new Error("No such game");
     const position = (this.db.prepare("SELECT COALESCE(MAX(position), 0) + 1 AS p FROM shelf_games WHERE shelf_id = ?").get(id) as { p: number }).p;
     this.db.prepare("INSERT OR IGNORE INTO shelf_games (shelf_id, game_id, position, added_at) VALUES (?, ?, ?, ?)").run(id, gameId, position, now());

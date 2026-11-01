@@ -1,3 +1,4 @@
+import { BackupsSection } from "../components/Backups";
 import { useEffect, useState, type ReactNode } from "react";
 import { Link, NavLink, Navigate, useParams } from "react-router-dom";
 import { KID_SITES, type BrowserPolicy, type GameSummary, type LibraryStats, type User } from "@lootden/shared";
@@ -29,6 +30,7 @@ const SECTIONS: Array<{ id: string; title: string; blurb: string }> = [
   { id: "helper", title: "Bandit (AI helper)", blurb: "AI key, model, budget and who can use him" },
   { id: "services", title: "Sign-in & services", blurb: "SSO, metadata keys, itch.io, Nexus" },
   { id: "content", title: "News & apps", blurb: "Feeds, videos and app builds" },
+  { id: "backups", title: "Backups", blurb: "Copies of the database, daily or now, and restoring one" },
   { id: "themes", title: "Themes", blurb: "Colours and look of LootDen" },
 ];
 /** Sections everyone can open; the rest are admin settings. */
@@ -78,6 +80,7 @@ export function Settings() {
         {section === "helper" && <HelperSection say={say} />}
         {section === "services" && <ServicesSection say={say} />}
         {section === "content" && <ContentSection say={say} />}
+        {section === "backups" && <BackupsSection say={say} />}
         {section === "themes" && <ThemePicker />}
       </div>
     </div>
