@@ -3,13 +3,16 @@ import {
   HELPER_ANSWER_LENGTHS,
   HELPER_AVATAR,
   HELPER_EFFORTS,
+  HELPER_MAX_SEARCHES_LIMIT,
   HELPER_MODELS,
   HELPER_NAME,
+  HELPER_SEARCH_PRICE,
   type HelperAnswerLength,
   type HelperEffort,
   type HelperSettings,
   type HelperSettingsView,
   type HelperUsageReport,
+  KID_HELPER_SITES,
 } from "@lootden/shared";
 import { api, avatarUrl } from "../api";
 import { Card, Field, Pill, Toggle } from "./SettingsUi";
@@ -58,6 +61,8 @@ export function HelperSection({ say }: { say: Msg }) {
   const model = HELPER_MODELS.find((m) => m.id === draft.model) ?? HELPER_MODELS[0]!;
   // A typical question: about 3,000 tokens in (instructions and the chat so far) and a few hundred out.
   const perQuestion = (model.price.input * 3000 + model.price.output * (draft.effort === "high" ? 1500 : draft.effort === "medium" ? 800 : 400)) / 1_000_000;
+  // A question that searches: one search and the results it reads (about 10,000 tokens).
+  const perSearch = HELPER_SEARCH_PRICE + (model.price.input * 10_000) / 1_000_000;
 
   return (
     <>
@@ -127,9 +132,27 @@ export function HelperSection({ say }: { say: Msg }) {
           <Field label="Questions a day, kids" hint="Per kid profile. 0 for no limit.">
             <input type="number" min={0} max={10000} value={draft.kidDailyLimit} onChange={(e) => set({ kidDailyLimit: Number(e.target.value) })} />
           </Field>
-          <Field label="Monthly budget (US dollars)" hint={`${HELPER_NAME} pauses for everyone once this month's estimated cost reaches it, and comes back on the 1st. 0 for no budget. A typical question costs about ${money(perQuestion)} with these settings.`}>
+          <Field label="Monthly budget (US dollars)" hint={`${HELPER_NAME} pauses for everyone once this month's estimated cost reaches it, and comes back on the 1st. 0 for no budget. A typical question costs about ${money(perQuestion)} with these settings${draft.webSearch ? `, or about ${money(perQuestion + perSearch)} when it searches` : ""}.`}>
             <input type="number" min={0} step={0.5} value={draft.monthlyBudget} onChange={(e) => set({ monthlyBudget: Number(e.target.value) })} />
           </Field>
+          <Field label="Web searches per question" hint={`Up to this many searches for one question; each costs about ${money(HELPER_SEARCH_PRICE)}, plus the reading. Pages come from search results, pasted links and the game's store page.`}>
+            <input type="number" min={1} max={HELPER_MAX_SEARCHES_LIMIT} value={draft.maxSearches} disabled={!draft.webSearch} onChange={(e) => set({ maxSearches: Number(e.target.value) })} />
+          </Field>
+        </div>
+        <div className="toggle-list">
+          <Toggle
+            checked={draft.webSearch}
+            onChange={(v) => set({ webSearch: v })}
+            label="Search the web and read links"
+            hint={`So ${HELPER_NAME} knows about new games, DLC and patches, and can open links people paste, instead of only what the AI learned in training. He shows his sources.`}
+          />
+          <Toggle
+            checked={draft.kidsWebSearch}
+            disabled={!draft.webSearch}
+            onChange={(v) => set({ kidsWebSearch: v })}
+            label="Let kids' questions search too"
+            hint={`Only on game sites made safe for kids: ${KID_HELPER_SITES.slice(0, 6).join(", ")} and a few more. Kids don't see links.`}
+          />
         </div>
       </Card>
       {usage && <HelperUsage usage={usage} say={say} reload={loadUsage} />}
@@ -156,7 +179,7 @@ function HelperUsage({ usage, say, reload }: { usage: HelperUsageReport; say: Ms
     <Card title={`Usage and cost, ${monthName}`} description="Estimated from the tokens the API reports and Anthropic's list prices. Your Anthropic bill is the final word.">
       <p style={{ margin: 0 }}>
         <strong style={{ fontSize: "1.4rem" }}>{money(usage.spent)}</strong>
-        {usage.budget > 0 ? <span className="muted"> of {money(usage.budget)} budget</span> : <span className="muted"> (no monthly budget)</span>} · {usage.messages} question{usage.messages === 1 ? "" : "s"}
+        {usage.budget > 0 ? <span className="muted"> of {money(usage.budget)} budget</span> : <span className="muted"> (no monthly budget)</span>} · {usage.messages} question{usage.messages === 1 ? "" : "s"} · {usage.searches} web search{usage.searches === 1 ? "" : "es"}
       </p>
       {usage.budget > 0 && (
         <div className={`helper-budget${usage.paused ? " over" : ""}`} role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(share * 100)} aria-label="Budget used">
@@ -180,6 +203,7 @@ function HelperUsage({ usage, say, reload }: { usage: HelperUsageReport; say: Ms
               <th>Today</th>
               <th>This month</th>
               <th>Tokens in / out</th>
+              <th>Searches</th>
               <th>Cost</th>
             </tr>
           </thead>
@@ -235,6 +259,7 @@ function HelperUsage({ usage, say, reload }: { usage: HelperUsageReport; say: Ms
                 <td className="muted">
                   {tokens(p.inputTokens)} / {tokens(p.outputTokens)}
                 </td>
+                <td>{p.searches}</td>
                 <td>{money(p.cost)}</td>
               </tr>
             ))}

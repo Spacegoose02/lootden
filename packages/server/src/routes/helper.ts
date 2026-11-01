@@ -109,11 +109,27 @@ function gameContext(ctx: AppContext, kid: boolean, ref: HelperChatRequest["game
   if ("gameId" in ref && typeof ref.gameId === "string") {
     const g = ctx.library.get(ref.gameId, false);
     if (!g || (kid && g.kidSafe !== true)) return null;
-    return { title: g.title, platform: g.platform, genres: g.genres, releaseYear: g.releaseYear, summary: g.metadata?.summary ?? null };
+    const m = g.metadata;
+    return {
+      title: g.title,
+      platform: g.platform,
+      genres: g.genres,
+      releaseYear: g.releaseYear,
+      summary: m?.summary ?? null,
+      modes: [...(m?.gameModes ?? []), ...(m?.themes ?? [])],
+      version: g.version,
+      links: m?.steamAppId && /^\d+$/.test(m.steamAppId) ? [`https://store.steampowered.com/app/${m.steamAppId}/`] : [],
+    };
   }
   if ("store" in ref && ref.store && typeof ref.store.title === "string" && ref.store.title.trim()) {
     const addon = typeof ref.store.addon === "string" ? ref.store.addon.slice(0, 30) : null;
-    return { title: ref.store.title.trim().slice(0, 120), store: addon ? (STORE_NAMES[addon] ?? addon.replace(/[^\w .-]/g, "")) : null };
+    const id = typeof ref.store.id === "string" ? ref.store.id : "";
+    return {
+      title: ref.store.title.trim().slice(0, 120),
+      store: addon ? (STORE_NAMES[addon] ?? addon.replace(/[^\w .-]/g, "")) : null,
+      // Steam store games' ids are Steam app ids, so Bandit can read the store page.
+      links: addon === "steam" && /^\d{1,10}$/.test(id) ? [`https://store.steampowered.com/app/${id}/`] : [],
+    };
   }
   return null;
 }

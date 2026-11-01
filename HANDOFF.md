@@ -180,7 +180,19 @@ Shared rules and types are in `packages/shared/src/helper.ts`; the server side i
   browser sends the chat back each time (last 20 turns).
 - **Controller**: X (`HELPER_EVENT` in `gamepad.ts`) opens and closes him. The panel is a
   `role="dialog"`, so the d-pad stays inside and B closes it; with a pad the first suggested
-  question is focused, so nobody has to type.
+  question is focused, so nobody has to type. The ⤢ button in his header makes the chat fill
+  most of the screen with bigger text (remembered per device in `lootden.bandit.big`).
+- **Web search**: Anthropic's server-side `web_search` and `web_fetch` tools (the `_20260209`
+  versions for Opus and Sonnet, the basic ones for Haiku, per `HELPER_MODELS[].webTools`), so he
+  can look up new games, DLC and patches and read links people paste. `makeAnthropicAi` runs the
+  loop (resumes `pause_turn`, collects citation links into a "Sources:" line) and takes a
+  `baseURL`, which the "talks to the Messages API" test points at a local fake. Admins switch it
+  off, cap searches per question (`maxSearches`, default 3) and switch kids' searching off; kids
+  only search `KID_HELPER_SITES` and get no links. Searches ($0.01 each) are counted in
+  `helper_usage.searches` and the budget. The prompt starts with today's date, and the game
+  context adds modes, the library version and the Steam store page.
+- **Clock-proof family test**: "unlocks badges" sends `endedAt` at 16:00 yesterday, so Night Owl
+  or Early Bird don't add XP depending on when the suite runs.
 
 ## Bug check fixes, Back keeps your place (0.20.1)
 

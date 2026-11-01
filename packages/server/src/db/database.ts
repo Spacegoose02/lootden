@@ -545,6 +545,10 @@ const MIGRATIONS: string[] = [
     PRIMARY KEY (universe_id, user_id)
   );
   `,
+  `
+  -- Bandit's web searches per person per day (each one is billed by Anthropic).
+  ALTER TABLE helper_usage ADD COLUMN searches INTEGER NOT NULL DEFAULT 0;
+  `,
 ];
 
 export function openDatabase(file: string): Db {
