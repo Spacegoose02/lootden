@@ -8,12 +8,20 @@ import { buildApp } from "./app.js";
 import { FolderWatcher } from "./catalog/watcher.js";
 import { loadConfig } from "./config.js";
 import { openDatabase } from "./db/database.js";
+import { applyPendingRestore } from "./settings/backups.js";
 
 const config = loadConfig();
 // Data folders from before the rename to LootDen keep their game-manager.db.
 const legacyDb = path.join(config.dataDir, "game-manager.db");
 const dbFile = existsSync(legacyDb) ? legacyDb : path.join(config.dataDir, "lootden.db");
 await checkWritable(config.dataDir);
+// A backup chosen under Settings, Backups replaces the database before it opens.
+let restored = false;
+try {
+  restored = applyPendingRestore(config.dataDir, dbFile);
+} catch (err) {
+  console.error(`The staged restore couldn't be used and was left in place: ${(err as Error).message}`);
+}
 const db = openDatabase(dbFile);
 
 // The built web UI sits next to the server in the image (see Dockerfile).
@@ -21,6 +29,11 @@ const webDir = process.env.GM_WEB_DIR || path.resolve(path.dirname(fileURLToPath
 // TabStationToo, for PS2 games in the browser, also sits next to the packages (see Dockerfile).
 const ps2Dir = process.env.GM_PS2_EMULATOR_DIR || path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../../emulators/tabstationtoo");
 const { app, ctx } = buildApp(config, db, { webDir, ps2Dir });
+
+if (restored) app.log.warn("Restored the database from a backup; the one it replaced is kept as .before-restore");
+// Database backups: once a day when switched on (Settings, Backups).
+setTimeout(() => void ctx.backups.runDaily().catch((err) => app.log.warn(err, "Backup failed")), 5 * 60_000).unref();
+setInterval(() => void ctx.backups.runDaily().catch((err) => app.log.warn(err, "Backup failed")), 3600_000).unref();
 
 if (ctx.users.count() === 0 && config.admin.username && config.admin.password) {
   await ctx.users.create({ username: config.admin.username, password: config.admin.password, role: "admin" });

@@ -77,6 +77,9 @@ import { ScreenshotWall } from "./users/screenshots.js";
 import { screenshotRoutes } from "./routes/screenshots.js";
 import { AchievementService } from "./users/achievements.js";
 import { achievementRoutes } from "./routes/achievements.js";
+import { MarkStore } from "./users/marks.js";
+import { BackupService } from "./settings/backups.js";
+import { organizeRoutes } from "./routes/organize.js";
 import { presenceRoutes } from "./routes/presence.js";
 import { ShelfStore } from "./users/shelves.js";
 import { HelperService, type HelperAi } from "./helper/service.js";
@@ -213,6 +216,8 @@ export function buildContext(config: ServerConfig, db: Db, log: Log, opts: Build
     gameNights,
     screenshots: new ScreenshotWall(db, config.dataDir, users, library),
     achievements: new AchievementService(db, addons, opts.fetchImpl),
+    marks: new MarkStore(db),
+    backups: new BackupService(db, config.dataDir),
     helper: new HelperService(db, vault, config.anthropicApiKey, () => zonedParts(new Date(), family.timeZone()).date, opts.helperAi),
     shelves: new ShelfStore(db, library),
     timeToBeat: timeToBeat(metadata.igdb, new HowLongToBeat(opts.fetchImpl), () => settings().hltb.enabled !== false),
@@ -289,6 +294,7 @@ export function buildApp(config: ServerConfig, db: Db, opts: BuildOptions = {}):
   sourceRoutes(app, ctx);
   addonRoutes(app, ctx);
   achievementRoutes(app, ctx);
+  organizeRoutes(app, ctx);
   robloxRoutes(app, ctx);
   directRoutes(app, ctx);
   liveRoutes(app, ctx);

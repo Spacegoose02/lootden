@@ -42,6 +42,8 @@ import type { DenDutyLink } from "./users/denduty.js";
 import type { GameNights } from "./users/gamenight.js";
 import type { ScreenshotWall } from "./users/screenshots.js";
 import type { AchievementService } from "./users/achievements.js";
+import type { MarkStore } from "./users/marks.js";
+import type { BackupService } from "./settings/backups.js";
 
 /** Everything route modules need, built once in buildApp. */
 export interface AppContext {
@@ -97,6 +99,10 @@ export interface AppContext {
   screenshots: ScreenshotWall;
   /** Real game achievements from Steam, RetroAchievements and Xbox. */
   achievements: AchievementService;
+  /** Each person's favourites, hidden games, tags and custom fields. */
+  marks: MarkStore;
+  /** Database backups and restores. */
+  backups: BackupService;
   /** Bandit, the AI gaming helper. */
   helper: HelperService;
   timeToBeat: (providerId: string | null, title: string) => Promise<TimeToBeat | null>;
