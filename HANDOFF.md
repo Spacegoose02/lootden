@@ -107,6 +107,18 @@ can be set once by an admin on the add-on's card (`PUT /api/addons/:id/shared`, 
 like accounts, never sent back); a person's own value wins. `Integrations` (IGDB and other admin keys in the settings table) aren't encrypted yet; the
 vault can do it.
 
+## PS2 in the browser with TabStationToo (0.23.0)
+
+- PS2 games get "Play in the browser (experimental)": TabStationToo (PCSX2 in WebAssembly,
+  GPL-3.0, shipped unmodified) served at `/emulators/ps2/` with cross-origin isolation
+  headers; the play shell for PS2 is isolated too (`COEP: credentialless`).
+- Admin switch under Emulation, Emulators and BIOS (`PUT /api/emulation/settings`).
+- The "PS2 browser emulator" workflow builds the commit pinned in `emulators/tabstationtoo.env`
+  and publishes it as the pre-release `tabstationtoo-<commit>`; the Dockerfile downloads it.
+  If that pre-release doesn't exist yet when a release tag is pushed, the image builds without
+  it (PS2 browser play just isn't offered), so wait for the workflow before tagging after a
+  pin change.
+
 ## Updates made outside LootDen, Roblox on old apps (0.22.1)
 
 - `client/src/exeversion.ts` reads the game exe's version resource; `effectiveVersion` uses it
