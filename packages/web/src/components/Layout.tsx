@@ -142,6 +142,7 @@ export function Layout() {
     { to: "/calendar", label: "Calendar" },
     { to: "/requests", label: "Requests" },
     { to: "/game-night", label: "Game night" },
+    { to: "/screenshots", label: "Family wall" },
     { to: "/news", label: "News" },
     // The desktop app's built-in web browser, for handhelds and the Xbox full screen experience. Kid-safe on kid profiles.
     ...(desktop?.openBrowser ? [{ to: "/browser", label: "Browser", state: { open: true } }] : []),

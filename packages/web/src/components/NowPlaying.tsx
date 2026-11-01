@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { playedFor, type NowPlaying } from "@lootden/shared";
+import { playedFor, type GameNight as GameNightType, type NowPlaying } from "@lootden/shared";
 import { api, avatarUrl } from "../api";
 import { useLive } from "../live";
 
@@ -141,5 +141,27 @@ function MessageForm({ onSend }: { onSend: (text: string) => Promise<void> }) {
         Send
       </button>
     </form>
+  );
+}
+
+/** Home: the next game night, as a one-line banner. */
+export function NextGameNight() {
+  const [next, setNext] = useState<GameNightType | null>(null);
+  useEffect(() => void api.gameNights().then((d) => setNext(d.upcoming[0] ?? null), () => {}), []);
+  if (!next) return null;
+  const day = new Date(`${next.date}T12:00:00`).toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "short" });
+  return (
+    <Link to="/game-night" className="next-game-night panel">
+      <span aria-hidden="true">🎲</span>
+      <span>
+        <strong>{next.title}</strong> · {day} at {next.time}
+        {next.game ? ` · ${next.game.title}` : ""}
+      </span>
+      <span className="game-night-players">
+        {next.players.map((p) => (
+          <img key={p.id} src={avatarUrl(p.avatar)} alt={p.name} title={p.name} width={24} height={24} className="avatar" />
+        ))}
+      </span>
+    </Link>
   );
 }

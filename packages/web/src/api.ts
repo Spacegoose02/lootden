@@ -6,6 +6,7 @@ import type {
   PcInfo,
   GameNight,
   GameNightPick,
+  Screenshot,
   Level,
   PlayerStats,
   PlayLimits,
@@ -756,6 +757,24 @@ export const api = {
   bonusNow: (userId: number, minutes: number) => call<{ allowance: Allowance }>("POST", `/api/family/now-playing/${userId}/bonus`, { minutes }),
   pcs: () => call<PcInfo[]>("GET", "/api/pcs"),
   gameNights: () => call<GameNightList>("GET", "/api/game-nights"),
+  screenshots: (q: { before?: number; limit?: number; userId?: number; gameId?: string } = {}) =>
+    call<Screenshot[]>("GET", `/api/screenshots${qs({ before: q.before, limit: q.limit, userId: q.userId, gameId: q.gameId })}`),
+  reactToScreenshot: (id: number, emoji: string) => call<Screenshot>("POST", `/api/screenshots/${id}/react`, { emoji }),
+  deleteScreenshot: (id: number) => call("DELETE", `/api/screenshots/${id}`),
+  /** A picture from this device (a phone's screenshot, a console capture). */
+  uploadScreenshot: async (file: File, meta: { title?: string; caption?: string }) => {
+    const res = await fetch(`/api/screenshots${qs({ title: meta.title || undefined, caption: meta.caption || undefined })}`, {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": file.type || "image/png" },
+      body: file,
+    }).catch(() => {
+      throw serverUnreachable();
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new ApiError((data as { error?: string }).error ?? `Upload failed (${res.status})`, res.status);
+    return data as Screenshot;
+  },
   suggestGameNight: (players: number[]) => call<GameNightPick[]>("POST", "/api/game-nights/suggest", { players }),
   planGameNight: (n: { title?: string; date: string; time: string; players: number[]; gameId?: string | null; note?: string; goalId?: string | null }) => call<GameNight>("POST", "/api/game-nights", n),
   cancelGameNight: (id: number) => call("DELETE", `/api/game-nights/${id}`),
