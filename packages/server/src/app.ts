@@ -174,7 +174,7 @@ export function buildContext(config: ServerConfig, db: Db, log: Log, opts: Build
   };
   const requests = new RequestService(db, library, wishlist, wanted, downloads, notifier);
   const vault = Vault.open(config.dataDir, config.secretKey);
-  const roblox = new RobloxCatalog(db, opts.fetchImpl);
+  const roblox = new RobloxCatalog(db, opts.fetchImpl, config.dataDir, log);
   const addons = new AddonRegistry(db, library, opts.fetchImpl, opts.addons, opts.resolveHost, vault);
   addons.extraGames = (userId) => roblox.storeGames(userId);
   const family = new FamilyService(db, library, users, () => requests, notifier);

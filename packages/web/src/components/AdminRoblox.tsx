@@ -107,7 +107,14 @@ export function RobloxSection({ say }: { say: Msg }) {
           <ul className="roblox-admin-list">
             {games.map((g) => (
               <li key={g.universeId} className="roblox-admin-row">
-                {g.iconUrl ? <img src={g.iconUrl} alt="" width={72} height={72} className="roblox-icon" /> : <span className="roblox-icon cover-placeholder" />}
+                <img
+                  src={`/api/store-games/roblox/${encodeURIComponent(g.universeId)}/cover?v=${encodeURIComponent(g.customCover ?? g.refreshedAt)}`}
+                  alt={`${g.name} cover`}
+                  width={64}
+                  height={96}
+                  className="roblox-cover"
+                  title={g.customCover ? "Your own cover" : "The cover LootDen makes from Roblox's pictures"}
+                />
                 <div className="roblox-admin-info">
                   <strong>{g.name}</strong>
                   <span className="muted small">{[g.creator && `By ${g.creator}`, g.genre, g.ageRating, `Place ${g.placeId}`].filter(Boolean).join(" · ")}</span>
@@ -121,6 +128,25 @@ export function RobloxSection({ say }: { say: Msg }) {
                   <button className="small secondary" disabled={!!busy} onClick={() => run(g.universeId, () => api.refreshRobloxGame(g.universeId), `Updated ${g.name} from Roblox`)}>
                     ⟳ Refresh
                   </button>
+                  <label className={`button small secondary${busy ? " disabled" : ""}`} title="Your own picture for this game's cover; a tall 2:3 picture fits best">
+                    {g.customCover ? "Change cover" : "Upload cover"}
+                    <input
+                      type="file"
+                      accept="image/png,image/jpeg,image/webp,image/gif,image/avif"
+                      hidden
+                      disabled={!!busy}
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        e.target.value = "";
+                        if (file) void run(g.universeId, () => api.setRobloxCover(g.universeId, file), `New cover for ${g.name}`);
+                      }}
+                    />
+                  </label>
+                  {g.customCover && (
+                    <button className="small ghost" disabled={!!busy} onClick={() => run(g.universeId, () => api.clearRobloxCover(g.universeId), `${g.name} uses LootDen's cover again`)}>
+                      Use LootDen's cover
+                    </button>
+                  )}
                   <button
                     className="small danger"
                     disabled={!!busy}

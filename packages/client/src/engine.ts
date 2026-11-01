@@ -10,7 +10,7 @@ export { backupStoreSaves, findStoreSaves, restoreStoreSaves, type SaveLocation 
 export { commandFor, isLaunchUrl, launchActionAndTrack, runLaunchSteps, stepTarget, suspendProcesses, type Spawner } from "./launchactions.js";
 export { firstExisting, pcReport, runningStoreGames, streamingPaths } from "./presence.js";
 export { missingSunshineApps, moonlightCommand, streamWithMoonlight, sunshineAppFor, syncSunshine } from "./streaming.js";
-export { isRobloxPlayer, setRobloxFullscreen, trackRoblox, withFullscreen } from "./roblox.js";
+export { isRobloxPlayer, RobloxLogWatcher, setRobloxFullscreen, trackRoblox, withFullscreen } from "./roblox.js";
 export * from "./emulators.js";
 export * from "./recomps.js";
 export { backupSaves, expandSavePath, restoreSaves } from "./saves.js";

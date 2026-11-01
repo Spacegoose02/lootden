@@ -1,7 +1,9 @@
 import { ROBLOX_ADDON, parseRobloxPlace, robloxLaunchUrl, robloxPageUrl, type GameInfo, type RobloxGame, type StoreGame, type StoreGameDetail } from "@lootden/shared";
 import { now, type Db } from "../db/database.js";
 import type { FetchLike } from "../metadata/http.js";
-import { RobloxPosters } from "./poster.js";
+import { mkdir, rename, rm, stat, writeFile } from "node:fs/promises";
+import path from "node:path";
+import { RobloxPosters, type Poster } from "./poster.js";
 
 interface Row {
   universe_id: string;
@@ -15,6 +17,7 @@ interface Row {
   genre: string | null;
   max_players: number | null;
   everyone: number;
+  custom_cover: string | null;
   added_at: string;
   refreshed_at: string;
 }
@@ -47,14 +50,59 @@ export class RobloxCatalog {
   constructor(
     private readonly db: Db,
     private readonly fetchImpl: FetchLike = fetch,
+    private readonly dataDir = "",
+    log?: { warn(o: object, m: string): void },
   ) {
-    this.posters = new RobloxPosters(fetchImpl);
+    this.posters = new RobloxPosters(fetchImpl, log);
   }
 
-  /** A game's poster, for someone it's shown to. Null otherwise. */
-  async poster(userId: number, universeId: string): Promise<string | null> {
-    const g = this.forUser(userId).find((x) => x.universeId === universeId);
-    return g ? this.posters.poster(g) : null;
+  /**
+   * A game's cover, for someone it's shown to: the admin's uploaded picture, else the poster
+   * LootDen makes from Roblox's icon and screenshot (with `pictures` false when those couldn't
+   * be fetched). Null for anyone it isn't shown to.
+   */
+  async cover(userId: number, universeId: string, admin = false): Promise<{ file: string; contentType: string } | { poster: Poster; iconUrl: string | null } | null> {
+    // Admins see every game's cover (Settings, Roblox), ticked for them or not.
+    const g = (admin ? this.list() : this.forUser(userId)).find((x) => x.universeId === universeId);
+    if (!g) return null;
+    const custom = this.customCoverType(universeId);
+    if (custom) {
+      const file = this.coverFile(universeId);
+      if (await stat(file).catch(() => null)) return { file, contentType: custom };
+    }
+    return { poster: await this.posters.poster(g), iconUrl: g.iconUrl };
+  }
+
+  private coverFile(universeId: string): string {
+    if (!/^\d+$/.test(universeId)) throw new Error("No such Roblox game");
+    return path.join(this.dataDir, "roblox-covers", universeId);
+  }
+
+  private customCoverType(universeId: string): string | null {
+    const r = this.db.prepare("SELECT custom_cover FROM roblox_games WHERE universe_id = ?").get(universeId) as { custom_cover: string | null } | undefined;
+    return r?.custom_cover ? r.custom_cover.slice(0, r.custom_cover.indexOf("@")) || null : null;
+  }
+
+  /** Admins: their own cover for a game (any shape; a portrait 2:3 picture fits best). */
+  async setCover(universeId: string, data: Buffer, contentType: string): Promise<RobloxGame> {
+    if (!this.get1(universeId)) throw new Error("No such Roblox game");
+    if (!/^image\/(png|jpeg|webp|gif|avif)$/.test(contentType)) throw new Error("Upload a PNG, JPEG, WebP, GIF or AVIF image");
+    if (!data.length) throw new Error("That image is empty");
+    if (data.length > 15 * 1024 * 1024) throw new Error("Images can be at most 15 MB");
+    const file = this.coverFile(universeId);
+    await mkdir(path.dirname(file), { recursive: true });
+    await writeFile(`${file}.tmp`, data);
+    await rename(`${file}.tmp`, file);
+    this.db.prepare("UPDATE roblox_games SET custom_cover = ? WHERE universe_id = ?").run(`${contentType}@${now()}`, universeId);
+    return this.get1(universeId)!;
+  }
+
+  /** Admins: back to the poster LootDen makes. */
+  async clearCover(universeId: string): Promise<RobloxGame> {
+    if (!this.get1(universeId)) throw new Error("No such Roblox game");
+    this.db.prepare("UPDATE roblox_games SET custom_cover = NULL WHERE universe_id = ?").run(universeId);
+    await rm(this.coverFile(universeId), { force: true });
+    return this.get1(universeId)!;
   }
 
   /** A game's screenshot, for someone it's shown to. */
@@ -173,6 +221,7 @@ export class RobloxCatalog {
 
   remove(universeId: string): void {
     this.db.prepare("DELETE FROM roblox_games WHERE universe_id = ?").run(universeId);
+    if (/^\d+$/.test(universeId)) void rm(this.coverFile(universeId), { force: true }).catch(() => {});
   }
 
   private view(r: Row, access: Map<string, number[]>): RobloxGame {
@@ -188,6 +237,7 @@ export class RobloxCatalog {
       genre: r.genre,
       maxPlayers: r.max_players,
       everyone: r.everyone === 1,
+      customCover: r.custom_cover ? r.custom_cover.slice(r.custom_cover.indexOf("@") + 1) : null,
       userIds: access.get(r.universe_id) ?? [],
       addedAt: r.added_at,
       refreshedAt: r.refreshed_at,

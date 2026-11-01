@@ -4419,6 +4419,17 @@ html[data-lootden-frame] .lightbox {
   gap: 0.35rem;
   min-width: 0;
 }
+.roblox-cover {
+  width: 64px;
+  height: 96px;
+  border-radius: 8px;
+  object-fit: cover;
+  background: color-mix(in srgb, currentColor 8%, transparent);
+}
+.roblox-admin-row > .inline {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
 .roblox-icon {
   width: 72px;
   height: 72px;
