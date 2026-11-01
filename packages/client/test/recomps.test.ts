@@ -84,7 +84,7 @@ describe("recomps: matching, files and ROMs", () => {
       saves: ["{install}/saves"],
     });
     assert.deepEqual([m.programs, m.args, m.env, m.saves], [["bin/game.exe"], ["--iso", "{game}"], { MY_DATA: "{documents}/X" }, ["{install}/saves"]]);
-    assert.deepEqual(parseRecompManifest("nonsense"), { programs: [], args: [], env: {}, saves: [], config: [], settings: [], prepare: null, exitCodes: {}, game: null, mods: null });
+    assert.deepEqual(parseRecompManifest("nonsense"), { programs: [], args: [], env: {}, saves: [], config: [], settings: [], prepare: null, exitCodes: {}, game: null, mods: null, looks: { allowed: true, reason: "" } });
     const full = parseRecompManifest({
       config: [{ format: "toml", file: [{ path: "{install}/game.toml", if: "{install}/portable.txt" }, { path: "{documents}/G/game.toml" }], game_path: "iso_path", ensure: { a: "1" }, new: { b: "2" } }, { format: "yaml", file: "x" }],
       settings: [{ id: "res", label: "Resolution", choices: [{ label: "1x", set: { scale: "1" } }, { label: "2x", set: { scale: "2" } }], defaults: { scale: "1" } }, { id: "bad" }],

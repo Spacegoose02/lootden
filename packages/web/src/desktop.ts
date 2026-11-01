@@ -65,10 +65,28 @@ export interface RecompInstalledMod {
 
 /** A recomp's mods on Thunderstore, and the ones on this PC. */
 export interface RecompModsView {
-  community: string;
+  community: string | null;
+  gamebanana: number | null;
   available: Array<{ full: string; name: string; owner: string; description: string; icon: string; version: string; page: string; downloads: number; rating: number }>;
   installed: RecompInstalledMod[];
   others: string[];
+}
+
+export interface GameBananaModView {
+  id: number;
+  name: string;
+  owner: string;
+  likes: number;
+  image: string;
+  category: string;
+  page: string;
+}
+
+/** The look (ReShade filter) picked for a recomp, and whether it can be used on this PC. */
+export interface RecompLookView {
+  look: string;
+  available: boolean;
+  reason: string;
 }
 
 export interface RecompSetup {
@@ -276,6 +294,10 @@ export interface DesktopBridge {
   installRecompMod?(id: string, full: string): Promise<RecompInstalledMod[]>;
   removeRecompMod?(id: string, full: string): Promise<RecompInstalledMod[]>;
   setRecompSetting?(id: string, settingId: string, choice: number): Promise<RecompSettingView[]>;
+  gamebananaMods?(id: string, query: string): Promise<GameBananaModView[]>;
+  installGamebananaMod?(id: string, modId: number): Promise<RecompInstalledMod[]>;
+  recompLook?(id: string): Promise<RecompLookView>;
+  setRecompLook?(id: string, look: string): Promise<RecompLookView>;
   changeServer(): Promise<void>;
   /** Switches to the app's offline library when the server really can't be reached (apps from 0.13.2). */
   goOffline?(): Promise<boolean>;

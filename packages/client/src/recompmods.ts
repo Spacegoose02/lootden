@@ -105,21 +105,30 @@ async function setup(recompId: string, opts: { toolsDir: string; added?: RecompI
   return { source: manifest?.mods ?? info?.mods ?? null, modsDir: path.join(path.dirname(path.join(opts.toolsDir, state.exe)), "mods"), name: info?.name ?? recompId };
 }
 
-/** The recomp's Thunderstore mods and the ones installed here; null when it has no mod community. */
-export async function recompMods(recompId: string, opts: { toolsDir: string; added?: RecompInfo[]; fetchImpl?: Fetch }): Promise<{ community: string; available: ModPackage[]; installed: InstalledMod[]; others: string[] } | null> {
+/** The recomp's Thunderstore mods and the ones installed here; null when it has no mods LootDen can install. */
+export async function recompMods(
+  recompId: string,
+  opts: { toolsDir: string; added?: RecompInfo[]; fetchImpl?: Fetch },
+): Promise<{ community: string | null; gamebanana: number | null; available: ModPackage[]; installed: InstalledMod[]; others: string[] } | null> {
   const { source, modsDir } = await setup(recompId, opts);
   if (!source) return null;
   const installed = (await readTools(opts.toolsDir)).recomps[recompId]?.mods ?? [];
   const mine = new Set(installed.flatMap((m) => m.files));
   // Mods put in by hand, shown so they aren't a surprise.
   const others = (await readdir(modsDir).catch(() => [] as string[])).filter((f) => !f.startsWith(".") && !mine.has(f));
-  return { community: source.thunderstore, available: await listThunderstore(source.thunderstore, opts.fetchImpl), installed, others };
+  return {
+    community: source.thunderstore ?? null,
+    gamebanana: source.gamebanana ?? null,
+    available: source.thunderstore ? await listThunderstore(source.thunderstore, opts.fetchImpl) : [],
+    installed,
+    others,
+  };
 }
 
 /** Installs a mod (and the mods it needs) into the recomp's mods folder. */
 export async function installRecompMod(recompId: string, full: string, opts: RecompModOptions): Promise<InstalledMod[]> {
   const { source, modsDir } = await setup(recompId, opts);
-  if (!source) throw new Error("This recomp has no mods LootDen can install");
+  if (!source?.thunderstore) throw new Error("This recomp has no Thunderstore mods");
   const list = await listThunderstore(source.thunderstore, opts.fetchImpl);
   const byName = new Map(list.map((p) => [p.full, p]));
   const wanted = byName.get(full);
@@ -182,6 +191,110 @@ export async function removeRecompMod(recompId: string, full: string, opts: { to
     if (await stat(path.join(modsDir, f)).catch(() => null)) await rm(path.join(modsDir, f), { force: true });
   }
   state.mods = state.mods!.filter((m) => m.full !== full);
+  await writeTools(opts.toolsDir, t);
+  return state.mods;
+}
+
+// ---- GameBanana ----------------------------------------------------------------------
+
+const GAMEBANANA = "https://gamebanana.com/apiv11";
+
+export interface GameBananaMod {
+  id: number;
+  name: string;
+  owner: string;
+  likes: number;
+  image: string;
+  category: string;
+  page: string;
+}
+
+/** A page of a game's mods on GameBanana, most liked first, or a search. Mods with content ratings are left out. */
+export function parseGameBananaList(input: unknown): GameBananaMod[] {
+  const records = (input && typeof input === "object" ? (input as Record<string, unknown>)._aRecords : null) ?? [];
+  const out: GameBananaMod[] = [];
+  for (const r of Array.isArray(records) ? records : []) {
+    if (!r || typeof r !== "object") continue;
+    const o = r as Record<string, unknown>;
+    if (o._sModelName !== "Mod" || typeof o._idRow !== "number" || typeof o._sName !== "string" || o._bHasContentRatings === true) continue;
+    const media = (o._aPreviewMedia as { _aImages?: Array<Record<string, string>> } | undefined)?._aImages?.[0];
+    out.push({
+      id: o._idRow,
+      name: o._sName,
+      owner: String((o._aSubmitter as Record<string, unknown> | undefined)?._sName ?? ""),
+      likes: typeof o._nLikeCount === "number" ? o._nLikeCount : 0,
+      image: media?._sBaseUrl && (media._sFile530 || media._sFile) ? `${media._sBaseUrl}/${media._sFile530 || media._sFile}` : "",
+      category: String((o._aRootCategory as Record<string, unknown> | undefined)?._sName ?? ""),
+      page: `https://gamebanana.com/mods/${o._idRow}`,
+    });
+  }
+  return out;
+}
+
+export async function listGameBanana(game: number, query: string, fetchImpl: Fetch = fetch): Promise<GameBananaMod[]> {
+  const q = query.trim().slice(0, 60);
+  const url = q
+    ? `${GAMEBANANA}/Util/Search/Results?_sModelName=Mod&_sSearchString=${encodeURIComponent(q)}&_idGameRow=${game}&_nPage=1`
+    : `${GAMEBANANA}/Mod/Index?_nPerpage=30&_aFilters[Generic_Game]=${game}&_sSort=Generic_MostLiked&_nPage=1`;
+  const res = await fetchImpl(url, { headers: { "User-Agent": "LootDen" } });
+  if (!res.ok) throw new Error(`GameBanana answered ${res.status}`);
+  return parseGameBananaList(await res.json());
+}
+
+/** The recomp's GameBanana mods (most liked, or a search); empty when it has none there. */
+export async function recompGameBanana(recompId: string, query: string, opts: { toolsDir: string; added?: RecompInfo[]; fetchImpl?: Fetch }): Promise<GameBananaMod[]> {
+  const { source } = await setup(recompId, opts);
+  return source?.gamebanana ? listGameBanana(source.gamebanana, query, opts.fetchImpl) : [];
+}
+
+/** A mod's files that LootDen may install: passed GameBanana's virus scan, and an archive it can open. */
+export function gameBananaFiles(input: unknown, rar: boolean): Array<{ id: number; name: string; size: number }> {
+  const files = (input && typeof input === "object" ? (input as Record<string, unknown>)._aFiles : null) ?? [];
+  return (Array.isArray(files) ? files : [])
+    .filter((f): f is Record<string, unknown> => !!f && typeof f === "object")
+    .filter((f) => typeof f._idRow === "number" && typeof f._sFile === "string" && f._sAvResult === "clean" && (rar ? /\.(zip|7z|rar)$/i : /\.(zip|7z)$/i).test(f._sFile))
+    .map((f) => ({ id: f._idRow as number, name: f._sFile as string, size: typeof f._nFilesize === "number" ? f._nFilesize : 0 }));
+}
+
+/** The files of a GameBanana mod that go in the mods folder, for how the game reads them. */
+export function wantedGameBananaFile(name: string, loader: "nrm" | "otr", platform: NodeJS.Platform = process.platform): boolean {
+  return loader === "otr" ? /\.(otr|o2r)$/i.test(name) : wantedModFile(name, platform);
+}
+
+/** Installs a GameBanana mod: its first clean archive, unpacked into the recomp's mods folder. */
+export async function installGameBananaMod(recompId: string, modId: number, opts: RecompModOptions): Promise<InstalledMod[]> {
+  const { source, modsDir } = await setup(recompId, opts);
+  if (!source?.gamebanana || !source.loader) throw new Error("This recomp has no GameBanana mods LootDen can install");
+  if (!Number.isInteger(modId) || modId <= 0) throw new Error("Unknown mod");
+  const fetchImpl = opts.fetchImpl ?? fetch;
+  const res = await fetchImpl(`${GAMEBANANA}/Mod/${modId}/ProfilePage`, { headers: { "User-Agent": "LootDen" } });
+  if (!res.ok) throw new Error(`GameBanana answered ${res.status}`);
+  const profile = (await res.json()) as Record<string, unknown>;
+  const name = typeof profile._sName === "string" ? profile._sName : `Mod ${modId}`;
+  const file = gameBananaFiles(profile, opts.sevenZip.supportsRar)[0];
+  if (!file) throw new Error(`${name} has no file LootDen can install (it needs a virus-scanned zip or 7z). Get it from https://gamebanana.com/mods/${modId}`);
+  await mkdir(modsDir, { recursive: true });
+  const tmp = await mkdtemp(path.join(os.tmpdir(), "lootden-gb-"));
+  const files: string[] = [];
+  try {
+    const archive = path.join(tmp, file.name.replace(/[^\w.-]+/g, "_"));
+    await download(fetchImpl, `https://gamebanana.com/dl/${file.id}`, archive);
+    const out = path.join(tmp, "out");
+    await extractArchive(opts.sevenZip, /\.zip$/i.test(file.name) ? "zip" : /\.rar$/i.test(file.name) ? "rar" : "7z", archive, out);
+    for (const rel of await listFiles(out)) {
+      const base = path.posix.basename(rel);
+      if (!wantedGameBananaFile(base, source.loader, opts.platform)) continue;
+      await copyFile(path.join(out, ...rel.split("/")), path.join(modsDir, base));
+      files.push(base);
+    }
+  } finally {
+    await rm(tmp, { recursive: true, force: true });
+  }
+  if (!files.length) throw new Error(`${name} has no files the game reads by itself. Its page says how to set it up: https://gamebanana.com/mods/${modId}`);
+  const t = await readTools(opts.toolsDir);
+  const state = t.recomps[recompId]!;
+  const full = `gamebanana:${modId}`;
+  state.mods = [...(state.mods ?? []).filter((m) => m.full !== full), { full, name, version: file.name, files, dep: false }];
   await writeTools(opts.toolsDir, t);
   return state.mods;
 }

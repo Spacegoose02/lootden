@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
+import { crc32 } from "node:zlib";
 import { chmod, cp, mkdir, mkdtemp, readdir, readFile, rename, rm, stat, utimes, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -23,7 +24,10 @@ import {
   writeConfigKeys,
   type RecompArch,
   type RecompConfigFile,
+  type RecompDump,
   type RecompInfo,
+  type RecompLookId,
+  isRecompLook,
   type RecompManifest,
   type SaveBackup,
 } from "@lootden/shared";
@@ -32,6 +36,7 @@ import { download, findFile, listFiles, readTools, writeTools, zipFiles, type To
 import { extractArchive } from "./extractor.js";
 import { checkGameCopy } from "./discs.js";
 import { findExecutable } from "./launcher.js";
+import { applyLook, crtLines, ensureReShade } from "./looks.js";
 
 export { RECOMPS, recompInfo, recompsFor } from "@lootden/shared";
 
@@ -246,6 +251,35 @@ export interface RecompPlan {
   saveDirs: string[];
   /** Messages for the recomp's exit codes, from its recomplauncher.json. */
   exitCodes: Record<string, string>;
+  /** The verified copy the game image matched ("Sonic Unleashed (USA)"), when the recomp lists them. */
+  verified: string | null;
+  /** The look to play with (Windows only; "off" when looks aren't allowed for this recomp). */
+  look: RecompLookId;
+}
+
+/** CRC32 of a whole file, read in pieces so a 7 GB disc image doesn't land in memory. */
+export async function crc32File(file: string): Promise<string> {
+  let c = 0;
+  for await (const chunk of createReadStream(file, { highWaterMark: 4 << 20 })) c = crc32(chunk as Buffer, c);
+  return (c >>> 0).toString(16).padStart(8, "0");
+}
+
+/**
+ * Checks a game image against the copies the recomp's makers verified, remembering the answer per file
+ * so a big disc is only read once. Returns the matching copy's name, or null (with a note) for none.
+ */
+export async function matchDump(file: string, dumps: RecompDump[], cached: { signature: string; crc32: string } | undefined, emit: (m: string) => void): Promise<{ name: string | null; signature: string; crc32: string } | null> {
+  const s = await stat(file).catch(() => null);
+  if (!s?.isFile() || !dumps.length) return null;
+  const signature = `${file}|${s.size}|${Math.round(s.mtimeMs)}`;
+  // A different size can't match; no need to read it.
+  if (!dumps.some((d) => d.size === s.size)) return { name: null, signature, crc32: "" };
+  let crc = cached?.signature === signature ? cached.crc32 : "";
+  if (!crc) {
+    emit(`Comparing ${path.basename(file)} with the verified copies (once per file)`);
+    crc = await crc32File(file);
+  }
+  return { name: dumps.find((d) => d.size === s.size && d.crc32 === crc)?.name ?? null, signature, crc32: crc };
 }
 
 const ARCHIVE = /\.(zip|7z)$/i;
@@ -364,6 +398,7 @@ export async function planRecomp(gameDir: string, recompId: string, opts: Recomp
   const dataDir = path.dirname(exe);
 
   let rom: string;
+  let verified: string | null = null;
   if (info.rom) {
     const { file, bytes } = await romBytes(gameDir, info, opts);
     rom = file;
@@ -383,6 +418,18 @@ export async function planRecomp(gameDir: string, recompId: string, opts: Recomp
       emit({ message: `Checking ${path.basename(rom)}` });
       const problem = await checkGameCopy(rom, want.check);
       if (problem) throw new Error(`${problem}. ${info.name} needs ${want.label}.`);
+    }
+    if (want?.dumps.length) {
+      const match = await matchDump(rom, want.dumps, state.dumpCheck, (m) => emit({ message: m }));
+      if (match) {
+        verified = match.name;
+        emit({ message: match.name ? `Matches the verified ${match.name} disc` : `This copy doesn't match a verified disc. It may still work; if ${info.name} has trouble, a clean dump is the first thing to try.` });
+        if (match.crc32 && state.dumpCheck?.signature !== match.signature) {
+          const t = await readTools(opts.toolsDir);
+          if (t.recomps[recompId]) t.recomps[recompId]!.dumpCheck = { signature: match.signature, crc32: match.crc32 };
+          await writeTools(opts.toolsDir, t);
+        }
+      }
     }
   }
   await writeFile(path.join(dataDir, "portable.txt"), "").catch(() => {});
@@ -434,7 +481,32 @@ export async function planRecomp(gameDir: string, recompId: string, opts: Recomp
     args: [...(manifest?.args ?? []).map((a) => fillRecompPath(a, vars)), ...settingArgs],
     saveDirs: [...new Set(["saves", ...extra])],
     exitCodes: manifest?.exitCodes ?? {},
+    verified,
+    look: platform === "win32" && manifest?.looks.allowed !== false && isRecompLook(state.look) ? state.look : "off",
   };
+}
+
+// ---- Looks ------------------------------------------------------------------------------
+
+/** The look picked for a recomp on this PC, and whether looks can be used with it here. */
+export async function recompLook(recompId: string, opts: { toolsDir: string; platform?: OS }): Promise<{ look: RecompLookId; available: boolean; reason: string }> {
+  const platform = opts.platform ?? hostOs();
+  const state = (await readTools(opts.toolsDir)).recomps[recompId];
+  const look = isRecompLook(state?.look) ? state.look : "off";
+  if (platform !== "win32") return { look, available: false, reason: "Looks use ReShade, which LootDen runs on Windows only." };
+  if (!state) return { look, available: false, reason: "Set the recomp up first." };
+  const manifest = await readRecompManifest(recompDir(opts.toolsDir, recompId));
+  if (manifest && !manifest.looks.allowed) return { look, available: false, reason: manifest.looks.reason || "This recomp's makers ask that ReShade isn't used with it." };
+  return { look, available: true, reason: "" };
+}
+
+export async function setRecompLook(recompId: string, look: string, opts: { toolsDir: string }): Promise<void> {
+  if (!isRecompLook(look)) throw new Error("Unknown look");
+  const tools = await readTools(opts.toolsDir);
+  const state = tools.recomps[recompId];
+  if (!state) throw new Error("That recomp isn't set up on this PC");
+  state.look = look;
+  await writeTools(opts.toolsDir, tools);
 }
 
 // ---- Settings on the game's page ------------------------------------------------------
@@ -607,14 +679,23 @@ export async function playRecomp(
   const plan = await planRecomp(gameDir, recompId, opts);
   const restored = await restoreRecompSaves(api, gameId, plan, opts).catch(() => null);
   const before = await snapshot(plan);
+  let look: Awaited<ReturnType<typeof applyLook>> = { env: {}, undo: async () => {} };
+  if (plan.look !== "off") {
+    // A look is a nice-to-have: if ReShade can't be fetched, the game still starts, just without it.
+    const dll = await ensureReShade(opts.toolsDir, opts.sevenZip, opts.fetchImpl, (m) => opts.onEvent?.({ message: m })).catch((e: Error) => {
+      opts.onEvent?.({ message: `Starting without the look: ${e.message}` });
+      return null;
+    });
+    if (dll) look = await applyLook({ exe: plan.exe, dataDir: plan.dataDir, dll, look: plan.look, lines: crtLines(plan.recomp.platform) });
+  }
   const started = Date.now();
   opts.onStarted?.(plan);
   const exitCode = await new Promise<number | null>((resolve, reject) => {
     // Started from its own folder: that's where portable.txt makes it keep everything.
-    const child = spawn(plan.exe, plan.args, { cwd: plan.dataDir, env: { ...process.env, ...plan.env }, stdio: "ignore" });
+    const child = spawn(plan.exe, plan.args, { cwd: plan.dataDir, env: { ...process.env, ...plan.env, ...look.env }, stdio: "ignore" });
     child.on("error", reject);
     child.on("exit", (code) => resolve(code));
-  });
+  }).finally(() => look.undo());
   let problem: string | null = null;
   if (exitCode !== null && exitCode !== 0) {
     // Windows reports crash codes as unsigned; manifests may write either form.

@@ -26,6 +26,10 @@ import {
   recompOverview,
   recompMods,
   installRecompMod,
+  recompGameBanana,
+  installGameBananaMod,
+  recompLook,
+  setRecompLook,
   removeRecompMod,
   recompSettings,
   recompUpdates,
@@ -1739,6 +1743,27 @@ function registerIpc(): void {
   ipcMain.handle("gm:removeRecompMod", async (e, id: string, full: string) => {
     fromServer(e);
     return removeRecompMod(String(id), String(full), { toolsDir: toolsDir(), added: await addedRecomps() });
+  });
+
+  ipcMain.handle("gm:gamebananaMods", async (e, id: string, query: string) => {
+    fromServer(e);
+    return recompGameBanana(String(id), String(query ?? ""), { toolsDir: toolsDir(), added: await addedRecomps() });
+  });
+
+  ipcMain.handle("gm:installGamebananaMod", async (e, id: string, modId: number) => {
+    fromServer(e);
+    return installGameBananaMod(String(id), Number(modId), { toolsDir: toolsDir(), sevenZip: await sevenZip(), added: await addedRecomps() });
+  });
+
+  ipcMain.handle("gm:recompLook", async (e, id: string) => {
+    fromServer(e);
+    return recompLook(String(id), { toolsDir: toolsDir() });
+  });
+
+  ipcMain.handle("gm:setRecompLook", async (e, id: string, look: string) => {
+    fromServer(e);
+    await setRecompLook(String(id), String(look), { toolsDir: toolsDir() });
+    return recompLook(String(id), { toolsDir: toolsDir() });
   });
 
   ipcMain.handle("gm:recompSettings", async (e, id: string) => {

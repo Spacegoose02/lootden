@@ -68,7 +68,7 @@ export const RECOMPS: RecompInfo[] = [
     titles: ["majorasmask"],
     rom: { romId: "mm.n64.us.1.0", header: "ZELDA MAJORA'S MASK", country: "E", label: "the USA release of Majora's Mask (.z64, .n64 or .v64)" },
     programs: ["Zelda64Recompiled"],
-    mods: { thunderstore: "zelda-64-recompiled", data: "Zelda64Recompiled" },
+    mods: { thunderstore: "zelda-64-recompiled", data: "Zelda64Recompiled", gamebanana: 21763, loader: "nrm" },
     note: "Needs the USA ROM. Mods from Thunderstore install from the game's page; widescreen and high frame rates are in the game's own menu.",
   },
   {
@@ -229,6 +229,8 @@ export interface RecompManifest {
   game: RecompGame | null;
   /** Where its mods come from and where they go. */
   mods: RecompMods | null;
+  /** Whether looks (ReShade) may be used, and why not. */
+  looks: { allowed: boolean; reason: string };
 }
 
 export interface RecompGame {
@@ -236,14 +238,41 @@ export interface RecompGame {
   label: string;
   /** A file that should be in the folder, or in the top folder of an ISO 9660 or Xbox (XDVDFS) disc. */
   check: { file?: string; iso9660?: string; xdvdfs?: string };
+  /** Known-good copies: the game's page says when the player's copy matches one. */
+  dumps: RecompDump[];
 }
 
 export interface RecompMods {
   /** The community on thunderstore.io (thunderstore.io/c/<community>). */
-  thunderstore: string;
+  thunderstore?: string;
+  /** The game's id on GameBanana (gamebanana.com/games/<id>). */
+  gamebanana?: number;
+  /**
+   * How the game reads GameBanana mods: "nrm" puts .nrm mods and .rtz texture packs in its mods folder
+   * (like Thunderstore's), "otr" puts .otr and .o2r files in a mods folder beside the program.
+   */
+  loader?: "nrm" | "otr";
   /** The recomp's data folder name; when it runs portable, its mods folder is beside the program. */
-  data: string;
+  data?: string;
 }
+
+/** A known-good copy of the game, from Redump: the whole image's size and CRC32. */
+export interface RecompDump {
+  name: string;
+  size: number;
+  crc32: string;
+}
+
+/** Looks: screen filters run through ReShade on Windows. */
+export const RECOMP_LOOKS = [
+  { id: "off", name: "Off", help: "The picture as the game draws it." },
+  { id: "sharp", name: "Sharp", help: "Crisper edges and text, for upscaled or soft pictures." },
+  { id: "vivid", name: "Vivid", help: "Richer colour and a little more contrast." },
+  { id: "film", name: "Film", help: "Warm, soft contrast with a fine grain." },
+  { id: "crt", name: "CRT", help: "Scanlines and a gentle glow, like an old TV." },
+] as const;
+export type RecompLookId = (typeof RECOMP_LOOKS)[number]["id"];
+export const isRecompLook = (x: unknown): x is RecompLookId => RECOMP_LOOKS.some((l) => l.id === x);
 
 export type RecompConfigFormat = "toml" | "ini" | "json";
 
@@ -322,7 +351,13 @@ export function parseRecompManifest(input: unknown): RecompManifest {
     exitCodes,
     game: cleanGame(o.game),
     mods: cleanMods(o.mods),
+    looks: cleanLooks(o.looks),
   };
+}
+
+function cleanLooks(v: unknown): { allowed: boolean; reason: string } {
+  const l = (v && typeof v === "object" ? v : {}) as Record<string, unknown>;
+  return { allowed: l.allowed !== false, reason: typeof l.reason === "string" ? l.reason.slice(0, 300) : "" };
 }
 
 function cleanGame(v: unknown): RecompGame | null {
@@ -332,8 +367,14 @@ function cleanGame(v: unknown): RecompGame | null {
   const c = (g.check && typeof g.check === "object" ? g.check : {}) as Record<string, unknown>;
   const name = (x: unknown) => (typeof x === "string" && x.length > 0 && x.length < 200 && !x.split(/[\\/]/).includes("..") ? x : undefined);
   const check = { file: name(c.file), iso9660: name(c.iso9660), xdvdfs: name(c.xdvdfs) };
+  const dumps = (Array.isArray(g.dumps) ? g.dumps : [])
+    .filter((d): d is Record<string, unknown> => !!d && typeof d === "object")
+    .map((d) => ({ name: typeof d.name === "string" ? d.name.slice(0, 60) : "", size: typeof d.size === "number" ? d.size : 0, crc32: typeof d.crc32 === "string" ? d.crc32.toLowerCase() : "" }))
+    .filter((d) => d.name && d.size > 0 && /^[0-9a-f]{8}$/.test(d.crc32))
+    .slice(0, 20);
   return {
     kind,
+    dumps,
     label: typeof g.label === "string" ? g.label.slice(0, 200) : "your copy of the game",
     check: Object.fromEntries(Object.entries(check).filter(([, x]) => x !== undefined)),
   };
@@ -342,8 +383,16 @@ function cleanGame(v: unknown): RecompGame | null {
 function cleanMods(v: unknown): RecompMods | null {
   if (!v || typeof v !== "object") return null;
   const m = v as Record<string, unknown>;
-  const ok = (x: unknown) => typeof x === "string" && /^[\w.-]{1,80}$/.test(x);
-  return ok(m.thunderstore) && ok(m.data) ? { thunderstore: m.thunderstore as string, data: m.data as string } : null;
+  const ok = (x: unknown): x is string => typeof x === "string" && /^[\w.-]{1,80}$/.test(x);
+  const out: RecompMods = {};
+  if (ok(m.data)) out.data = m.data;
+  if (ok(m.thunderstore) && out.data) out.thunderstore = m.thunderstore;
+  const loader = m.loader === "nrm" || m.loader === "otr" ? m.loader : null;
+  if (typeof m.gamebanana === "number" && Number.isInteger(m.gamebanana) && m.gamebanana > 0 && loader && (loader === "otr" || out.data)) {
+    out.gamebanana = m.gamebanana;
+    out.loader = loader;
+  }
+  return out.thunderstore || out.gamebanana ? out : null;
 }
 
 const insideFolder = (p: string) => !p.split(/[\\/]/).includes("..") && !/^([a-z]:|[\\/])/i.test(p);

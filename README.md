@@ -49,7 +49,10 @@ installs games from it on any PC in the house.
   exit codes. Admins can add more recomps by GitHub link, and the Emulation page shows updates.
   The server downloads each recomp release once and every PC installs it from there. Xbox 360
   games (`Emulation/xbox360/`) play through their recomps, and recomps with a Thunderstore
-  community (Zelda 64: Recompiled and others) install mods from the game's page.
+  community (Zelda 64: Recompiled and others) install mods from the game's page, and from
+  GameBanana too (only files that passed its virus scan). On Windows, a recomp can be given a
+  look (Sharp, Vivid, Film or CRT): ReShade is downloaded from reshade.me and put beside the game
+  only while it runs. Recomps that list verified dumps say whether your disc image matches one.
 - Optional download tools for admins: Prowlarr search, qBittorrent, Transmission, Deluge
   and SABnzbd, a download manager for direct file-host links, import clean-up, a wanted
   list, virus scanning and alerts (Apprise).
