@@ -145,3 +145,38 @@ export function playedFor(startedAt: string, now = Date.now()): string {
   if (mins < 60) return `${mins} min`;
   return `${Math.floor(mins / 60)} h${mins % 60 ? ` ${mins % 60} min` : ""}`;
 }
+
+// ---- Game night ----------------------------------------------------------------------
+
+/** A planned family game night. */
+export interface GameNight {
+  id: number;
+  title: string;
+  /** YYYY-MM-DD and HH:MM in the household's time zone. */
+  date: string;
+  time: string;
+  players: Array<{ id: number; name: string; avatar: string }>;
+  game: { id: string; title: string; coverUrl: string | null } | null;
+  note: string | null;
+  /** The Den Duty family goal that earned it. */
+  goal: { id: string; title: string; icon: string } | null;
+  createdBy: string | null;
+}
+
+/** A game the picker suggests for the players chosen, with why. */
+export interface GameNightPick {
+  id: string;
+  title: string;
+  coverUrl: string | null;
+  together: string[];
+  /** How many of the players have it installed somewhere. */
+  installedFor: number;
+  players: number;
+  reasons: string[];
+  score: number;
+}
+
+/** Text for an iCalendar line: backslashes, semicolons, commas and newlines escaped. */
+export function icsText(s: string): string {
+  return s.replace(/\\/g, "\\\\").replace(/;/g, "\;").replace(/,/g, "\\,").replace(/\r?\n/g, "\\n");
+}

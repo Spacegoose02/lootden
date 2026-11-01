@@ -39,6 +39,7 @@ import type { HelperService } from "./helper/service.js";
 import type { RobloxCatalog } from "./roblox/catalog.js";
 import type { PresenceService } from "./users/presence.js";
 import type { DenDutyLink } from "./users/denduty.js";
+import type { GameNights } from "./users/gamenight.js";
 
 /** Everything route modules need, built once in buildApp. */
 export interface AppContext {
@@ -88,6 +89,8 @@ export interface AppContext {
   presence: PresenceService;
   /** The link to Den Duty, the family's chore tracker: game locks, chores first, game time. */
   denDuty: DenDutyLink;
+  /** Family game nights: the picker, plans and their calendar feed. */
+  gameNights: GameNights;
   /** Bandit, the AI gaming helper. */
   helper: HelperService;
   timeToBeat: (providerId: string | null, title: string) => Promise<TimeToBeat | null>;

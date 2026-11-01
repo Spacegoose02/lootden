@@ -1,3 +1,4 @@
+import { GameNight } from "./pages/GameNight";
 import { useEffect, useRef, type ReactNode } from "react";
 import { Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "./auth";
@@ -62,6 +63,7 @@ export function App() {
         <Route path="calendar" element={<Calendar />} />
         <Route path="wishlist" element={<Wishlist />} />
         <Route path="requests" element={<Requests />} />
+        <Route path="game-night" element={<GameNight />} />
         <Route path="emulation" element={<Emulation />} />
         <Route path="play/:id" element={<PlayInBrowser />} />
         <Route path="emulation/setup" element={<EmulatorSetup />} />

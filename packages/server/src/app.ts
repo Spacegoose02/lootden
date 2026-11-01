@@ -71,6 +71,8 @@ import { FamilyService } from "./users/family.js";
 import { PresenceService, type WakeSender } from "./users/presence.js";
 import { DenDutyLink } from "./users/denduty.js";
 import { denDutyRoutes } from "./routes/denduty.js";
+import { GameNights } from "./users/gamenight.js";
+import { gameNightRoutes } from "./routes/gamenight.js";
 import { presenceRoutes } from "./routes/presence.js";
 import { ShelfStore } from "./users/shelves.js";
 import { HelperService, type HelperAi } from "./helper/service.js";
@@ -80,7 +82,7 @@ export const VERSION = "0.23.0";
 
 /** Routes reachable without signing in. */
 // The Steam sign-in callback finds its person by a one-time state value (it may land in a browser nobody is signed in to).
-const PUBLIC = [/^\/api\/health$/, /^\/api\/auth\//, /^\/api\/avatars\//, /^\/api\/addons\/steam\/signin\/callback$/];
+const PUBLIC = [/^\/api\/health$/, /^\/api\/game-nights\/feed\/[^/]+\/game-nights\.ics$/, /^\/api\/auth\//, /^\/api\/avatars\//, /^\/api\/addons\/steam\/signin\/callback$/];
 
 /** The request's path with %-escapes undone; the raw path when it doesn't decode. */
 function decodedPath(raw: string): string {
@@ -165,6 +167,7 @@ export function buildContext(config: ServerConfig, db: Db, log: Log, opts: Build
   presence.onChange = () => live.publish("playing");
   const denDuty = new DenDutyLink(db, vault, users, family, presence, opts.fetchImpl);
   family.externalLock = (userId) => denDuty.lockFor(userId);
+  const gameNights = new GameNights(db, library, users, family, denDuty);
   return {
     config,
     db,
@@ -203,6 +206,7 @@ export function buildContext(config: ServerConfig, db: Db, log: Log, opts: Build
     family,
     presence,
     denDuty,
+    gameNights,
     helper: new HelperService(db, vault, config.anthropicApiKey, () => zonedParts(new Date(), family.timeZone()).date, opts.helperAi),
     shelves: new ShelfStore(db, library),
     timeToBeat: timeToBeat(metadata.igdb, new HowLongToBeat(opts.fetchImpl), () => settings().hltb.enabled !== false),
@@ -286,6 +290,7 @@ export function buildApp(config: ServerConfig, db: Db, opts: BuildOptions = {}):
   familyRoutes(app, ctx);
   presenceRoutes(app, ctx);
   denDutyRoutes(app, ctx);
+  gameNightRoutes(app, ctx);
   helperRoutes(app, ctx);
 
   // TabStationToo for PS2 games in the browser, cross-origin isolated, unless an admin switched it off.

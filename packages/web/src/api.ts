@@ -4,6 +4,8 @@ import type {
   Allowance,
   NowPlaying,
   PcInfo,
+  GameNight,
+  GameNightPick,
   Level,
   PlayerStats,
   PlayLimits,
@@ -753,6 +755,11 @@ export const api = {
   closeOnPc: (device: string, gameId: string, text?: string) => call("POST", `/api/pcs/${encodeURIComponent(device)}/close`, { gameId, text }),
   bonusNow: (userId: number, minutes: number) => call<{ allowance: Allowance }>("POST", `/api/family/now-playing/${userId}/bonus`, { minutes }),
   pcs: () => call<PcInfo[]>("GET", "/api/pcs"),
+  gameNights: () => call<GameNightList>("GET", "/api/game-nights"),
+  suggestGameNight: (players: number[]) => call<GameNightPick[]>("POST", "/api/game-nights/suggest", { players }),
+  planGameNight: (n: { title?: string; date: string; time: string; players: number[]; gameId?: string | null; note?: string; goalId?: string | null }) => call<GameNight>("POST", "/api/game-nights", n),
+  cancelGameNight: (id: number) => call("DELETE", `/api/game-nights/${id}`),
+  resetGameNightFeed: () => call<{ feed: string }>("POST", "/api/game-nights/feed/reset"),
   pcTargets: () => call<Array<{ name: string; online: boolean; lastUser: string | null; freeBytes: number }>>("GET", "/api/pcs/targets"),
   sendToPc: (device: string, gameId: string) => call("POST", `/api/pcs/${encodeURIComponent(device)}/install`, { gameId }),
   denDuty: () => call<DenDutyView>("GET", "/api/denduty"),
@@ -883,4 +890,14 @@ export interface DenDutyView {
   lastSyncAt: string | null;
   denKids: Array<{ id: string; name: string }>;
   goals: Array<{ id: string; title: string; icon: string; reward: string | null; reachedAt: string }>;
+}
+
+export interface GameNightList {
+  upcoming: GameNight[];
+  past: GameNight[];
+  /** Den Duty family goals reached lately, not celebrated with a game night yet. */
+  goals: Array<{ id: string; title: string; icon: string; reward: string | null; reachedAt: string }>;
+  canPlan: boolean;
+  /** The calendar feed's address (admins). */
+  feed: string | null;
 }
