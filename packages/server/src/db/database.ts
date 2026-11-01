@@ -575,6 +575,21 @@ const MIGRATIONS: string[] = [
     UNIQUE (game, file_name)
   );
   `,
+  `
+  -- The household's PCs the desktop app runs on: for Wake-on-LAN, free space and streaming.
+  CREATE TABLE pcs (
+    name TEXT PRIMARY KEY,
+    macs TEXT NOT NULL DEFAULT '[]',
+    addresses TEXT NOT NULL DEFAULT '[]',
+    platform TEXT,
+    app_version TEXT,
+    disks TEXT NOT NULL DEFAULT '[]',
+    sunshine INTEGER NOT NULL DEFAULT 0,
+    moonlight INTEGER NOT NULL DEFAULT 0,
+    last_seen TEXT NOT NULL,
+    last_user INTEGER REFERENCES users(id) ON DELETE SET NULL
+  );
+  `,
 ];
 
 export function openDatabase(file: string): Db {

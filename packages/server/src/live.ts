@@ -1,7 +1,7 @@
 import { EventEmitter } from "node:events";
 
 /** What changed. The event carries no data: pages that care fetch again with their own permissions. */
-export type LiveTopic = "library" | "alerts" | "downloads";
+export type LiveTopic = "library" | "alerts" | "downloads" | "playing";
 
 export interface LiveEvent {
   topic: LiveTopic;
@@ -18,7 +18,7 @@ export class LiveEvents {
   private readonly bus = new EventEmitter().setMaxListeners(0);
   private readonly pending = new Map<LiveTopic, NodeJS.Timeout>();
 
-  constructor(private readonly delayMs: Record<LiveTopic, number> = { library: 2000, alerts: 250, downloads: 250 }) {}
+  constructor(private readonly delayMs: Record<LiveTopic, number> = { library: 2000, alerts: 250, downloads: 250, playing: 250 }) {}
 
   publish(topic: LiveTopic, adminOnly = false): void {
     if (this.pending.has(topic)) return;

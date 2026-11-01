@@ -2,6 +2,8 @@ import { desktop } from "./desktop";
 import type {
   AchievementView,
   Allowance,
+  NowPlaying,
+  PcInfo,
   Level,
   PlayerStats,
   PlayLimits,
@@ -745,6 +747,15 @@ export const api = {
   /** Marks the celebrations a screen showed as seen (ids), so ones that arrived meanwhile still get theirs. */
   celebrated: (c: Celebrations) => call("POST", "/api/me/celebrations/seen", { achievements: c.achievements.map((a) => a.id), wishes: c.wishes.map((w) => w.id), bonus: c.bonus.map((b) => b.id) }),
   spun: () => call<{ spins: number }>("POST", "/api/me/roulette"),
+  // Now Playing, parents' controls and the household's PCs.
+  nowPlaying: () => call<NowPlaying[]>("GET", "/api/family/now-playing"),
+  messagePc: (device: string, text: string) => call("POST", `/api/pcs/${encodeURIComponent(device)}/message`, { text }),
+  closeOnPc: (device: string, gameId: string, text?: string) => call("POST", `/api/pcs/${encodeURIComponent(device)}/close`, { gameId, text }),
+  bonusNow: (userId: number, minutes: number) => call<{ allowance: Allowance }>("POST", `/api/family/now-playing/${userId}/bonus`, { minutes }),
+  pcs: () => call<PcInfo[]>("GET", "/api/pcs"),
+  wakePc: (name: string) => call<{ sent: number }>("POST", `/api/pcs/${encodeURIComponent(name)}/wake`),
+  setPcMac: (name: string, mac: string) => call<PcInfo>("PUT", `/api/pcs/${encodeURIComponent(name)}/mac`, { mac }),
+  forgetPc: (name: string) => call("DELETE", `/api/pcs/${encodeURIComponent(name)}`),
   recap: (weeksAgo = 0) => call<WeeklyRecap>("GET", `/api/family/recap${qs({ weeksAgo: weeksAgo || undefined })}`),
   shelves: () => call<Shelf[]>("GET", "/api/shelves"),
   createShelf: (s: ShelfInput) => call<Shelf>("POST", "/api/shelves", s),

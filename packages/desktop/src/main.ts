@@ -29,6 +29,10 @@ import {
   installGame,
   launchAndTrack,
   listDrives,
+  listProcesses,
+  pcReport,
+  processesIn,
+  runningStoreGames,
   listInstalled,
   listWorkshopItems,
   downloadWorkshopItem,
@@ -55,7 +59,7 @@ import {
   UpdateMismatchError,
   type InstallEvent,
 } from "@lootden/client";
-import type { Allowance } from "@lootden/shared";
+import { PRESENCE_INTERVAL_SECONDS, type Allowance, type LocalStoreGame, type PcCommand, type PlaySource, type RunningGame } from "@lootden/shared";
 import { isExternalLink, isFile, onOrigin, permissionAllowed } from "./links.js";
 import { SettingsStore, type DesktopSettings } from "./settings.js";
 import { WebBrowser } from "./browser.js";
@@ -400,6 +404,91 @@ async function flushPendingPlays(): Promise<void> {
   }
 }
 
+// ---- Now Playing and parents' controls ------------------------------------------
+
+/** Games started from LootDen that run now, with how to close them. */
+const nowRunning = new Map<string, { game: RunningGame; stop?: AbortController }>();
+/** Other launchers' games seen running, and when each was first seen. */
+const storeSince = new Map<string, string>();
+let storeGamesCache: { at: number; games: LocalStoreGame[] } | null = null;
+let heartbeatTimer: NodeJS.Timeout | null = null;
+let beating = false;
+/** Commands already carried out, so a repeat delivery does nothing twice. */
+const handledCommands = new Set<string>();
+
+/** A game LootDen started is running: it goes on the family's Now Playing board. */
+function markRunning(gameId: string, title: string, source: PlaySource, stop?: AbortController): void {
+  nowRunning.set(gameId, { game: { gameId, title, source, startedAt: new Date().toISOString() }, stop });
+  scheduleHeartbeat(1000);
+}
+
+async function storeGamesForPresence(): Promise<LocalStoreGame[]> {
+  if (storeGamesCache && Date.now() - storeGamesCache.at < 10 * 60_000) return storeGamesCache.games;
+  const { disabled, folders } = settings.get().storeScan;
+  const games = await scanStoreGames(STORE_SCANNERS, process.platform, { disabled, folders }).catch(() => [] as LocalStoreGame[]);
+  storeGamesCache = { at: Date.now(), games };
+  return games;
+}
+
+/** Closes everything running from these folders (games from other launchers). */
+async function closeFolders(dirs: string[]): Promise<void> {
+  for (const pid of processesIn(await listProcesses(), dirs)) {
+    if (process.platform === "win32") spawn("taskkill", ["/pid", String(pid), "/T", "/F"], { stdio: "ignore", windowsHide: true }).on("error", () => {});
+    else {
+      try {
+        process.kill(pid, "SIGTERM");
+      } catch {
+        // Already gone.
+      }
+    }
+  }
+}
+
+/** A parent's message or "close the game", sent from the Now Playing board. */
+function runCommand(cmd: PcCommand): void {
+  if (handledCommands.has(cmd.id)) return;
+  handledCommands.add(cmd.id);
+  if (cmd.kind === "message") {
+    playNotice("", `Message from ${cmd.from}`, cmd.text);
+    return;
+  }
+  const mine = nowRunning.get(cmd.gameId);
+  const title = mine?.game.title ?? cmd.gameId;
+  playNotice(cmd.gameId, `${cmd.from} is closing ${title}`, `${cmd.text ? `${cmd.text} ` : ""}Save your game now: it closes in 60 seconds.`);
+  setTimeout(() => {
+    if (mine?.stop) return mine.stop.abort();
+    const m = /^store:([^:]+):(.+)$/.exec(cmd.gameId);
+    const store = m && storeGamesCache?.games.find((g) => g.addon === m[1] && g.externalId === m[2]);
+    if (store) void closeFolders([store.installDir]).catch(() => {});
+  }, 60_000);
+}
+
+/** Tells the server what runs on this PC, about every half minute, and carries out parents' commands. */
+async function heartbeat(): Promise<void> {
+  if (beating || !settings.get().apiToken) return;
+  beating = true;
+  try {
+    const mine = new Set(nowRunning.keys());
+    const stores = await storeGamesForPresence();
+    const procs = stores.length ? await listProcesses().catch(() => []) : [];
+    const playingNow = [...[...nowRunning.values()].map((r) => r.game), ...runningStoreGames(procs, stores, storeSince, mine)];
+    const api = clientFor(currentPlayer()) ?? (await client());
+    const answer = await api.presence({ device: os.hostname(), playing: playingNow, pc: await pcReport(app.getVersion()) });
+    for (const cmd of answer.commands) runCommand(cmd);
+  } catch {
+    // Offline, signed out or an older server: try again next time.
+  } finally {
+    beating = false;
+    scheduleHeartbeat(PRESENCE_INTERVAL_SECONDS * 1000);
+  }
+}
+
+function scheduleHeartbeat(ms: number): void {
+  if (heartbeatTimer) clearTimeout(heartbeatTimer);
+  heartbeatTimer = setTimeout(() => void heartbeat(), ms);
+  heartbeatTimer.unref?.();
+}
+
 // ---- Covers for the offline page ------------------------------------------------
 
 const coversDir = () => path.join(app.getPath("userData"), "Covers");
@@ -551,7 +640,10 @@ function relTo(dir: string, file: string): string {
 function send(payload: object): void {
   const p = payload as { gameId?: string; type?: string };
   if (p.gameId && p.type === "playing") playing.add(p.gameId);
-  if (p.gameId && (p.type === "stopped" || p.type === "error")) playing.delete(p.gameId);
+  if (p.gameId && (p.type === "stopped" || p.type === "error")) {
+    playing.delete(p.gameId);
+    if (nowRunning.delete(p.gameId)) scheduleHeartbeat(1000);
+  }
   if (p.type === "playing" || p.type === "stopped") refreshTray();
   win?.webContents.send("gm:progress", payload);
 }
@@ -943,6 +1035,7 @@ function registerIpc(): void {
     await useSaveSlot(live, gameId, game.dir, today).catch((err: Error) => send({ gameId, type: "warning", message: `Couldn't switch saves: ${err.message}` }));
     const stop = new AbortController();
     const unwatch = guardPlay(live, gameId, game.title, today, today?.hardStop ? stop : undefined);
+    markRunning(gameId, game.title, "lootden", stop);
     send({ gameId, type: "playing" });
     void launchAndTrack(game.dir, exe, process.platform, stop.signal, { watchDirs: [home] }).then(
       async (seconds) => {
@@ -980,6 +1073,7 @@ function registerIpc(): void {
       onEvent: (ev) => send({ gameId, type: "prepare", message: ev.message }),
       onStarted: (plan) => {
         unwatch = guardPlay(api, gameId, path.basename(plan.rom), today);
+        markRunning(gameId, path.basename(plan.rom, path.extname(plan.rom)), "emulated");
         send({ gameId, type: "playing" });
         started({ executable: `${plan.emulator.name}: ${path.basename(plan.rom)}` });
       },
@@ -1445,6 +1539,7 @@ function registerIpc(): void {
       onStarted: () => {
         launching.delete(gameId);
         unwatch = guardPlay(live, gameId, "Roblox", today, today?.hardStop ? stop : undefined);
+        markRunning(gameId, "Roblox", "roblox", stop);
         send({ gameId, type: "playing" });
       },
     }).then(
@@ -1459,6 +1554,7 @@ function registerIpc(): void {
         launching.delete(gameId);
         unwatch();
         playing.delete(gameId);
+        if (nowRunning.delete(gameId)) scheduleHeartbeat(1000);
       },
     );
   }
@@ -1808,4 +1904,6 @@ void app.whenReady().then(async () => {
   // Look for app updates shortly after start, then every few hours.
   setTimeout(() => void checkForUpdate(), 30_000);
   setInterval(() => void checkForUpdate(), 4 * 3600_000);
+  // Now Playing: tell the server what runs here, and pick up parents' messages.
+  scheduleHeartbeat(10_000);
 });

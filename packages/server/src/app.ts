@@ -68,6 +68,8 @@ import { liveRoutes } from "./routes/live.js";
 import { LiveEvents } from "./live.js";
 import { familyRoutes } from "./routes/family.js";
 import { FamilyService } from "./users/family.js";
+import { PresenceService, type WakeSender } from "./users/presence.js";
+import { presenceRoutes } from "./routes/presence.js";
 import { ShelfStore } from "./users/shelves.js";
 import { HelperService, type HelperAi } from "./helper/service.js";
 import { helperRoutes } from "./routes/helper.js";
@@ -113,6 +115,8 @@ export interface BuildOptions {
   resolveHost?: (host: string) => Promise<string[]>;
   /** Tests: Bandit's AI, so no request reaches a real provider. */
   helperAi?: HelperAi;
+  /** Tests: Wake-on-LAN packets go here instead of the network. */
+  wake?: WakeSender;
 }
 
 type Log = { info(o: object, m: string): void; warn(o: object, m: string): void };
@@ -155,6 +159,8 @@ export function buildContext(config: ServerConfig, db: Db, log: Log, opts: Build
   const addons = new AddonRegistry(db, library, opts.fetchImpl, opts.addons, opts.resolveHost, vault);
   addons.extraGames = (userId) => roblox.storeGames(userId);
   const family = new FamilyService(db, library, users, () => requests, notifier);
+  const presence = new PresenceService(db, users, library, family, opts.wake);
+  presence.onChange = () => live.publish("playing");
   return {
     config,
     db,
@@ -191,6 +197,7 @@ export function buildContext(config: ServerConfig, db: Db, log: Log, opts: Build
     steamSignIn: new SteamSignIn(opts.fetchImpl),
     live,
     family,
+    presence,
     helper: new HelperService(db, vault, config.anthropicApiKey, () => zonedParts(new Date(), family.timeZone()).date, opts.helperAi),
     shelves: new ShelfStore(db, library),
     timeToBeat: timeToBeat(metadata.igdb, new HowLongToBeat(opts.fetchImpl), () => settings().hltb.enabled !== false),
@@ -272,6 +279,7 @@ export function buildApp(config: ServerConfig, db: Db, opts: BuildOptions = {}):
   // Open event streams would hold shutdown up.
   app.addHook("preClose", async () => ctx.live.close());
   familyRoutes(app, ctx);
+  presenceRoutes(app, ctx);
   helperRoutes(app, ctx);
 
   // TabStationToo for PS2 games in the browser, cross-origin isolated, unless an admin switched it off.
