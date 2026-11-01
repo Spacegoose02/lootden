@@ -399,7 +399,7 @@
   justify-items: center;
   width: 100%;
 }
-.wish-art {
+.wish-granted .wish-art {
   width: 160px;
   aspect-ratio: 3 / 4;
   display: grid;
@@ -411,7 +411,7 @@
   box-shadow: 0 0 0 3px var(--accent-2), 0 0 40px color-mix(in srgb, var(--accent-2) 60%, transparent);
   animation: unlock-glow 1.8s ease-in-out infinite alternate;
 }
-.wish-art img {
+.wish-granted .wish-art img {
   width: 100%;
   height: 100%;
   object-fit: cover;
@@ -781,7 +781,7 @@
   }
   .celebration-card,
   .roulette-card,
-  .wish-art,
+  .wish-granted .wish-art,
   .roulette-result,
   .fun-toast {
     animation: none;
