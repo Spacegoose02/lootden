@@ -575,6 +575,67 @@ const MIGRATIONS: string[] = [
     UNIQUE (game, file_name)
   );
   `,
+  `
+  -- The household's PCs the desktop app runs on: for Wake-on-LAN, free space and streaming.
+  CREATE TABLE pcs (
+    name TEXT PRIMARY KEY,
+    macs TEXT NOT NULL DEFAULT '[]',
+    addresses TEXT NOT NULL DEFAULT '[]',
+    platform TEXT,
+    app_version TEXT,
+    disks TEXT NOT NULL DEFAULT '[]',
+    sunshine INTEGER NOT NULL DEFAULT 0,
+    moonlight INTEGER NOT NULL DEFAULT 0,
+    last_seen TEXT NOT NULL,
+    last_user INTEGER REFERENCES users(id) ON DELETE SET NULL
+  );
+  `,
+  `
+  -- Family game nights: who plays, what, when; a Den Duty family goal can be what earned it.
+  CREATE TABLE game_nights (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT NOT NULL,
+    day TEXT NOT NULL,
+    time TEXT NOT NULL,
+    players TEXT NOT NULL DEFAULT '[]',
+    game_id TEXT,
+    game_title TEXT,
+    note TEXT,
+    goal_id TEXT,
+    goal_title TEXT,
+    goal_icon TEXT,
+    created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    created_at TEXT NOT NULL
+  );
+  CREATE INDEX game_nights_day ON game_nights(day);
+  `,
+  `
+  -- The family screenshot wall: pictures people took while playing, and emoji reactions.
+  CREATE TABLE screenshots (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    game_id TEXT,
+    game_title TEXT,
+    caption TEXT,
+    file TEXT NOT NULL,
+    width INTEGER,
+    height INTEGER,
+    -- Kid profiles see it: taken by a kid, or in a game known to be kid-safe.
+    kid_safe INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL
+  );
+  CREATE INDEX screenshots_created ON screenshots(created_at);
+  CREATE TABLE screenshot_reactions (
+    screenshot_id INTEGER NOT NULL REFERENCES screenshots(id) ON DELETE CASCADE,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    emoji TEXT NOT NULL,
+    PRIMARY KEY (screenshot_id, user_id, emoji)
+  );
+  `,
+  `
+  -- LootDen games each PC streams with Sunshine.
+  ALTER TABLE pcs ADD COLUMN stream_games TEXT NOT NULL DEFAULT '[]';
+  `,
 ];
 
 export function openDatabase(file: string): Db {

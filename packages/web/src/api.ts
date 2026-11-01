@@ -2,6 +2,12 @@ import { desktop } from "./desktop";
 import type {
   AchievementView,
   Allowance,
+  NowPlaying,
+  PcInfo,
+  GameNight,
+  GameNightPick,
+  Screenshot,
+  StreamHost,
   Level,
   PlayerStats,
   PlayLimits,
@@ -745,6 +751,44 @@ export const api = {
   /** Marks the celebrations a screen showed as seen (ids), so ones that arrived meanwhile still get theirs. */
   celebrated: (c: Celebrations) => call("POST", "/api/me/celebrations/seen", { achievements: c.achievements.map((a) => a.id), wishes: c.wishes.map((w) => w.id), bonus: c.bonus.map((b) => b.id) }),
   spun: () => call<{ spins: number }>("POST", "/api/me/roulette"),
+  // Now Playing, parents' controls and the household's PCs.
+  nowPlaying: () => call<NowPlaying[]>("GET", "/api/family/now-playing"),
+  messagePc: (device: string, text: string) => call("POST", `/api/pcs/${encodeURIComponent(device)}/message`, { text }),
+  closeOnPc: (device: string, gameId: string, text?: string) => call("POST", `/api/pcs/${encodeURIComponent(device)}/close`, { gameId, text }),
+  bonusNow: (userId: number, minutes: number) => call<{ allowance: Allowance }>("POST", `/api/family/now-playing/${userId}/bonus`, { minutes }),
+  pcs: () => call<PcInfo[]>("GET", "/api/pcs"),
+  streamHosts: (gameId: string, from?: string) => call<StreamHost[]>("GET", `/api/games/${encodeURIComponent(gameId)}/stream-hosts${qs({ from })}`),
+  gameNights: () => call<GameNightList>("GET", "/api/game-nights"),
+  screenshots: (q: { before?: number; limit?: number; userId?: number; gameId?: string } = {}) =>
+    call<Screenshot[]>("GET", `/api/screenshots${qs({ before: q.before, limit: q.limit, userId: q.userId, gameId: q.gameId })}`),
+  reactToScreenshot: (id: number, emoji: string) => call<Screenshot>("POST", `/api/screenshots/${id}/react`, { emoji }),
+  deleteScreenshot: (id: number) => call("DELETE", `/api/screenshots/${id}`),
+  /** A picture from this device (a phone's screenshot, a console capture). */
+  uploadScreenshot: async (file: File, meta: { title?: string; caption?: string }) => {
+    const res = await fetch(`/api/screenshots${qs({ title: meta.title || undefined, caption: meta.caption || undefined })}`, {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": file.type || "image/png" },
+      body: file,
+    }).catch(() => {
+      throw serverUnreachable();
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new ApiError((data as { error?: string }).error ?? `Upload failed (${res.status})`, res.status);
+    return data as Screenshot;
+  },
+  suggestGameNight: (players: number[]) => call<GameNightPick[]>("POST", "/api/game-nights/suggest", { players }),
+  planGameNight: (n: { title?: string; date: string; time: string; players: number[]; gameId?: string | null; note?: string; goalId?: string | null }) => call<GameNight>("POST", "/api/game-nights", n),
+  cancelGameNight: (id: number) => call("DELETE", `/api/game-nights/${id}`),
+  resetGameNightFeed: () => call<{ feed: string }>("POST", "/api/game-nights/feed/reset"),
+  pcTargets: () => call<Array<{ name: string; online: boolean; lastUser: string | null; freeBytes: number }>>("GET", "/api/pcs/targets"),
+  sendToPc: (device: string, gameId: string) => call("POST", `/api/pcs/${encodeURIComponent(device)}/install`, { gameId }),
+  denDuty: () => call<DenDutyView>("GET", "/api/denduty"),
+  saveDenDuty: (patch: Partial<Omit<DenDutyView, "hasToken" | "connected" | "error" | "lastSyncAt" | "denKids" | "goals">> & { token?: string | null }) => call<DenDutyView>("PUT", "/api/denduty", patch),
+  syncDenDuty: () => call<DenDutyView>("POST", "/api/denduty/sync"),
+  wakePc: (name: string) => call<{ sent: number }>("POST", `/api/pcs/${encodeURIComponent(name)}/wake`),
+  setPcMac: (name: string, mac: string) => call<PcInfo>("PUT", `/api/pcs/${encodeURIComponent(name)}/mac`, { mac }),
+  forgetPc: (name: string) => call("DELETE", `/api/pcs/${encodeURIComponent(name)}`),
   recap: (weeksAgo = 0) => call<WeeklyRecap>("GET", `/api/family/recap${qs({ weeksAgo: weeksAgo || undefined })}`),
   shelves: () => call<Shelf[]>("GET", "/api/shelves"),
   createShelf: (s: ShelfInput) => call<Shelf>("POST", "/api/shelves", s),
@@ -851,4 +895,30 @@ export async function askHelper(req: HelperChatRequest, onText: (text: string) =
   }
   const rest = decoder.decode();
   if (rest) onText(rest);
+}
+
+/** Settings, Den Duty: the link to the family's chore tracker. */
+export interface DenDutyView {
+  url: string;
+  homeId: string;
+  kids: Record<string, string>;
+  locks: boolean;
+  choresFirst: boolean;
+  gameTime: boolean;
+  hasToken: boolean;
+  connected: boolean;
+  error: string | null;
+  lastSyncAt: string | null;
+  denKids: Array<{ id: string; name: string }>;
+  goals: Array<{ id: string; title: string; icon: string; reward: string | null; reachedAt: string }>;
+}
+
+export interface GameNightList {
+  upcoming: GameNight[];
+  past: GameNight[];
+  /** Den Duty family goals reached lately, not celebrated with a game night yet. */
+  goals: Array<{ id: string; title: string; icon: string; reward: string | null; reachedAt: string }>;
+  canPlan: boolean;
+  /** The calendar feed's address (admins). */
+  feed: string | null;
 }

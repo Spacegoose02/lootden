@@ -68,15 +68,23 @@ import { liveRoutes } from "./routes/live.js";
 import { LiveEvents } from "./live.js";
 import { familyRoutes } from "./routes/family.js";
 import { FamilyService } from "./users/family.js";
+import { PresenceService, type WakeSender } from "./users/presence.js";
+import { DenDutyLink } from "./users/denduty.js";
+import { denDutyRoutes } from "./routes/denduty.js";
+import { GameNights } from "./users/gamenight.js";
+import { gameNightRoutes } from "./routes/gamenight.js";
+import { ScreenshotWall } from "./users/screenshots.js";
+import { screenshotRoutes } from "./routes/screenshots.js";
+import { presenceRoutes } from "./routes/presence.js";
 import { ShelfStore } from "./users/shelves.js";
 import { HelperService, type HelperAi } from "./helper/service.js";
 import { helperRoutes } from "./routes/helper.js";
 
-export const VERSION = "0.23.0";
+export const VERSION = "0.24.0";
 
 /** Routes reachable without signing in. */
 // The Steam sign-in callback finds its person by a one-time state value (it may land in a browser nobody is signed in to).
-const PUBLIC = [/^\/api\/health$/, /^\/api\/auth\//, /^\/api\/avatars\//, /^\/api\/addons\/steam\/signin\/callback$/];
+const PUBLIC = [/^\/api\/health$/, /^\/api\/game-nights\/feed\/[^/]+\/game-nights\.ics$/, /^\/api\/auth\//, /^\/api\/avatars\//, /^\/api\/addons\/steam\/signin\/callback$/];
 
 /** The request's path with %-escapes undone; the raw path when it doesn't decode. */
 function decodedPath(raw: string): string {
@@ -113,6 +121,8 @@ export interface BuildOptions {
   resolveHost?: (host: string) => Promise<string[]>;
   /** Tests: Bandit's AI, so no request reaches a real provider. */
   helperAi?: HelperAi;
+  /** Tests: Wake-on-LAN packets go here instead of the network. */
+  wake?: WakeSender;
 }
 
 type Log = { info(o: object, m: string): void; warn(o: object, m: string): void };
@@ -155,6 +165,11 @@ export function buildContext(config: ServerConfig, db: Db, log: Log, opts: Build
   const addons = new AddonRegistry(db, library, opts.fetchImpl, opts.addons, opts.resolveHost, vault);
   addons.extraGames = (userId) => roblox.storeGames(userId);
   const family = new FamilyService(db, library, users, () => requests, notifier);
+  const presence = new PresenceService(db, users, library, family, opts.wake);
+  presence.onChange = () => live.publish("playing");
+  const denDuty = new DenDutyLink(db, vault, users, family, presence, opts.fetchImpl);
+  family.externalLock = (userId) => denDuty.lockFor(userId);
+  const gameNights = new GameNights(db, library, users, family, denDuty);
   return {
     config,
     db,
@@ -191,6 +206,10 @@ export function buildContext(config: ServerConfig, db: Db, log: Log, opts: Build
     steamSignIn: new SteamSignIn(opts.fetchImpl),
     live,
     family,
+    presence,
+    denDuty,
+    gameNights,
+    screenshots: new ScreenshotWall(db, config.dataDir, users, library),
     helper: new HelperService(db, vault, config.anthropicApiKey, () => zonedParts(new Date(), family.timeZone()).date, opts.helperAi),
     shelves: new ShelfStore(db, library),
     timeToBeat: timeToBeat(metadata.igdb, new HowLongToBeat(opts.fetchImpl), () => settings().hltb.enabled !== false),
@@ -272,6 +291,10 @@ export function buildApp(config: ServerConfig, db: Db, opts: BuildOptions = {}):
   // Open event streams would hold shutdown up.
   app.addHook("preClose", async () => ctx.live.close());
   familyRoutes(app, ctx);
+  presenceRoutes(app, ctx);
+  denDutyRoutes(app, ctx);
+  gameNightRoutes(app, ctx);
+  screenshotRoutes(app, ctx);
   helperRoutes(app, ctx);
 
   // TabStationToo for PS2 games in the browser, cross-origin isolated, unless an admin switched it off.

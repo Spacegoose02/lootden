@@ -95,6 +95,36 @@ set `"allowUnverifiedUpdates": true` in the app's `settings.json` (in its user d
 | **Bandit (AI helper)** | The AI gaming helper: on/off, Anthropic API key, model (Claude Opus 5.5, Sonnet 5.5 or Haiku 5.5), thinking (quick, balanced, deep), longest answer, questions a day for grown-ups and for kids, a monthly budget in dollars that pauses him once it's reached, web search and link reading (on or off, searches per question, about $0.01 each, and whether kids may search on kid-safe game sites), and this month's usage and estimated cost per person. Each person's row has the parent switch (kids start off) and their own daily limit |
 | **Sign-in & services** | Public address, OIDC, IGDB / RAWG / SteamGridDB / ScreenScraper / TheGamesDB keys, LaunchBox switch, metadata source priority, itch.io and NexusMods keys |
 | **News & apps** | News feeds, YouTube rows, desktop app builds for the Get the app page |
+| **Den Duty** | The link to Den Duty, the family's chore tracker: its address, home id and a **control** API token; which LootDen profile is which Den Duty kid; and the switches for time-outs that lock games, **Chores first** and game time from Den Duty's shop |
+| **PCs** | Every PC the desktop app runs on: on or off, who signed in last, what's playing, free space per drive, Sunshine and Moonlight, and **Wake** (Wake-on-LAN) |
+
+### Wake-on-LAN
+
+**Settings, PCs, Wake** broadcasts a magic packet to the PC's network cards. Two things have
+to be true for it to arrive:
+
+- On the PC, the network card's **Wake on Magic Packet** setting is on (Device Manager, the
+  card, Advanced and Power Management), and Wake-on-LAN is on in the BIOS. Wired Ethernet
+  works best; most Wi-Fi cards can't wake a PC.
+- The server's broadcast reaches the home network. Docker's default bridge network doesn't
+  pass broadcasts, so run the container with host networking:
+
+  ```yaml
+  services:
+    lootden:
+      network_mode: host   # instead of ports:
+  ```
+
+  On Unraid, set the container's Network Type to **Host**.
+
+The PC's MAC address is learnt the first time the app runs there; type another on the PC's
+card if it should wake a different network card.
+
+### Game night calendar feed
+
+**Game night** (in the menu) shows admins a calendar feed address with a secret in it. Den
+Duty (Calendars, Subscribe) or any calendar app can subscribe to it; **New address** stops the
+old one working.
 
 Keys and passwords entered there are stored in the database and never sent back to the
 browser in full.

@@ -139,8 +139,15 @@ export class FamilyService {
       .filter((s) => this.localDate(s.ended_at, tz) === today)
       .reduce((n, s) => n + s.seconds, 0);
     const bonus = (this.db.prepare("SELECT COALESCE(SUM(minutes), 0) AS m FROM time_requests WHERE user_id = ? AND day = ? AND state = 'approved'").get(userId, today) as { m: number }).m;
-    return computeAllowance(this.limits(userId), used, bonus * 60, at, tz);
+    const a = computeAllowance(this.limits(userId), used, bonus * 60, at, tz);
+    // Den Duty: a time-out that locks games, or chores still to do.
+    const lock = this.externalLock?.(userId);
+    if (lock?.all) return { ...a, canPlay: false, reason: lock.all, robloxLock: null };
+    return lock?.roblox ? { ...a, robloxLock: lock.roblox } : a;
   }
+
+  /** Locks from outside LootDen (the Den Duty link), in words. */
+  externalLock?: (userId: number) => { all: string | null; roblox: string | null };
 
   private timeRow(r: { id: number; user_id: number; display_name: string | null; minutes: number; note: string | null; state: TimeRequest["state"]; day: string; created_at: string; decided_at: string | null }): TimeRequest {
     return { id: r.id, userId: r.user_id, name: r.display_name ?? "Someone", minutes: r.minutes, note: r.note, state: r.state, date: r.day, createdAt: r.created_at, decidedAt: r.decided_at };

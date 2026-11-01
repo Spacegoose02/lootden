@@ -8,6 +8,7 @@ import { bridgeError, desktop, type InstalledGame } from "../desktop";
 import { POSTER_SIZES, THEMES, usePosterSize, useTheme } from "../theme";
 import { GameLibraries } from "../components/GameLibraries";
 import { StoreScan } from "../components/StoreScan";
+import { StreamingSetup } from "../components/Streaming";
 import { AchievementsGrid, HoloCard, RaccoonBuilder, useProgress } from "../components/Progress";
 import { PlayTimeCard } from "../components/PlayTime";
 import { BanditProfileCard } from "../components/Bandit";
@@ -274,6 +275,7 @@ function ThisComputer() {
       </ul>
       {installed.length === 0 && <p className="muted">No games installed on this computer yet.</p>}
       <StoreScan />
+      <StreamingSetup />
       <AppOptions />
     </section>
   );

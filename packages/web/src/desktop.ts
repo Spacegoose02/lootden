@@ -136,6 +136,12 @@ export interface DesktopBridge {
   openBrowser?(url?: string): Promise<void>;
   /** This PC's store scanner settings, and adding a folder to it through the folder picker (newer apps only). */
   storeScan?(patch?: { disabled?: string[]; folders?: string[] }): Promise<StoreScanSettings>;
+  /** Game streaming on this PC: Sunshine (host) and Moonlight (player). Apps from before 0.24 lack these. */
+  streaming?(): Promise<StreamingStatus>;
+  linkSunshine?(user: string, pass: string): Promise<StreamingStatus & { added: string[] }>;
+  syncSunshine?(): Promise<StreamingStatus & { added: string[] }>;
+  unlinkSunshine?(): Promise<StreamingStatus>;
+  streamGame?(host: string, title: string): Promise<void>;
   addStoreFolder?(): Promise<StoreScanSettings>;
   /** Disc/installer games: install once on this PC and upload the result. Missing in older apps. */
   prepare?(gameId: string): Promise<GameDetailLike | null>;
@@ -239,4 +245,14 @@ export interface InstalledWorkshopItem {
   title: string;
   installedAt: string;
   dir: string;
+}
+
+/** Game streaming on this PC. */
+export interface StreamingStatus {
+  hostname: string;
+  sunshine: boolean;
+  moonlight: boolean;
+  /** Sunshine's login is saved, so LootDen keeps its games in Sunshine. */
+  linked: boolean;
+  streamGames: number;
 }

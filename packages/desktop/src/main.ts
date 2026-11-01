@@ -4,7 +4,7 @@ import { existsSync } from "node:fs";
 import { mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, net, Notification, screen, session, shell, Tray, type IpcMainInvokeEvent } from "electron";
+import { app, BrowserWindow, desktopCapturer, dialog, globalShortcut, ipcMain, Menu, nativeImage, net, Notification, safeStorage, screen, session, shell, Tray, type IpcMainInvokeEvent } from "electron";
 import {
   isBrowsable,
   addBiosFile,
@@ -29,6 +29,14 @@ import {
   installGame,
   launchAndTrack,
   listDrives,
+  listProcesses,
+  pcReport,
+  processesIn,
+  runningStoreGames,
+  streamWithMoonlight,
+  syncSunshine,
+  firstExisting,
+  streamingPaths,
   listInstalled,
   listWorkshopItems,
   downloadWorkshopItem,
@@ -55,7 +63,7 @@ import {
   UpdateMismatchError,
   type InstallEvent,
 } from "@lootden/client";
-import type { Allowance } from "@lootden/shared";
+import { PRESENCE_INTERVAL_SECONDS, type Allowance, type LocalStoreGame, type PcCommand, type PlaySource, type RunningGame } from "@lootden/shared";
 import { isExternalLink, isFile, onOrigin, permissionAllowed } from "./links.js";
 import { SettingsStore, type DesktopSettings } from "./settings.js";
 import { WebBrowser } from "./browser.js";
@@ -400,6 +408,194 @@ async function flushPendingPlays(): Promise<void> {
   }
 }
 
+// ---- Now Playing and parents' controls ------------------------------------------
+
+/** Games started from LootDen that run now, with how to close them. */
+const nowRunning = new Map<string, { game: RunningGame; stop?: AbortController }>();
+/** Other launchers' games seen running, and when each was first seen. */
+const storeSince = new Map<string, string>();
+let storeGamesCache: { at: number; games: LocalStoreGame[] } | null = null;
+let heartbeatTimer: NodeJS.Timeout | null = null;
+let beating = false;
+/** Installs a game from the server; set once the IPC handlers exist. */
+let installRemote: ((gameId: string) => Promise<unknown>) | null = null;
+/** Starts an installed game (lootden://play links, which Sunshine uses); set once the IPC handlers exist. */
+let playRemote: ((gameId: string) => Promise<unknown>) | null = null;
+/** Commands already carried out, so a repeat delivery does nothing twice. */
+const handledCommands = new Set<string>();
+
+/** A game LootDen started is running: it goes on the family's Now Playing board. */
+function markRunning(gameId: string, title: string, source: PlaySource, stop?: AbortController): void {
+  nowRunning.set(gameId, { game: { gameId, title, source, startedAt: new Date().toISOString() }, stop });
+  lastPlayingNow = [...nowRunning.values()].map((r) => r.game);
+  updateScreenshotKey(true);
+  scheduleHeartbeat(1000);
+}
+
+async function storeGamesForPresence(): Promise<LocalStoreGame[]> {
+  if (storeGamesCache && Date.now() - storeGamesCache.at < 10 * 60_000) return storeGamesCache.games;
+  const { disabled, folders } = settings.get().storeScan;
+  const games = await scanStoreGames(STORE_SCANNERS, process.platform, { disabled, folders }).catch(() => [] as LocalStoreGame[]);
+  storeGamesCache = { at: Date.now(), games };
+  return games;
+}
+
+/** Closes everything running from these folders (games from other launchers). */
+async function closeFolders(dirs: string[]): Promise<void> {
+  for (const pid of processesIn(await listProcesses(), dirs)) {
+    if (process.platform === "win32") spawn("taskkill", ["/pid", String(pid), "/T", "/F"], { stdio: "ignore", windowsHide: true }).on("error", () => {});
+    else {
+      try {
+        process.kill(pid, "SIGTERM");
+      } catch {
+        // Already gone.
+      }
+    }
+  }
+}
+
+/** A parent's message or "close the game", sent from the Now Playing board. */
+function runCommand(cmd: PcCommand): void {
+  if (handledCommands.has(cmd.id)) return;
+  handledCommands.add(cmd.id);
+  if (cmd.kind === "message") {
+    playNotice("", `Message from ${cmd.from}`, cmd.text);
+    return;
+  }
+  if (cmd.kind === "install") {
+    playNotice(cmd.gameId, `${cmd.from} sent you ${cmd.title}`, "It's downloading now and will be ready to play here.");
+    void installRemote?.(cmd.gameId).then(
+      () => playNotice(cmd.gameId, `${cmd.title} is ready`, `${cmd.from} sent it to this PC. Have fun!`),
+      (err: Error) => {
+        if (!/Already install/.test(err.message)) playNotice(cmd.gameId, `Couldn't install ${cmd.title}`, err.message);
+      },
+    );
+    return;
+  }
+  const mine = nowRunning.get(cmd.gameId);
+  const title = mine?.game.title ?? cmd.gameId;
+  playNotice(cmd.gameId, `${cmd.from} is closing ${title}`, `${cmd.text ? `${cmd.text} ` : ""}Save your game now: it closes in 60 seconds.`);
+  setTimeout(() => {
+    if (mine?.stop) return mine.stop.abort();
+    const m = /^store:([^:]+):(.+)$/.exec(cmd.gameId);
+    const store = m && storeGamesCache?.games.find((g) => g.addon === m[1] && g.externalId === m[2]);
+    if (store) void closeFolders([store.installDir]).catch(() => {});
+  }, 60_000);
+}
+
+/** Tells the server what runs on this PC, about every half minute, and carries out parents' commands. */
+async function heartbeat(): Promise<void> {
+  if (beating || !settings.get().apiToken) return;
+  beating = true;
+  try {
+    const mine = new Set(nowRunning.keys());
+    const stores = await storeGamesForPresence();
+    const procs = stores.length ? await listProcesses().catch(() => []) : [];
+    const playingNow = [...[...nowRunning.values()].map((r) => r.game), ...runningStoreGames(procs, stores, storeSince, mine)];
+    lastPlayingNow = playingNow;
+    updateScreenshotKey(playingNow.length > 0);
+    const api = clientFor(currentPlayer()) ?? (await client());
+    const answer = await api.presence({ device: os.hostname(), playing: playingNow, pc: { ...(await pcReport(app.getVersion())), streamGames: settings.get().sunshine?.streamGames ?? [] } });
+    for (const cmd of answer.commands) runCommand(cmd);
+  } catch {
+    // Offline, signed out or an older server: try again next time.
+  } finally {
+    beating = false;
+    scheduleHeartbeat(PRESENCE_INTERVAL_SECONDS * 1000);
+  }
+}
+
+function scheduleHeartbeat(ms: number): void {
+  if (heartbeatTimer) clearTimeout(heartbeatTimer);
+  heartbeatTimer = setTimeout(() => void heartbeat(), ms);
+  heartbeatTimer.unref?.();
+}
+
+// ---- Screenshot wall ------------------------------------------------------------
+
+/** Shares the screen to the family wall. Only taken while a game runs, so it never steals the keys from other programs. */
+const SCREENSHOT_KEY = "Ctrl+Shift+S";
+let shotKeyOn = false;
+
+/** The screenshot key works while a game runs (LootDen's or another launcher's). */
+function updateScreenshotKey(gamesRunning: boolean): void {
+  if (gamesRunning === shotKeyOn || !app.isReady()) return;
+  if (gamesRunning) shotKeyOn = globalShortcut.register(SCREENSHOT_KEY.replace("Ctrl", "CommandOrControl"), () => void shareScreenshot());
+  else {
+    globalShortcut.unregister(SCREENSHOT_KEY.replace("Ctrl", "CommandOrControl"));
+    shotKeyOn = false;
+  }
+}
+
+let lastPlayingNow: RunningGame[] = [];
+let shooting = false;
+
+/** Takes the screen the mouse is on and puts it on the family screenshot wall, with the game running. */
+async function shareScreenshot(): Promise<void> {
+  if (shooting) return;
+  shooting = true;
+  try {
+    const display = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
+    const size = { width: Math.round(display.size.width * display.scaleFactor), height: Math.round(display.size.height * display.scaleFactor) };
+    const sources = await desktopCapturer.getSources({ types: ["screen"], thumbnailSize: size });
+    const source = sources.find((x) => x.display_id === String(display.id)) ?? sources[0];
+    if (!source || source.thumbnail.isEmpty()) throw new Error("Couldn't capture the screen");
+    const jpeg = source.thumbnail.toJPEG(88);
+    const game = lastPlayingNow[0];
+    const q = new URLSearchParams({ width: String(source.thumbnail.getSize().width), height: String(source.thumbnail.getSize().height) });
+    if (game && (game.source === "lootden" || game.source === "emulated")) q.set("gameId", game.gameId);
+    if (game) q.set("title", game.title);
+    const api = clientFor(currentPlayer()) ?? (await client());
+    const res = await net.fetch(`${origin()}/api/screenshots?${q}`, { method: "POST", headers: api.headers({ "content-type": "image/jpeg" }), body: new Uint8Array(jpeg) });
+    if (!res.ok) throw new Error(((await res.json().catch(() => ({}))) as { error?: string }).error ?? `The server answered ${res.status}`);
+    if (Notification.isSupported()) new Notification({ title: "📸 Shared with the family", body: game ? `Your ${game.title} screenshot is on the wall.` : "Your screenshot is on the wall.", silent: true }).show();
+  } catch (err) {
+    if (Notification.isSupported()) new Notification({ title: "Couldn't share the screenshot", body: (err as Error).message }).show();
+  } finally {
+    shooting = false;
+  }
+}
+
+// ---- Game streaming (Sunshine and Moonlight) ------------------------------------
+
+const sunshineAuth = (): { user: string; pass: string } | null => {
+  const s = settings.get().sunshine;
+  if (!s) return null;
+  try {
+    return { user: s.user, pass: s.sealed ? safeStorage.decryptString(Buffer.from(s.pass, "base64")) : s.pass };
+  } catch {
+    return null;
+  }
+};
+
+/** The LootDen games on this PC that are ready to play (not still installers), for Sunshine. */
+async function playableGames(): Promise<Array<{ gameId: string; title: string }>> {
+  const games = await listInstalled(await searchDirs());
+  return games.filter((g) => !g.needsSetup || g.installedDir).map((g) => ({ gameId: g.gameId, title: g.title }));
+}
+
+/** Adds this PC's LootDen games to Sunshine (the ones it doesn't have yet). */
+async function sunshineSyncNow(): Promise<string[]> {
+  const auth = sunshineAuth();
+  if (!auth) throw new Error("Link Sunshine first");
+  const games = await playableGames();
+  const added = await syncSunshine(games, process.env.PORTABLE_EXECUTABLE_FILE ?? process.execPath, auth);
+  settings.update({ sunshine: { ...settings.get().sunshine!, streamGames: games.map((g) => g.gameId) } });
+  scheduleHeartbeat(1000);
+  return added;
+}
+
+async function streamingStatus() {
+  const p = streamingPaths();
+  return {
+    hostname: os.hostname(),
+    sunshine: !!(await firstExisting(p.sunshine)),
+    moonlight: !!(await firstExisting(p.moonlight)),
+    linked: !!settings.get().sunshine,
+    streamGames: settings.get().sunshine?.streamGames.length ?? 0,
+  };
+}
+
 // ---- Covers for the offline page ------------------------------------------------
 
 const coversDir = () => path.join(app.getPath("userData"), "Covers");
@@ -551,7 +747,10 @@ function relTo(dir: string, file: string): string {
 function send(payload: object): void {
   const p = payload as { gameId?: string; type?: string };
   if (p.gameId && p.type === "playing") playing.add(p.gameId);
-  if (p.gameId && (p.type === "stopped" || p.type === "error")) playing.delete(p.gameId);
+  if (p.gameId && (p.type === "stopped" || p.type === "error")) {
+    playing.delete(p.gameId);
+    if (nowRunning.delete(p.gameId)) scheduleHeartbeat(1000);
+  }
   if (p.type === "playing" || p.type === "stopped") refreshTray();
   win?.webContents.send("gm:progress", payload);
 }
@@ -598,6 +797,7 @@ function refreshTray(): void {
       { label: "Open LootDen", click: () => showWindow() },
       { label: "Installed games", click: () => showWindow("/library?tab=installed") },
       { label: "Web browser", click: () => void browser.open() },
+      { label: `Share a screenshot (${SCREENSHOT_KEY})`, click: () => void shareScreenshot() },
       { type: "separator" },
       u.state === "ready"
         ? { label: `Restart to update to ${u.version}`, click: () => void installNow() }
@@ -862,6 +1062,13 @@ function registerIpc(): void {
 
   ipcMain.handle("gm:install", async (e, gameId: string, dir?: string) => {
     fromServer(e);
+    return installFromServer(gameId, dir);
+  });
+  installRemote = (gameId) => installFromServer(gameId);
+  playRemote = (gameId) => play(gameId);
+
+  /** Downloads and installs a game from the server (the Install button, or Send to PC from another device). */
+  async function installFromServer(gameId: string, dir?: string) {
     if (running.has(gameId)) throw new Error("Already installing");
     // Never download a second copy of something already on this computer.
     const existing = await findCopies(await searchDirs(), await gameRef(gameId));
@@ -889,6 +1096,8 @@ function registerIpc(): void {
         },
       });
       void cacheDetails([gameId]).catch(() => {});
+      // A streaming PC gets the new game in Sunshine too.
+      if (settings.get().sunshine) void sunshineSyncNow().catch(() => {});
       return { gameDir };
     } catch (err) {
       send({ gameId, type: controller.signal.aborted ? "cancelled" : "error", message: (err as Error).message });
@@ -896,7 +1105,7 @@ function registerIpc(): void {
     } finally {
       running.delete(gameId);
     }
-  });
+  }
 
   ipcMain.handle("gm:cancel", (e, gameId: string) => {
     fromServer(e);
@@ -943,6 +1152,7 @@ function registerIpc(): void {
     await useSaveSlot(live, gameId, game.dir, today).catch((err: Error) => send({ gameId, type: "warning", message: `Couldn't switch saves: ${err.message}` }));
     const stop = new AbortController();
     const unwatch = guardPlay(live, gameId, game.title, today, today?.hardStop ? stop : undefined);
+    markRunning(gameId, game.title, "lootden", stop);
     send({ gameId, type: "playing" });
     void launchAndTrack(game.dir, exe, process.platform, stop.signal, { watchDirs: [home] }).then(
       async (seconds) => {
@@ -980,6 +1190,7 @@ function registerIpc(): void {
       onEvent: (ev) => send({ gameId, type: "prepare", message: ev.message }),
       onStarted: (plan) => {
         unwatch = guardPlay(api, gameId, path.basename(plan.rom), today);
+        markRunning(gameId, path.basename(plan.rom, path.extname(plan.rom)), "emulated");
         send({ gameId, type: "playing" });
         started({ executable: `${plan.emulator.name}: ${path.basename(plan.rom)}` });
       },
@@ -1415,6 +1626,42 @@ function registerIpc(): void {
     }
     return storeScanView();
   });
+  ipcMain.handle("gm:streaming", async (e) => {
+    fromServer(e);
+    return streamingStatus();
+  });
+  /** Saves Sunshine's web login (checked first) and adds this PC's games to it. */
+  ipcMain.handle("gm:linkSunshine", async (e, user: string, pass: string) => {
+    fromServer(e);
+    if (typeof user !== "string" || typeof pass !== "string" || !user.trim() || !pass) throw new Error("Type Sunshine's username and password");
+    const sealed = safeStorage.isEncryptionAvailable();
+    const prev = settings.get().sunshine;
+    settings.update({ sunshine: { user: user.trim(), pass: sealed ? safeStorage.encryptString(pass).toString("base64") : pass, sealed, streamGames: prev?.streamGames ?? [] } });
+    try {
+      return { ...(await streamingStatus()), added: await sunshineSyncNow() };
+    } catch (err) {
+      settings.update({ sunshine: prev });
+      throw err;
+    }
+  });
+  ipcMain.handle("gm:syncSunshine", async (e) => {
+    fromServer(e);
+    const added = await sunshineSyncNow();
+    return { ...(await streamingStatus()), added };
+  });
+  ipcMain.handle("gm:unlinkSunshine", async (e) => {
+    fromServer(e);
+    settings.update({ sunshine: undefined });
+    scheduleHeartbeat(1000);
+    return streamingStatus();
+  });
+  /** Streams a game from another PC with Moonlight. */
+  ipcMain.handle("gm:streamGame", async (e, host: string, title: string) => {
+    fromServer(e);
+    if (typeof host !== "string" || typeof title !== "string") throw new Error("Pick a PC to stream from");
+    await streamWithMoonlight(host, title);
+  });
+
   /** Starts (or installs) a store game through its launcher. Only store launcher links open. */
   ipcMain.handle("gm:launchStore", async (e, url: string) => {
     fromServer(e);
@@ -1436,6 +1683,8 @@ function registerIpc(): void {
     const player = currentPlayer();
     const today = await todaysAllowance(live);
     if (today && !today.canPlay) throw new Error(today.reason ?? "No play time left today");
+    // A Den Duty time-out can lock Roblox alone.
+    if (today?.robloxLock) throw new Error(today.robloxLock);
     await shell.openExternal(url);
     launching.add(gameId);
     const stop = new AbortController();
@@ -1445,6 +1694,7 @@ function registerIpc(): void {
       onStarted: () => {
         launching.delete(gameId);
         unwatch = guardPlay(live, gameId, "Roblox", today, today?.hardStop ? stop : undefined);
+        markRunning(gameId, "Roblox", "roblox", stop);
         send({ gameId, type: "playing" });
       },
     }).then(
@@ -1459,6 +1709,7 @@ function registerIpc(): void {
         launching.delete(gameId);
         unwatch();
         playing.delete(gameId);
+        if (nowRunning.delete(gameId)) scheduleHeartbeat(1000);
       },
     );
   }
@@ -1620,9 +1871,16 @@ function registerIpc(): void {
 
 /**
  * lootden://install/<id> from a browser opens the game page with the install panel.
+ * lootden://play/<id> starts an installed game (Sunshine's apps use it for streaming).
  * lootden://auth?code=... finishes a single sign-on the app started in the browser.
  */
 async function openDeepLink(link: string): Promise<void> {
+  // lootden://play/<id>: Sunshine (game streaming) starts games this way. No window needed.
+  const playLink = link.match(/^lootden:\/\/play\/([\w-]+)/);
+  if (playLink) {
+    void playRemote?.(playLink[1]!).catch((err: Error) => playNotice(playLink[1]!, "Couldn't start the game", err.message));
+    return;
+  }
   const install = link.match(/^(?:lootden|gamemanager):\/\/install\/([\w-]+)/);
   const auth = link.match(/^(?:lootden|gamemanager):\/\/auth\/?\?code=([\w-]+)/);
   if (!(install || auth) || !win || !origin()) return;
@@ -1764,6 +2022,7 @@ app.on("second-instance", (_e, argv) => {
   if (argv.includes("--browser")) void browser.open();
 });
 app.on("before-quit", () => (quitting = true));
+app.on("will-quit", () => globalShortcut.unregisterAll());
 app.on("open-url", (e, url) => {
   e.preventDefault();
   void openDeepLink(url);
@@ -1808,4 +2067,6 @@ void app.whenReady().then(async () => {
   // Look for app updates shortly after start, then every few hours.
   setTimeout(() => void checkForUpdate(), 30_000);
   setInterval(() => void checkForUpdate(), 4 * 3600_000);
+  // Now Playing: tell the server what runs here, and pick up parents' messages.
+  scheduleHeartbeat(10_000);
 });

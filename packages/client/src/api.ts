@@ -1,4 +1,4 @@
-import type { ActivityEvent, Allowance, GameDetail, PlayLimits, GameSummary, HealthResponse, LibraryStats, SaveBackup, TruckGame, TruckMod, User } from "@lootden/shared";
+import type { ActivityEvent, Allowance, PresenceAnswer, PresenceReport, GameDetail, PlayLimits, GameSummary, HealthResponse, LibraryStats, SaveBackup, TruckGame, TruckMod, User } from "@lootden/shared";
 import type { ClientConfig } from "./config.js";
 
 export class ApiError extends Error {
@@ -42,7 +42,7 @@ export class GameServerClient {
   }
 
   async json<T>(pathname: string, init: RequestInit = {}): Promise<T> {
-    const res = await fetch(this.base + pathname, { ...init, headers: this.headers() });
+    const res = await fetch(this.base + pathname, { ...init, headers: this.headers((init.headers ?? {}) as Record<string, string>) });
     if (!res.ok) {
       const body = await res.text().catch(() => "");
       throw new ApiError(`${init.method ?? "GET"} ${pathname} failed with ${res.status}: ${body}`, res.status);
@@ -90,6 +90,10 @@ export class GameServerClient {
       body: JSON.stringify(a),
     }).catch(() => undefined);
     return !!res;
+  }
+  /** The heartbeat: what runs on this PC. The answer carries parents' messages for it (404 on older servers). */
+  presence(report: PresenceReport) {
+    return this.json<PresenceAnswer>("/api/me/presence", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(report) });
   }
   /** Today's play time and limits for the person this token belongs to (404 on servers from before limits). */
   allowance() {

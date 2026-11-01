@@ -14,6 +14,8 @@ import { StoreGameCard, storeKey, useStoreGames } from "../components/StoreGameC
 import { bridgeError, desktop, type InstalledGame } from "../desktop";
 import { usePosterSize } from "../theme";
 import { PlayTimeCard } from "../components/PlayTime";
+import { NowPlayingStrip, NextGameNight } from "../components/NowPlaying";
+import { HomeScreenshots } from "./Screenshots";
 import { WeekStrip } from "../components/Family";
 import { GameOfTheDay } from "../components/Roulette";
 import { HomeShelves } from "../components/Shelves";
@@ -191,6 +193,8 @@ export function Home() {
   return (
     <>
       <PlayTimeCard compact />
+      <NowPlayingStrip />
+      <NextGameNight />
       {resume && <ResumeHero game={resume} installedHere={!!local?.some((l) => l.gameId === resume.id)} />}
       {!resume && hero && poster !== "off" && (
         <section className={`hero hero-${poster}`}>
@@ -227,6 +231,7 @@ export function Home() {
         </section>
       )}
       {blocks}
+      <HomeScreenshots />
     </>
   );
 }

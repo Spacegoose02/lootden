@@ -1,8 +1,8 @@
 import { useEffect, useRef } from "react";
 
 /** What the server says changed (see packages/server/src/live.ts). */
-export type LiveTopic = "library" | "alerts" | "downloads";
-const TOPICS: LiveTopic[] = ["library", "alerts", "downloads"];
+export type LiveTopic = "library" | "alerts" | "downloads" | "playing" | "screenshots";
+const TOPICS: LiveTopic[] = ["library", "alerts", "downloads", "playing", "screenshots"];
 
 const listeners = new Map<LiveTopic, Set<() => void>>(TOPICS.map((t) => [t, new Set()]));
 let source: EventSource | null = null;
