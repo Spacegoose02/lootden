@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { EMULATORS, platformFor, recompsFor, type GameDetail, type RecompInfo } from "@lootden/shared";
+import { EMULATORS, platformFor, recompsFor, RECOMP_LOOKS, type GameDetail, type RecompInfo } from "@lootden/shared";
 import { api, formatBytes } from "../api";
 import { useAuth } from "../auth";
-import { bridgeError, desktop, useDesktopGame, type Drive, type RecompModsView, type RecompSettingView, type RecompSetup } from "../desktop";
+import { bridgeError, desktop, useDesktopGame, type Drive, type GameBananaModView, type RecompLookView, type RecompModsView, type RecompSettingView, type RecompSetup } from "../desktop";
 import { LaunchOptionsPanel, PlayWithButtons, useLaunchOptions } from "./LaunchOptions";
 
 /** Install / play / uninstall panel shown inside the desktop app. */
@@ -259,14 +259,17 @@ export function DesktopInstall({ game, autoFocus }: { game: GameDetail; autoFocu
   );
 }
 
-/** A recomp's own settings (from its recomplauncher.json), changed here instead of in its files. */
+/** A recomp's own settings (from its recomplauncher.json) and its look, changed here instead of in its files. */
 function RecompSettingsPanel({ recomp }: { recomp: RecompInfo }) {
   const [settings, setSettings] = useState<RecompSettingView[]>([]);
+  const [look, setLook] = useState<RecompLookView | null>(null);
   const [error, setError] = useState("");
   useEffect(() => {
     void desktop?.recompSettings?.(recomp.id).then(setSettings, () => {});
+    void desktop?.recompLook?.(recomp.id).then(setLook, () => {});
   }, [recomp.id]);
-  if (!settings.length || !desktop?.setRecompSetting) return null;
+  const showLook = !!look && !!desktop?.setRecompLook && (look.available || look.look !== "off");
+  if ((!settings.length || !desktop?.setRecompSetting) && !showLook) return null;
   const pick = async (id: string, choice: number) => {
     setError("");
     try {
@@ -275,6 +278,15 @@ function RecompSettingsPanel({ recomp }: { recomp: RecompInfo }) {
       setError(bridgeError(e));
     }
   };
+  const pickLook = async (id: string) => {
+    setError("");
+    try {
+      setLook(await desktop!.setRecompLook!(recomp.id, id));
+    } catch (e) {
+      setError(bridgeError(e));
+    }
+  };
+  const lookHelp = RECOMP_LOOKS.find((l) => l.id === look?.look)?.help;
   return (
     <details className="recomp-settings">
       <summary>{recomp.name} settings</summary>
@@ -292,21 +304,52 @@ function RecompSettingsPanel({ recomp }: { recomp: RecompInfo }) {
           {s.help && <span className="muted small"> {s.help}</span>}
         </label>
       ))}
+      {showLook && (
+        <label className={look!.available ? undefined : "muted"}>
+          Look{" "}
+          <select value={look!.look} disabled={!look!.available} onChange={(e) => void pickLook(e.target.value)}>
+            {RECOMP_LOOKS.map((l) => (
+              <option key={l.id} value={l.id}>
+                {l.name}
+              </option>
+            ))}
+          </select>
+          <span className="muted small"> {look!.available ? `${lookHelp ?? ""} Uses ReShade, downloaded from reshade.me the first time.` : look!.reason}</span>
+        </label>
+      )}
       {error && <p className="error small">{error}</p>}
     </details>
   );
 }
 
-/** Mods for a recomp from Thunderstore: the ones on this PC, and the community's most liked. */
+/** Mods for a recomp from Thunderstore and GameBanana: the ones on this PC, and each site's most liked. */
 function RecompModsPanel({ recomp }: { recomp: RecompInfo }) {
   const [data, setData] = useState<RecompModsView | null>(null);
   const [query, setQuery] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [open, setOpen] = useState(false);
+  const [banana, setBanana] = useState<GameBananaModView[] | null>(null);
+  const [bananaQuery, setBananaQuery] = useState("");
+  const [bananaBusy, setBananaBusy] = useState(false);
   useEffect(() => {
     if (open && !data) void desktop?.recompMods?.(recomp.id).then(setData, (e) => setError(bridgeError(e)));
   }, [open, recomp.id]);
+  const searchBanana = async (q: string) => {
+    if (!desktop?.gamebananaMods) return;
+    setBananaBusy(true);
+    setError("");
+    try {
+      setBanana(await desktop.gamebananaMods(recomp.id, q));
+    } catch (e) {
+      setError(bridgeError(e));
+    } finally {
+      setBananaBusy(false);
+    }
+  };
+  useEffect(() => {
+    if (data?.gamebanana && banana === null) void searchBanana("");
+  }, [data?.gamebanana]);
   if (!desktop?.recompMods) return null;
   const act = async (full: string, fn: () => Promise<RecompModsView["installed"]>) => {
     setBusy(full);
@@ -326,14 +369,14 @@ function RecompModsPanel({ recomp }: { recomp: RecompInfo }) {
   return (
     <details className="recomp-settings" onToggle={(e) => setOpen((e.target as HTMLDetailsElement).open)}>
       <summary>{recomp.name} mods</summary>
-      {!data && !error && <p className="muted small">Loading mods from Thunderstore…</p>}
+      {!data && !error && <p className="muted small">Loading mods…</p>}
       {data && (
         <>
           {data.installed.length > 0 && (
             <ul className="bios-list">
               {data.installed.map((m) => (
                 <li key={m.full}>
-                  <span className="ok">✓</span> {m.name} <span className="muted small">{m.version}{m.dep ? " · needed by another mod" : ""}</span>{" "}
+                  <span className="ok">✓</span> {m.name} <span className="muted small">{m.version}{m.dep ? " · needed by another mod" : ""}{m.full.startsWith("gamebanana:") ? " · GameBanana" : ""}</span>{" "}
                   <button className="small ghost" disabled={!!busy} onClick={() => void act(m.full, () => desktop!.removeRecompMod!(recomp.id, m.full))}>
                     Remove
                   </button>
@@ -342,22 +385,59 @@ function RecompModsPanel({ recomp }: { recomp: RecompInfo }) {
             </ul>
           )}
           {data.others.length > 0 && <p className="muted small">Also in the mods folder, put there by hand: {data.others.join(", ")}</p>}
-          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder={`Search ${data.available.length} mods`} aria-label="Search mods" />
-          <ul className="bios-list">
-            {shown.map((m) => (
-              <li key={m.full}>
-                {m.name} <span className="muted small">by {m.owner} · {m.version} · {m.downloads.toLocaleString()} downloads</span>{" "}
-                <button className="small" disabled={!!busy} onClick={() => void act(m.full, () => desktop!.installRecompMod!(recomp.id, m.full))}>
-                  {busy === m.full ? "Installing…" : "Install"}
+          {data.community && (
+            <>
+              <h4>Thunderstore</h4>
+              <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder={`Search ${data.available.length} mods`} aria-label="Search Thunderstore mods" />
+              <ul className="bios-list">
+                {shown.map((m) => (
+                  <li key={m.full}>
+                    {m.name} <span className="muted small">by {m.owner} · {m.version} · {m.downloads.toLocaleString()} downloads</span>{" "}
+                    <button className="small" disabled={!!busy} onClick={() => void act(m.full, () => desktop!.installRecompMod!(recomp.id, m.full))}>
+                      {busy === m.full ? "Installing…" : "Install"}
+                    </button>
+                    {m.description && <div className="muted small">{m.description}</div>}
+                  </li>
+                ))}
+              </ul>
+              <p className="muted small">
+                From <a href={`https://thunderstore.io/c/${data.community}/`} target="_blank" rel="noreferrer">thunderstore.io/c/{data.community}</a>.
+              </p>
+            </>
+          )}
+          {data.gamebanana && desktop.gamebananaMods && desktop.installGamebananaMod && (
+            <>
+              <h4>GameBanana</h4>
+              <form
+                className="inline"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  void searchBanana(bananaQuery);
+                }}
+              >
+                <input value={bananaQuery} onChange={(e) => setBananaQuery(e.target.value)} placeholder="Search GameBanana" aria-label="Search GameBanana mods" />
+                <button className="small" disabled={bananaBusy}>
+                  {bananaBusy ? "Searching…" : "Search"}
                 </button>
-                {m.description && <div className="muted small">{m.description}</div>}
-              </li>
-            ))}
-          </ul>
-          <p className="muted small">
-            From <a href={`https://thunderstore.io/c/${data.community}/`} target="_blank" rel="noreferrer">thunderstore.io/c/{data.community}</a>. Mods take effect the next
-            time the game starts; turn them on or off in its own Mods menu.
-          </p>
+              </form>
+              <ul className="bios-list">
+                {(banana ?? []).filter((m) => !have.has(`gamebanana:${m.id}`)).slice(0, 20).map((m) => (
+                  <li key={m.id}>
+                    <a href={m.page} target="_blank" rel="noreferrer">{m.name}</a> <span className="muted small">by {m.owner}{m.category ? ` · ${m.category}` : ""} · {m.likes.toLocaleString()} likes</span>{" "}
+                    <button className="small" disabled={!!busy} onClick={() => void act(`gamebanana:${m.id}`, () => desktop!.installGamebananaMod!(recomp.id, m.id))}>
+                      {busy === `gamebanana:${m.id}` ? "Installing…" : "Install"}
+                    </button>
+                  </li>
+                ))}
+                {banana?.length === 0 && <li className="muted small">Nothing found.</li>}
+              </ul>
+              <p className="muted small">
+                From <a href={`https://gamebanana.com/games/${data.gamebanana}`} target="_blank" rel="noreferrer">gamebanana.com</a>. Only files that passed GameBanana's virus scan are installed; mods that
+                need more than copying files say how on their page.
+              </p>
+            </>
+          )}
+          <p className="muted small">Mods take effect the next time the game starts; turn them on or off in its own Mods menu.</p>
         </>
       )}
       {error && <p className="error small">{error}</p>}

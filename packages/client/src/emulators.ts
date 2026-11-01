@@ -44,6 +44,10 @@ export interface ToolsManifest {
       choices?: Record<string, number>;
       /** Mods LootDen put in its mods folder, with their files, so they can be taken out again. */
       mods?: Array<{ full: string; name: string; version: string; files: string[]; dep: boolean }>;
+      /** The look (ReShade filter) the player picked, Windows only. */
+      look?: string;
+      /** The last game image checked against the verified dumps ("path|size|mtime") and its CRC32. */
+      dumpCheck?: { signature: string; crc32: string };
     }
   >;
   /** Last save backup restored per game, so the same backup isn't applied twice. */
