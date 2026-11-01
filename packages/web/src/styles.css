@@ -4189,6 +4189,15 @@ html[data-lootden-frame] .lightbox {
   bottom: 4.4rem;
   height: min(38rem, calc(100vh - 10rem));
 }
+/* Bigger: most of the screen, with larger text for reading from the couch. */
+.bandit-panel.big {
+  width: min(60rem, calc(100vw - 1.2rem));
+  height: calc(100vh - 6rem);
+  font-size: 1.15rem;
+}
+:root[data-nav="pad"] .bandit-panel.big {
+  height: calc(100vh - 6rem);
+}
 .bandit-head {
   display: flex;
   align-items: center;

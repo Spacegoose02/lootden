@@ -2,7 +2,10 @@ import assert from "node:assert/strict";
 import { rm } from "node:fs/promises";
 import { after, before, describe, it } from "node:test";
 import { helperCost } from "@lootden/shared";
-import type { HelperAi, HelperPrompt } from "../src/helper/service.js";
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
+import { KID_HELPER_SITES } from "@lootden/shared";
+import { makeAnthropicAi, type HelperAi, type HelperPrompt, type HelperPiece } from "../src/helper/service.js";
 import { makeApp, makeLibrary } from "./helpers.js";
 
 let root: string;
@@ -18,7 +21,7 @@ function fakeAi() {
     asked.push(p);
     yield { text: "Try the " };
     yield { text: "left door!" };
-    yield { model: p.model, usage: { input: 1000, output: 200, cacheRead: 0, cacheWrite: 0 } };
+    yield { model: p.model, usage: { input: 1000, output: 200, cacheRead: 0, cacheWrite: 0, searches: 2 } };
   };
   return { ai, asked };
 }
@@ -93,7 +96,12 @@ describe("Bandit, the AI helper", () => {
     assert.equal(mine.messages, 1);
     assert.equal(mine.inputTokens, 1000);
     assert.equal(mine.outputTokens, 200);
-    assert.ok(Math.abs(mine.cost - helperCost("claude-sonnet-5-5", { input: 1000, output: 200, cacheRead: 0, cacheWrite: 0 })) < 1e-9);
+    assert.equal(mine.searches, 2);
+    assert.equal(usage.searches, 2);
+    // Two searches at a cent each, on top of the tokens.
+    const cost = helperCost("claude-sonnet-5-5", { input: 1000, output: 200, cacheRead: 0, cacheWrite: 0, searches: 2 });
+    assert.ok(Math.abs(cost - (1000 * 2 + 200 * 10) / 1e6 - 0.02) < 1e-9);
+    assert.ok(Math.abs(mine.cost - cost) < 1e-9);
     assert.equal((await app.inject({ url: "/api/helper/usage", headers: token(sam.id) })).statusCode, 403);
 
     // Bad chats are refused before anything reaches the AI.
@@ -156,5 +164,133 @@ describe("Bandit, the AI helper", () => {
     await app.inject({ method: "PUT", url: "/api/helper/settings", headers: asAdmin, payload: { monthlyBudget: 0 } });
     assert.equal((await chat(token(admin.id))).statusCode, 200);
     await app.close();
+  });
+
+  it("searches the web: kid-safe sites for kids, basic tools for Haiku, off when the admin says so", async () => {
+    const { app, ctx, token, sam, kid, asAdmin, asked } = await setup();
+    await app.inject({ method: "PUT", url: "/api/helper/settings", headers: asAdmin, payload: { apiKey: "sk-ant-test-0123456789abcdefghij", model: "claude-opus-5-5" } });
+    await app.inject({ method: "PUT", url: `/api/users/${kid.id}/helper`, headers: asAdmin, payload: { allowed: true } });
+    const chat = (id: number, game?: unknown) => app.inject({ method: "POST", url: "/api/helper/chat", headers: token(id), payload: ask("How do the trucks unlock?", game) });
+
+    await chat(sam.id, { store: { addon: "steam", id: "3793200", title: "American Truck Simulator - Road Trip Ford" } });
+    assert.deepEqual(asked[0]!.web, { tools: "dynamic", maxSearches: 3, allowedDomains: null, showSources: true });
+    assert.match(asked[0]!.context, /https:\/\/store\.steampowered\.com\/app\/3793200\//);
+    assert.match(asked[0]!.context, /^Today is \d{4}-\d{2}-\d{2}\./);
+    // Only digits make a Steam link.
+    await chat(sam.id, { store: { addon: "steam", id: "../evil", title: "X" } });
+    assert.doesNotMatch(asked[1]!.context, /steampowered/);
+
+    await chat(kid.id);
+    assert.deepEqual(asked[2]!.web, { tools: "dynamic", maxSearches: 3, allowedDomains: KID_HELPER_SITES, showSources: false });
+
+    await app.inject({ method: "PUT", url: "/api/helper/settings", headers: asAdmin, payload: { model: "claude-haiku-5-5", maxSearches: 5, kidsWebSearch: false } });
+    await chat(sam.id);
+    assert.equal(asked[3]!.web?.tools, "basic");
+    assert.equal(asked[3]!.web?.maxSearches, 5);
+    await chat(kid.id);
+    assert.equal(asked[4]!.web, null);
+
+    await app.inject({ method: "PUT", url: "/api/helper/settings", headers: asAdmin, payload: { webSearch: false } });
+    await chat(sam.id);
+    assert.equal(asked[5]!.web, null);
+    for (const bad of [{ maxSearches: 0 }, { maxSearches: 11 }, { maxSearches: 2.5 }]) {
+      assert.equal((await app.inject({ method: "PUT", url: "/api/helper/settings", headers: asAdmin, payload: bad })).statusCode, 400);
+    }
+    void ctx;
+    await app.close();
+  });
+
+  it("talks to the Messages API: sends the web tools, resumes a paused search, adds sources and counts searches", async () => {
+    const bodies: Array<Record<string, any>> = [];
+    const sse = (events: Array<Record<string, unknown>>) => events.map((e) => `event: ${e.type}\ndata: ${JSON.stringify(e)}\n\n`).join("");
+    const usage = (searches: number) => ({ input_tokens: 500, output_tokens: 50, cache_read_input_tokens: 100, cache_creation_input_tokens: 0, server_tool_use: { web_search_requests: searches, web_fetch_requests: 0 } });
+    const server = createServer((req, res) => {
+      let raw = "";
+      req.on("data", (c) => (raw += c));
+      req.on("end", () => {
+        const body = JSON.parse(raw);
+        bodies.push(body);
+        res.writeHead(200, { "content-type": "text/event-stream" });
+        const message = (content: Array<Record<string, unknown>>, stop: string, searches: number) => [
+          { type: "message_start", message: { id: "m", type: "message", role: "assistant", model: body.model, content: [], stop_reason: null, stop_sequence: null, usage: { ...usage(0), output_tokens: 1 } } },
+          ...content,
+          { type: "message_delta", delta: { stop_reason: stop, stop_sequence: null }, usage: usage(searches) },
+          { type: "message_stop" },
+        ];
+        if (bodies.length === 1)
+          // First request: a few words, a search, then the API pauses the turn.
+          res.end(
+            sse(
+              message(
+                [
+                  { type: "content_block_start", index: 0, content_block: { type: "text", text: "" } },
+                  { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "Let me check!" } },
+                  { type: "content_block_stop", index: 0 },
+                  { type: "content_block_start", index: 1, content_block: { type: "server_tool_use", id: "srvtoolu_1", name: "web_search", input: {} } },
+                  { type: "content_block_delta", index: 1, delta: { type: "input_json_delta", partial_json: '{"query":"road trip ford unlock"}' } },
+                  { type: "content_block_stop", index: 1 },
+                ],
+                "pause_turn",
+                1,
+              ),
+            ),
+          );
+        else
+          res.end(
+            sse(
+              message(
+                [
+                  { type: "content_block_start", index: 0, content_block: { type: "text", text: "", citations: [] } },
+                  { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "They unlock at level 5." } },
+                  {
+                    type: "content_block_delta",
+                    index: 0,
+                    delta: { type: "citations_delta", citation: { type: "web_search_result_location", url: "https://example.com/ats", title: "ATS [wiki]", cited_text: "x", encrypted_index: "e" } },
+                  },
+                  { type: "content_block_stop", index: 0 },
+                ],
+                "end_turn",
+                1,
+              ),
+            ),
+          );
+      });
+    });
+    await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+    const ai = makeAnthropicAi({ baseURL: `http://127.0.0.1:${(server.address() as AddressInfo).port}` });
+    const pieces: HelperPiece[] = [];
+    for await (const piece of ai(
+      {
+        apiKey: "sk-ant-test-0123456789abcdefghij",
+        model: "claude-sonnet-5-5",
+        effort: "low",
+        maxTokens: 6000,
+        system: "s",
+        context: "c",
+        messages: [{ role: "user", content: "How do the trucks unlock?" }],
+        web: { tools: "dynamic", maxSearches: 3, allowedDomains: null, showSources: true },
+        userRef: "lootden-1",
+      },
+      new AbortController().signal,
+    ))
+      pieces.push(piece);
+    server.close();
+
+    const text = pieces.map((p) => ("text" in p ? p.text : "")).join("");
+    assert.equal(text, "Let me check!\n\nThey unlock at level 5.\n\nSources: [ATS wiki](https://example.com/ats)");
+    const last = pieces[pieces.length - 1]!;
+    assert.ok("usage" in last);
+    assert.deepEqual(last.usage, { input: 1000, output: 100, cacheRead: 200, cacheWrite: 0, searches: 2 });
+    assert.deepEqual(
+      bodies[0]!.tools.map((t: { type: string; max_uses: number }) => [t.type, t.max_uses]),
+      [
+        ["web_search_20260209", 3],
+        ["web_fetch_20260209", 3],
+      ],
+    );
+    // The paused turn goes back as the assistant's message, with no extra user message.
+    assert.equal(bodies.length, 2);
+    assert.deepEqual(bodies[1]!.messages.map((m: { role: string }) => m.role), ["user", "assistant"]);
+    assert.equal(bodies[1]!.messages[1].content[1].type, "server_tool_use");
   });
 });

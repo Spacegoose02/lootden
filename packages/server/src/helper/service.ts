@@ -2,7 +2,10 @@ import Anthropic from "@anthropic-ai/sdk";
 import {
   DEFAULT_HELPER_DAILY_LIMIT,
   DEFAULT_HELPER_KID_DAILY_LIMIT,
+  DEFAULT_HELPER_MAX_SEARCHES,
   DEFAULT_HELPER_MODEL,
+  HELPER_MAX_SEARCHES_LIMIT,
+  KID_HELPER_SITES,
   HELPER_ANSWER_LENGTHS,
   HELPER_EFFORTS,
   HELPER_MAX_MESSAGE,
@@ -33,6 +36,8 @@ export interface HelperPrompt {
   system: string;
   context: string;
   messages: HelperChatMessage[];
+  /** Web search and page reading; null when off. allowedDomains limits both (kid profiles). */
+  web: { tools: "dynamic" | "basic"; maxSearches: number; allowedDomains: string[] | null; showSources: boolean } | null;
   /** An opaque id for the person, so the provider can spot abuse without knowing who it is. */
   userRef: string;
 }
@@ -51,6 +56,12 @@ export interface HelperGameContext {
   releaseYear?: number | null;
   summary?: string | null;
   store?: string | null;
+  /** Game modes and themes (single player, co-op, open world...). */
+  modes?: string[];
+  /** The version on the server, when its name says. */
+  version?: string | null;
+  /** Pages about the game Bandit may read (the Steam store page). */
+  links?: string[];
 }
 
 const KEY = "helper";
@@ -68,51 +79,109 @@ What you help with:
 How you answer:
 - Keep it short and easy to scan: a sentence or two, or a few bullet points. Many people read you on a TV or handheld with a controller.
 - Avoid spoilers. If an answer would spoil the story, say so and give a gentle hint first; only spoil if they clearly ask.
-- If you're not sure about details for a specific game (exact item locations, patch changes), say so instead of guessing.
+- Your own knowledge stops at your training date, and games get new releases, DLC, patches and events all the time. When you have web search, use it whenever a question is about something specific (unlocks, item or achievement locations, boss strategies, builds, DLC, updates, prices, release dates) or about a game, DLC or version you don't know well, rather than guessing or saying it's too new. Say a few words first (like "Let me check!") so they know you're looking. One or two good searches are usually enough.
+- When someone pastes a link, read it with web fetch and answer from what it says.
+- Answer from what you found, briefly. If you can't find it, say so and suggest where to look.
+- Without web search, if you're not sure about details for a specific game, say so instead of guessing.
 - Stay on games and gaming. For anything else, steer back to games kindly.
 - Never ask for passwords, addresses or other personal details, and never help with cheating in online multiplayer, piracy, or getting around parental controls or play time limits.`;
 
 const KID_PROMPT = `This player is a child using a kid profile. Be extra kind, encouraging and simple:
 - Use short sentences and easy words. A fun emoji now and then is fine.
 - Keep everything suitable for young children: no violence details, scary content, swearing, romance, or mature games. If they ask about a game that isn't for kids, suggest asking a grown-up and offer a kid-friendly game instead.
-- Never suggest chatting with strangers online, buying things, or sharing personal information. Don't link to websites.
+- Never suggest chatting with strangers online, buying things, or sharing personal information. Don't link to websites or tell them to go to one.
 - If they seem upset, sad or unsafe, be warm and tell them to talk to a grown-up they trust.
 - Only talk about games and play. If they ask about other things, cheerfully bring it back to games.`;
 
-/** Anthropic's API through the official SDK, streaming the answer's text. */
-export const anthropicAi: HelperAi = async function* (p, signal) {
-  const client = new Anthropic({ apiKey: p.apiKey, maxRetries: 2 });
-  const stream = client.beta.messages.stream(
-    {
-      model: p.model,
-      max_tokens: p.maxTokens,
-      output_config: { effort: p.effort },
-      // When a model declines, the API tries its recommended fallback model instead of just refusing.
-      betas: ["server-side-fallback-2026-07-01"],
-      fallbacks: "default",
-      // The fixed prompt and the chat so far are cached, so follow-up questions cost less.
-      cache_control: { type: "ephemeral" },
-      system: [
-        { type: "text", text: p.system },
-        { type: "text", text: p.context },
-      ],
-      messages: p.messages.map((m) => ({ role: m.role, content: m.content })),
-      metadata: { user_id: p.userRef },
-    },
-    { signal },
-  );
-  for await (const event of stream) {
-    if (event.type === "content_block_delta" && event.delta.type === "text_delta") yield { text: event.delta.text };
-  }
-  const final = await stream.finalMessage();
-  if (final.stop_reason === "refusal") yield { text: "\n\nSorry, I can't help with that one. Ask me something else about your games!" };
-  else if (final.stop_reason === "max_tokens") yield { text: "…" };
-  const u = final.usage;
-  yield {
-    model: final.model,
-    usage: { input: u.input_tokens ?? 0, output: u.output_tokens ?? 0, cacheRead: u.cache_read_input_tokens ?? 0, cacheWrite: u.cache_creation_input_tokens ?? 0 },
+/** Most times one answer resumes after the API pauses a long search (pause_turn). */
+const MAX_RESUMES = 3;
+
+/** The web tools for this request: the newer ones (which filter what they read) where the model takes them. */
+function webTools(web: NonNullable<HelperPrompt["web"]>): Anthropic.Beta.BetaToolUnion[] {
+  const domains = web.allowedDomains ? { allowed_domains: web.allowedDomains } : {};
+  // A page is cut to this many tokens, so one long page can't run the cost up.
+  const fetchLimits = { max_uses: web.maxSearches, max_content_tokens: 20_000, ...domains };
+  return web.tools === "dynamic"
+    ? [
+        { type: "web_search_20260209", name: "web_search", max_uses: web.maxSearches, ...domains },
+        { type: "web_fetch_20260209", name: "web_fetch", ...fetchLimits },
+      ]
+    : [
+        { type: "web_search_20250305", name: "web_search", max_uses: web.maxSearches, ...domains },
+        { type: "web_fetch_20250910", name: "web_fetch", ...fetchLimits },
+      ];
+}
+
+/** Anthropic's API through the official SDK, streaming the answer's text. With web tools, searches and page reads happen on Anthropic's side. */
+export const makeAnthropicAi = (options: { baseURL?: string } = {}): HelperAi =>
+  async function* (p, signal) {
+    const client = new Anthropic({ apiKey: p.apiKey, maxRetries: 2, ...options });
+    const messages: Anthropic.Beta.BetaMessageParam[] = p.messages.map((m) => ({ role: m.role, content: m.content }));
+    const total: HelperTokens = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, searches: 0 };
+    const sources = new Map<string, string>();
+    let model = p.model;
+    let wrote = false;
+    for (let turn = 0; ; turn++) {
+      const stream = client.beta.messages.stream(
+        {
+          model: p.model,
+          max_tokens: p.maxTokens,
+          output_config: { effort: p.effort },
+          // When a model declines, the API tries its recommended fallback model instead of just refusing.
+          betas: ["server-side-fallback-2026-07-01"],
+          fallbacks: "default",
+          // The fixed prompt and the chat so far are cached, so follow-up questions cost less.
+          cache_control: { type: "ephemeral" },
+          system: [
+            { type: "text", text: p.system },
+            { type: "text", text: p.context },
+          ],
+          ...(p.web ? { tools: webTools(p.web) } : {}),
+          messages,
+          metadata: { user_id: p.userRef },
+        },
+        { signal },
+      );
+      for await (const event of stream) {
+        // Text written before and after a search are separate blocks: keep them apart.
+        if (event.type === "content_block_start" && event.content_block.type === "text" && wrote) yield { text: "\n\n" };
+        if (event.type === "content_block_delta" && event.delta.type === "text_delta" && event.delta.text) {
+          wrote = true;
+          yield { text: event.delta.text };
+        }
+        if (event.type === "content_block_delta" && event.delta.type === "citations_delta" && event.delta.citation.type === "web_search_result_location") {
+          const c = event.delta.citation;
+          if (/^https?:\/\//.test(c.url) && !sources.has(c.url)) sources.set(c.url, (c.title ?? new URL(c.url).hostname).replace(/[[\]]/g, "").slice(0, 80));
+        }
+      }
+      const final = await stream.finalMessage();
+      model = final.model;
+      const u = final.usage;
+      total.input += u.input_tokens ?? 0;
+      total.output += u.output_tokens ?? 0;
+      total.cacheRead += u.cache_read_input_tokens ?? 0;
+      total.cacheWrite += u.cache_creation_input_tokens ?? 0;
+      total.searches! += u.server_tool_use?.web_search_requests ?? 0;
+      // A long search can pause the turn; sending it back as it is lets the API carry on where it stopped.
+      if (final.stop_reason === "pause_turn" && turn < MAX_RESUMES) {
+        messages.push({ role: "assistant", content: final.content });
+        continue;
+      }
+      if (final.stop_reason === "refusal") yield { text: "\n\nSorry, I can't help with that one. Ask me something else about your games!" };
+      else if (final.stop_reason === "max_tokens" || final.stop_reason === "pause_turn") yield { text: "…" };
+      break;
+    }
+    if (p.web?.showSources && sources.size)
+      yield {
+        text: `\n\nSources: ${[...sources]
+          .slice(0, 4)
+          .map(([url, title]) => `[${title}](${url})`)
+          .join(" · ")}`,
+      };
+    yield { model, usage: total };
   };
-};
+
+export const anthropicAi: HelperAi = makeAnthropicAi();
 
 /** A problem to show the person as it is. */
 export class HelperProblem extends Error {
@@ -155,6 +224,9 @@ export class HelperService {
       dailyLimit: count(s.dailyLimit, DEFAULT_HELPER_DAILY_LIMIT),
       kidDailyLimit: count(s.kidDailyLimit, DEFAULT_HELPER_KID_DAILY_LIMIT),
       monthlyBudget: typeof s.monthlyBudget === "number" && s.monthlyBudget >= 0 ? s.monthlyBudget : 0,
+      webSearch: s.webSearch ?? true,
+      maxSearches: Number.isInteger(s.maxSearches) && s.maxSearches! >= 1 && s.maxSearches! <= HELPER_MAX_SEARCHES_LIMIT ? s.maxSearches! : DEFAULT_HELPER_MAX_SEARCHES,
+      kidsWebSearch: s.kidsWebSearch ?? true,
     };
   }
 
@@ -223,6 +295,13 @@ export class HelperService {
       if (!Number.isFinite(b) || b < 0 || b > 100_000) throw new HelperProblem(400, "The monthly budget is an amount in dollars, 0 for no budget");
       next.monthlyBudget = Math.round(b * 100) / 100;
     }
+    if (typeof patch.webSearch === "boolean") next.webSearch = patch.webSearch;
+    if (typeof patch.kidsWebSearch === "boolean") next.kidsWebSearch = patch.kidsWebSearch;
+    if (patch.maxSearches !== undefined) {
+      const n = Number(patch.maxSearches);
+      if (!Number.isInteger(n) || n < 1 || n > HELPER_MAX_SEARCHES_LIMIT) throw new HelperProblem(400, `Searches per question is a whole number from 1 to ${HELPER_MAX_SEARCHES_LIMIT}`);
+      next.maxSearches = n;
+    }
     if (typeof patch.apiKey === "string" && patch.apiKey !== MASK) {
       const key = patch.apiKey.trim();
       if (key && !/^[\w-]{20,300}$/.test(key)) throw new HelperProblem(400, "That doesn't look like an API key");
@@ -288,6 +367,13 @@ export class HelperService {
     };
   }
 
+  /** Web search for this person: off, open, or kid-safe sites only. */
+  private webFor(user: User, s: HelperSettings): HelperPrompt["web"] {
+    if (!s.webSearch || (user.kidMode && !s.kidsWebSearch)) return null;
+    const model = HELPER_MODELS.find((m) => m.id === s.model) ?? HELPER_MODELS[0]!;
+    return { tools: model.webTools, maxSearches: s.maxSearches, allowedDomains: user.kidMode ? [...KID_HELPER_SITES] : null, showSources: !user.kidMode };
+  }
+
   /** A question that got no answer (the provider failed) doesn't count toward the daily limit. */
   refund(userId: number): void {
     this.db.prepare("UPDATE helper_usage SET count = MAX(0, count - 1) WHERE user_id = ? AND day = ?").run(userId, this.today());
@@ -298,27 +384,28 @@ export class HelperService {
     const input = tokens.input + tokens.cacheRead + tokens.cacheWrite;
     this.db
       .prepare(
-        "UPDATE helper_usage SET input_tokens = input_tokens + ?, output_tokens = output_tokens + ?, cost = cost + ? WHERE user_id = ? AND day = ?",
+        "UPDATE helper_usage SET input_tokens = input_tokens + ?, output_tokens = output_tokens + ?, searches = searches + ?, cost = cost + ? WHERE user_id = ? AND day = ?",
       )
-      .run(input, tokens.output, helperCost(model, tokens), userId, this.today());
+      .run(input, tokens.output, tokens.searches ?? 0, helperCost(model, tokens), userId, this.today());
   }
 
   /** This month: spend against the budget, per person and per day. */
   usage(users: User[]): HelperUsageReport {
     const month = this.month();
     const today = this.today();
-    const rows = this.db.prepare("SELECT user_id, day, count, input_tokens, output_tokens, cost FROM helper_usage WHERE day LIKE ?").all(`${month}-%`) as Array<{
+    const rows = this.db.prepare("SELECT user_id, day, count, input_tokens, output_tokens, searches, cost FROM helper_usage WHERE day LIKE ?").all(`${month}-%`) as Array<{
       user_id: number;
       day: string;
       count: number;
       input_tokens: number;
       output_tokens: number;
+      searches: number;
       cost: number;
     }>;
     const days = new Map<string, { day: string; messages: number; cost: number }>();
     const people = users.map((u) => {
       const own = rows.filter((r) => r.user_id === u.id);
-      const sum = (k: "count" | "input_tokens" | "output_tokens" | "cost") => own.reduce((a, r) => a + r[k], 0);
+      const sum = (k: "count" | "input_tokens" | "output_tokens" | "searches" | "cost") => own.reduce((a, r) => a + r[k], 0);
       const access = this.access(u);
       return {
         userId: u.id,
@@ -333,6 +420,7 @@ export class HelperService {
         messages: sum("count"),
         inputTokens: sum("input_tokens"),
         outputTokens: sum("output_tokens"),
+        searches: sum("searches"),
         cost: sum("cost"),
       };
     });
@@ -350,6 +438,7 @@ export class HelperService {
       budget,
       paused: budget > 0 && spent >= budget,
       messages: rows.reduce((a, r) => a + r.count, 0),
+      searches: rows.reduce((a, r) => a + r.searches, 0),
       people,
       days: [...days.values()].sort((a, b) => a.day.localeCompare(b.day)),
     };
@@ -379,8 +468,9 @@ export class HelperService {
         effort: s.effort,
         maxTokens: HELPER_ANSWER_LENGTHS[s.answerLength],
         system: BASE_PROMPT,
-        context: contextPrompt(user, game),
+        context: `Today is ${this.today()}.\n\n${contextPrompt(user, game)}`,
         messages,
+        web: this.webFor(user, s),
         userRef: `lootden-${user.id}`,
       },
       signal,
@@ -429,6 +519,9 @@ export function contextPrompt(user: User, game: HelperGameContext | null): strin
       game.platform && game.platform !== "pc" ? `Platform: ${game.platform} (played with an emulator)` : game.platform === "pc" ? "Platform: PC" : null,
       game.releaseYear ? `Released: ${game.releaseYear}` : null,
       game.genres?.length ? `Genres: ${game.genres.slice(0, 6).join(", ")}` : null,
+      game.modes?.length ? `Modes and themes: ${game.modes.slice(0, 8).join(", ")}` : null,
+      game.version ? `Version in their library: ${game.version}` : null,
+      game.links?.length ? `Store page you can read with web fetch: ${game.links.join(" ")}` : null,
       game.summary ? `About: ${game.summary.slice(0, 800)}` : null,
     ].filter(Boolean);
     lines.push(`They're looking at this game in LootDen, so questions are probably about it:\n${facts.join("\n")}`);

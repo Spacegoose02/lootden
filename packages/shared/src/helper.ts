@@ -16,10 +16,42 @@ export const HELPER_AVATAR_THINKING = "b-11-9-5-3-3";
  * (input, output, cache reads, cache writes). The first is the default. Costs shown in LootDen
  * are estimates from these and the token counts the API reports.
  */
-export const HELPER_MODELS: Array<{ id: string; name: string; note: string; price: { input: number; output: number; cacheRead: number; cacheWrite: number } }> = [
-  { id: "claude-opus-5-5", name: "Claude Opus 5.5", note: "Smartest answers", price: { input: 4, output: 20, cacheRead: 0.2, cacheWrite: 5 } },
-  { id: "claude-sonnet-5-5", name: "Claude Sonnet 5.5", note: "Fast and clever, about half the price", price: { input: 2, output: 10, cacheRead: 0.2, cacheWrite: 2.5 } },
-  { id: "claude-haiku-5-5", name: "Claude Haiku 5.5", note: "Quickest and cheapest by far", price: { input: 0.1, output: 0.5, cacheRead: 0.01, cacheWrite: 0.125 } },
+export const HELPER_MODELS: Array<{
+  id: string;
+  name: string;
+  note: string;
+  price: { input: number; output: number; cacheRead: number; cacheWrite: number };
+  /** Which web search and fetch tools the model takes: the newer ones that filter results, or the basic ones. */
+  webTools: "dynamic" | "basic";
+}> = [
+  { id: "claude-opus-5-5", name: "Claude Opus 5.5", note: "Smartest answers", price: { input: 4, output: 20, cacheRead: 0.2, cacheWrite: 5 }, webTools: "dynamic" },
+  { id: "claude-sonnet-5-5", name: "Claude Sonnet 5.5", note: "Fast and clever, about half the price", price: { input: 2, output: 10, cacheRead: 0.2, cacheWrite: 2.5 }, webTools: "dynamic" },
+  { id: "claude-haiku-5-5", name: "Claude Haiku 5.5", note: "Quickest and cheapest by far", price: { input: 0.1, output: 0.5, cacheRead: 0.01, cacheWrite: 0.125 }, webTools: "basic" },
+];
+
+/** US dollars per web search (Anthropic's price: $10 per 1,000). Reading a page costs only its tokens. */
+export const HELPER_SEARCH_PRICE = 0.01;
+export const DEFAULT_HELPER_MAX_SEARCHES = 3;
+export const HELPER_MAX_SEARCHES_LIMIT = 10;
+
+/**
+ * Where Bandit may search and read for kid profiles: official game and store sites, and wikis
+ * about games. Subdomains count too (minecraft.wiki covers www.minecraft.wiki).
+ */
+export const KID_HELPER_SITES = [
+  "store.steampowered.com",
+  "nintendo.com",
+  "playstation.com",
+  "xbox.com",
+  "minecraft.net",
+  "minecraft.wiki",
+  "roblox.com",
+  "pokemon.com",
+  "lego.com",
+  "fandom.com",
+  "wikipedia.org",
+  "commonsensemedia.org",
+  "pbskids.org",
 ];
 export const DEFAULT_HELPER_MODEL = HELPER_MODELS[0]!.id;
 
@@ -53,6 +85,12 @@ export interface HelperSettings {
   kidDailyLimit: number;
   /** US dollars a month; once this month's estimated spend reaches it, Bandit pauses until next month. 0: no budget. */
   monthlyBudget: number;
+  /** Bandit may search the web and read pages (including links people paste). */
+  webSearch: boolean;
+  /** Most web searches for one question (1 to 10). */
+  maxSearches: number;
+  /** Kid profiles may search too, on KID_HELPER_SITES only. */
+  kidsWebSearch: boolean;
 }
 
 export interface HelperSettingsView {
@@ -74,6 +112,7 @@ export interface HelperUsageReport {
   budget: number;
   paused: boolean;
   messages: number;
+  searches: number;
   people: Array<{
     userId: number;
     name: string;
@@ -89,6 +128,8 @@ export interface HelperUsageReport {
     messages: number;
     inputTokens: number;
     outputTokens: number;
+    /** Web searches this month. */
+    searches: number;
     cost: number;
   }>;
   days: Array<{ day: string; messages: number; cost: number }>;
@@ -155,10 +196,12 @@ export interface HelperTokens {
   output: number;
   cacheRead: number;
   cacheWrite: number;
+  /** Web searches the answer made. */
+  searches?: number;
 }
 
 /** Estimated US dollars for one answer. Unknown models are priced like the default (the most expensive listed). */
 export function helperCost(model: string, t: HelperTokens): number {
   const p = (HELPER_MODELS.find((m) => model.startsWith(m.id)) ?? HELPER_MODELS[0]!).price;
-  return (t.input * p.input + t.output * p.output + t.cacheRead * p.cacheRead + t.cacheWrite * p.cacheWrite) / 1_000_000;
+  return (t.input * p.input + t.output * p.output + t.cacheRead * p.cacheRead + t.cacheWrite * p.cacheWrite) / 1_000_000 + (t.searches ?? 0) * HELPER_SEARCH_PRICE;
 }

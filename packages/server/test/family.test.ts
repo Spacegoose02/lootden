@@ -118,7 +118,11 @@ describe("achievements and levels", () => {
     assert.equal(progress.achievements.find((a: { id: string }) => a.id === "first-play").unlockedAt, null);
 
     await app.inject({ method: "POST", url: "/api/me/activity", headers: ana.headers, payload: { gameId: portal, device: "PC", event: "installed" } });
-    await app.inject({ method: "POST", url: "/api/me/activity", headers: ana.headers, payload: { gameId: portal, device: "PC", event: "played", seconds: 3 * 3600 + 60 } });
+    // Ended yesterday afternoon, so the session never starts late at night or early in the morning
+    // (Night Owl or Early Bird would add their XP depending on when the test runs).
+    const afternoon = new Date(Date.now() - 86_400_000);
+    afternoon.setHours(16, 0, 0, 0);
+    await app.inject({ method: "POST", url: "/api/me/activity", headers: ana.headers, payload: { gameId: portal, device: "PC", event: "played", seconds: 3 * 3600 + 60, endedAt: afternoon.toISOString() } });
     for (let i = 0; i < 5; i++) await app.inject({ method: "POST", url: "/api/me/roulette", headers: ana.headers });
     progress = (await app.inject({ url: "/api/me/progress", headers: ana.headers })).json();
     const unlocked = progress.achievements.filter((a: { unlockedAt: string | null }) => a.unlockedAt).map((a: { id: string }) => a.id);

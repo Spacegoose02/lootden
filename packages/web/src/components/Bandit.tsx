@@ -77,6 +77,7 @@ function BanditChat({ name, status, onStatus, onClose }: { name: string; status:
   const [lines, setLines] = useState<Line[]>(() => chats.current.get(key) ?? [greeting(name, game?.title ?? null, status.kid)]);
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
+  const [big, setBig] = useBig();
   const abort = useRef<AbortController | null>(null);
   const panel = useRef<HTMLDivElement>(null);
   const input = useRef<HTMLTextAreaElement>(null);
@@ -130,7 +131,7 @@ function BanditChat({ name, status, onStatus, onClose }: { name: string; status:
   const fresh = lines.length <= 1;
   const left = status.remaining;
   return (
-    <div className="bandit-panel" role="dialog" aria-modal="false" aria-label={`${HELPER_NAME}, your gaming helper`} ref={panel}>
+    <div className={`bandit-panel${big ? " big" : ""}`} role="dialog" aria-modal="false" aria-label={`${HELPER_NAME}, your gaming helper`} ref={panel}>
       <header className="bandit-head">
         <span className={`bandit-box${busy ? " thinking" : ""}`}>
           <img src={avatarUrl(busy ? HELPER_AVATAR_THINKING : HELPER_AVATAR)} alt="" width={56} height={56} />
@@ -149,6 +150,9 @@ function BanditChat({ name, status, onStatus, onClose }: { name: string; status:
             New chat
           </button>
         )}
+        <button className="ghost small" onClick={() => setBig(!big)} aria-pressed={big} title={big ? "Make the chat smaller" : "Make the chat bigger"} aria-label={big ? "Make the chat smaller" : "Make the chat bigger"}>
+          {big ? "⤡" : "⤢"}
+        </button>
         <button className="ghost small bandit-close" onClick={onClose} aria-label={`Close ${HELPER_NAME}`}>
           ✕
         </button>
@@ -209,7 +213,7 @@ function BanditChat({ name, status, onStatus, onClose }: { name: string; status:
   );
 }
 
-/** Bandit's words with a little formatting: paragraphs, bullet points and **bold**. */
+/** Bandit's words with a little formatting: paragraphs, bullet points, **bold** and links. */
 function Answer({ text }: { text: string }) {
   const blocks: ReactNode[] = [];
   let bullets: string[] = [];
@@ -230,8 +234,27 @@ function Answer({ text }: { text: string }) {
   return <>{blocks}</>;
 }
 
+/** **Bold**, [links](https://…) and bare https:// addresses. Only http(s) links become links. */
 function bold(s: string): ReactNode[] {
-  return s.split(/\*\*(.+?)\*\*/g).map((part, i) => (i % 2 ? <strong key={i}>{part}</strong> : part));
+  const out: ReactNode[] = [];
+  const re = /\*\*(.+?)\*\*|\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)|(https?:\/\/[^\s)\]]+)/g;
+  let at = 0;
+  for (let m = re.exec(s); m; m = re.exec(s)) {
+    if (m.index > at) out.push(s.slice(at, m.index));
+    const key = out.length;
+    if (m[1] !== undefined) out.push(<strong key={key}>{m[1]}</strong>);
+    else {
+      const url = m[3] ?? m[4]!;
+      out.push(
+        <a key={key} href={url} target="_blank" rel="noreferrer noopener">
+          {m[2] ?? new URL(url).hostname.replace(/^www\./, "")}
+        </a>,
+      );
+    }
+    at = m.index + m[0].length;
+  }
+  if (at < s.length) out.push(s.slice(at));
+  return out;
 }
 
 /** Profile: the person's own on/off switch for Bandit, and why he might not be there. */
@@ -282,4 +305,26 @@ export function BanditProfileCard() {
       {error && <p className="error">{error}</p>}
     </section>
   );
+}
+
+const BIG_KEY = "lootden.bandit.big";
+
+/** Whether the chat fills most of the screen (easier to read from the couch). Remembered on this device. */
+function useBig(): [boolean, (big: boolean) => void] {
+  const [big, setBig] = useState(() => {
+    try {
+      return localStorage.getItem(BIG_KEY) === "1";
+    } catch {
+      return false;
+    }
+  });
+  const set = useCallback((value: boolean) => {
+    setBig(value);
+    try {
+      localStorage.setItem(BIG_KEY, value ? "1" : "0");
+    } catch {
+      // Private browsing: it just isn't remembered.
+    }
+  }, []);
+  return [big, set];
 }
