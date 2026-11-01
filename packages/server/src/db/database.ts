@@ -734,6 +734,11 @@ export const MIGRATIONS: string[] = [
   -- An admin's own cover for a Roblox game: "<content type>@<time>", the file under roblox-covers/.
   ALTER TABLE roblox_games ADD COLUMN custom_cover TEXT;
   `,
+  `
+  -- Yamtrack is now called Watchmask; list feeds named after it follow (entries pick it up on the next sync).
+  UPDATE wishlist_feeds SET name = 'Watchmask' WHERE lower(trim(name)) = 'yamtrack';
+  UPDATE wishlist_feeds SET name = replace(name, ' - Yamtrack', ' - Watchmask') WHERE name LIKE '% - Yamtrack';
+  `,
 ];
 
 export function openDatabase(file: string): Db {

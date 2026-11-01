@@ -4,6 +4,7 @@ import type { Library } from "../catalog/library.js";
 import { titleKey } from "../metadata/calendar.js";
 import { cleanTitle } from "../metadata/titles.js";
 import type { FetchLike } from "../metadata/http.js";
+import { steamHeader } from "../metadata/steam.js";
 
 export type WishSource = { kind: "steam" | "manual"; name: string } | { kind: "feed"; id: number; name: string };
 
@@ -86,6 +87,8 @@ export interface WishInput {
 }
 
 const UA = { "User-Agent": "Mozilla/5.0 (LootDen)" };
+/** Retry a cover lookup that found nothing after this long (new store pages appear). */
+const COVER_RETRY_MS = 24 * 3600_000;
 const STEAM_KEY = "wishlist_steam";
 const arr = <T>(v: T | T[] | undefined): T[] => (v == null ? [] : Array.isArray(v) ? v : [v]);
 const text = (v: unknown): string => (v == null ? "" : typeof v === "object" ? String((v as Record<string, unknown>)["#text"] ?? "") : String(v)).trim();
@@ -234,7 +237,10 @@ export class WishlistService {
       return "added";
     }
     const sources = json<WishSource[]>(existing.sources, []);
-    if (!sources.some((s) => sameSource(s, source))) sources.push(source);
+    // Same source again: keep it once, under its current name (a renamed feed relabels its entries).
+    const at = sources.findIndex((s) => sameSource(s, source));
+    if (at === -1) sources.push(source);
+    else sources[at] = source;
     // Steam knows the real name and date best; other sources only fill gaps.
     const steam = source.kind === "steam";
     this.db
@@ -312,6 +318,7 @@ export class WishlistService {
       .prepare("INSERT INTO wishlist_feeds (url, name) VALUES (?, ?) ON CONFLICT(url) DO UPDATE SET name = excluded.name RETURNING id")
       .get(u.toString(), name?.trim() || parsed.title || u.hostname) as { id: number };
     await this.syncFeed(this.feeds().find((f) => f.id === r.id)!);
+    await this.fillCovers().catch(() => {});
     return this.feeds().find((f) => f.id === r.id)!;
   }
 
@@ -327,6 +334,7 @@ export class WishlistService {
       const steam = this.steam();
       if (steam?.steamId && (!scheduled || steam.autoSync !== false)) await this.syncSteam().catch(() => {});
       for (const f of this.feeds()) await this.syncFeed(f).catch(() => {});
+      await this.fillCovers().catch(() => {});
     })().finally(() => (this.syncing = null));
     return this.syncing;
   }
@@ -389,6 +397,49 @@ export class WishlistService {
     }
   }
 
+  private coverTried = new Map<number, number>();
+
+  /**
+   * Covers for entries that came without one (a feed with no images, a title added by hand):
+   * the Steam store's header for the game of the same name. A match also links the entry to
+   * that Steam app, unless another entry already has it.
+   */
+  async fillCovers(): Promise<number> {
+    const rows = this.db.prepare("SELECT id, title, steam_app_id FROM wishlist WHERE hidden = 0 AND (image IS NULL OR image = '')").all() as Array<{
+      id: number;
+      title: string;
+      steam_app_id: number | null;
+    }>;
+    let filled = 0;
+    for (const r of rows) {
+      const tried = this.coverTried.get(r.id);
+      if (tried && Date.now() - tried < COVER_RETRY_MS) continue;
+      this.coverTried.set(r.id, Date.now());
+      const appId = r.steam_app_id ?? (await this.steamMatch(r.title).catch(() => null));
+      if (!appId) continue;
+      const taken = this.db.prepare("SELECT 1 FROM wishlist WHERE steam_app_id = ? AND id != ?").get(appId, r.id);
+      this.db
+        .prepare("UPDATE wishlist SET image = ?, steam_app_id = COALESCE(steam_app_id, ?) WHERE id = ?")
+        .run(steamHeader(String(appId)), taken ? null : appId, r.id);
+      filled++;
+    }
+    return filled;
+  }
+
+  /** The Steam app whose name is the title (ignoring case, punctuation and a trailing "(2026)"). */
+  private async steamMatch(title: string): Promise<number | null> {
+    const query = coverQuery(title);
+    if (!query) return null;
+    const res = await this.fetchImpl(`https://store.steampowered.com/api/storesearch/?term=${encodeURIComponent(query)}&cc=us&l=english`, {
+      headers: UA,
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!res.ok) return null;
+    const items = ((await res.json()) as { items?: Array<{ id: number; name: string; type?: string }> }).items ?? [];
+    const key = titleKey(query);
+    return items.find((i) => (!i.type || i.type === "app") && titleKey(i.name) === key)?.id ?? null;
+  }
+
   /** Names and release dates for Steam apps, 100 at a time. */
   private async storeItems(appIds: number[]): Promise<Map<number, StoreItem>> {
     const out = new Map<number, StoreItem>();
@@ -417,6 +468,11 @@ export class WishlistService {
     if (!res.ok) throw new Error(`${new URL(url).hostname} answered ${res.status}`);
     return res.text();
   }
+}
+
+/** A wishlist title as a store search: "Rooted (2027)" searches for "Rooted". */
+export function coverQuery(title: string): string {
+  return title.replace(/\s*\((?:19|20)\d{2}\)\s*$/, "").trim();
 }
 
 function sameSource(a: WishSource, b: WishSource): boolean {

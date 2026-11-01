@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { mkdir, rm, utimes, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { after, before, describe, it } from "node:test";
-import { listTitle, parseListFeed } from "../src/news/wishlist.js";
+import { coverQuery, listTitle, parseListFeed } from "../src/news/wishlist.js";
 import { makeApp, makeLibrary } from "./helpers.js";
 
 let root: string;
@@ -119,6 +119,56 @@ describe("wishlist, list feeds and the calendar", () => {
     const id = upcoming.items.find((i: { name: string }) => i.name === "LAN party").providerId;
     assert.equal((await app.inject({ method: "DELETE", url: `/api/calendar/entries/${id}`, headers })).statusCode, 200);
     await app.close();
+  });
+
+  it("finds Steam covers for feed entries that came without one, and follows a renamed feed", async () => {
+    // A Watchmask (formerly Yamtrack) Discover feed: titles with the year, the cover as media:thumbnail on newer versions.
+    let feed = `<?xml version="1.0"?><rss version="2.0" xmlns:media="http://search.yahoo.com/mrss/"><channel><title>Upcoming games - Watchmask</title>
+<item><title>Rooted (2027)</title><link>https://wm.example/details/game/igdb/1/rooted</link></item>
+<item><title>Police Officer (2026)</title><link>https://wm.example/details/game/igdb/2/police-officer</link></item>
+<item><title>Ski-E-O! Ski Resort Tycoon (2026)</title><link>https://wm.example/details/game/igdb/3/ski</link><media:thumbnail url="https://images.igdb.com/igdb/image/upload/t_cover_big/ski.jpg"/></item>
+</channel></rss>`;
+    const searches: string[] = [];
+    const fetchImpl = (async (input: string | URL | Request) => {
+      const url = new URL(String(input));
+      if (url.hostname === "wm.example") return new Response(feed);
+      if (url.pathname === "/api/storesearch/") {
+        const term = url.searchParams.get("term")!;
+        searches.push(term);
+        const items: Record<string, object[]> = {
+          Rooted: [{ id: 2300230, name: "Rooted", type: "app" }],
+          // Only a different game by a similar name: no cover is better than the wrong one.
+          "Police Officer": [{ id: 999, name: "Police Officer Simulator", type: "app" }],
+        };
+        return Response.json({ total: 1, items: items[term] ?? [] });
+      }
+      return new Response("nope", { status: 404 });
+    }) as typeof fetch;
+    const { app, ctx } = await makeApp(root, { apiToken: "svc" }, { fetchImpl });
+    const headers = { authorization: "Bearer svc" };
+
+    let state = (await app.inject({ method: "POST", url: "/api/wishlist/feeds", headers, payload: { url: "https://wm.example/rss/t/game/upcoming.xml", name: "Yamtrack" } })).json();
+    const byTitle = (t: string) => state.items.find((i: { title: string }) => i.title === t);
+    assert.equal(byTitle("Rooted (2027)").image, "https://cdn.cloudflare.steamstatic.com/steam/apps/2300230/header.jpg");
+    assert.equal(byTitle("Rooted (2027)").steamAppId, 2300230);
+    assert.equal(byTitle("Police Officer (2026)").image, null);
+    assert.equal(byTitle("Ski-E-O! Ski Resort Tycoon (2026)").image, "https://images.igdb.com/igdb/image/upload/t_cover_big/ski.jpg");
+    assert.ok(!searches.includes("Ski-E-O! Ski Resort Tycoon"), "entries with a feed cover aren't looked up");
+
+    // A miss isn't searched again on every sync.
+    const before = searches.length;
+    await ctx.wishlist.syncAll();
+    assert.equal(searches.length, before);
+
+    // Renaming the feed (adding the same address under a new name) relabels its entries.
+    feed = feed.replace("Upcoming games", "Upcoming");
+    state = (await app.inject({ method: "POST", url: "/api/wishlist/feeds", headers, payload: { url: "https://wm.example/rss/t/game/upcoming.xml", name: "Watchmask" } })).json();
+    assert.deepEqual(byTitle("Rooted (2027)").sources.map((s: { name: string }) => s.name), ["Watchmask"]);
+    assert.equal(state.feeds.length, 1);
+    await app.close();
+
+    assert.equal(coverQuery("Rooted (2027)"), "Rooted");
+    assert.equal(coverQuery("Blade Runner 2049"), "Blade Runner 2049");
   });
 
   it("lists recently added games by the folder's date modified", async () => {
