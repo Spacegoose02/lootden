@@ -57,6 +57,7 @@ import {
   robloxPlaceOf,
   robloxPlayId,
   trackRoblox,
+  setRobloxFullscreen,
   uninstallGame,
   applyUpdate,
   undoUpdate,
@@ -1685,6 +1686,8 @@ function registerIpc(): void {
     if (today && !today.canPlay) throw new Error(today.reason ?? "No play time left today");
     // A Den Duty time-out can lock Roblox alone.
     if (today?.robloxLock) throw new Error(today.robloxLock);
+    // Straight into full screen, like a game started from the couch should.
+    await setRobloxFullscreen().catch(() => {});
     await shell.openExternal(url);
     launching.add(gameId);
     const stop = new AbortController();
