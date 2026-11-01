@@ -114,8 +114,9 @@ export class GameServerClient {
       `/api/store-games/${encodeURIComponent(addon)}/${encodeURIComponent(id)}/save-paths?title=${encodeURIComponent(title)}`,
     );
   }
-  async uploadSave(gameId: string, zip: Uint8Array, device: string): Promise<SaveBackup> {
-    const pathname = `${savesPath(gameId)}?device=${encodeURIComponent(device)}`;
+  /** `runner` marks saves a recomp made ("recomp:<id>"), so they stay apart from the emulator's. */
+  async uploadSave(gameId: string, zip: Uint8Array, device: string, runner?: string): Promise<SaveBackup> {
+    const pathname = `${savesPath(gameId)}?device=${encodeURIComponent(device)}${runner ? `&runner=${encodeURIComponent(runner)}` : ""}`;
     const res = await fetch(this.base + pathname, { method: "POST", headers: this.headers({ "Content-Type": "application/octet-stream" }), body: new Blob([zip as Uint8Array<ArrayBuffer>]) });
     if (!res.ok) throw new ApiError(`Uploading saves failed with ${res.status}: ${await res.text().catch(() => "")}`, res.status);
     return (await res.json()) as SaveBackup;

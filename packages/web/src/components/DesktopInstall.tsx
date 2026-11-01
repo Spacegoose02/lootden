@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { EMULATORS, platformFor, type GameDetail } from "@lootden/shared";
+import { EMULATORS, platformFor, recompsFor, type GameDetail } from "@lootden/shared";
 import { formatBytes } from "../api";
 import { useAuth } from "../auth";
-import { bridgeError, desktop, useDesktopGame, type Drive } from "../desktop";
+import { bridgeError, desktop, useDesktopGame, type Drive, type RecompSetup } from "../desktop";
 import { LaunchOptionsPanel, PlayWithButtons, useLaunchOptions } from "./LaunchOptions";
 
 /** Install / play / uninstall panel shown inside the desktop app. */
@@ -18,6 +18,13 @@ export function DesktopInstall({ game, autoFocus }: { game: GameDetail; autoFocu
   const button = useRef<HTMLButtonElement>(null);
   const pcGame = (installed?.platform ?? "pc") === "pc";
   const launch = useLaunchOptions(installed && pcGame ? `lootden:${game.id}` : null);
+  /** Recomps that play this console game, and which are set up on this PC. */
+  const recomps = pcGame ? [] : recompsFor(game);
+  const [recompSetup, setRecompSetup] = useState<RecompSetup[] | null>(null);
+  const recompKey = recomps.map((r) => r.id).join(",");
+  useEffect(() => {
+    if (recompKey && desktop?.recomps) void desktop.recomps().then((r) => setRecompSetup(r.recomps), () => {});
+  }, [recompKey]);
   /** Running and paused, followed from the app's events (waits and messages come in between). */
   const [running, setRunning] = useState(false);
   const [paused, setPaused] = useState(false);
@@ -113,6 +120,30 @@ export function DesktopInstall({ game, autoFocus }: { game: GameDetail; autoFocu
             {running ? (paused ? "Paused" : "Playing…") : emulatorName ? `▶ Play in ${emulatorName}` : launch.state?.profile?.defaultAction ? `▶ Play with ${launch.state.profile.actions.find((a) => a.id === launch.state!.profile!.defaultAction)?.name ?? "mods"}` : "▶ Play"}
           </button>
           {!running && <PlayWithButtons profile={launch.state?.profile ?? null} disabled={busy} onPlay={(id) => void run(() => bridge.play(game.id, id))} />}
+          {!running &&
+            bridge.recomps &&
+            recomps.map((r) =>
+              recompSetup?.find((x) => x.id === r.id)?.installed ? (
+                <button key={r.id} className="secondary" disabled={busy} title={`${r.name}: a native PC version of ${r.game}`} onClick={() => void run(() => bridge.play(game.id, `recomp:${r.id}`))}>
+                  ▶ Play with {r.name}
+                </button>
+              ) : (
+                <button
+                  key={r.id}
+                  className="secondary"
+                  disabled={busy}
+                  title={`Downloads ${r.name} from github.com/${r.repo}`}
+                  onClick={() =>
+                    void run(async () => {
+                      await bridge.installRecomp!(r.id);
+                      setRecompSetup((await bridge.recomps!()).recomps);
+                    })
+                  }
+                >
+                  Set up {r.name}
+                </button>
+              ),
+            )}
           {running && bridge.suspend && pcGame && (
             <button className="secondary" onClick={() => void bridge.suspend!(game.id).catch((e) => setError(bridgeError(e)))}>
               {paused ? "▶ Resume" : "⏸ Pause game"}

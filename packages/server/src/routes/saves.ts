@@ -24,12 +24,15 @@ export function saveRoutes(app: FastifyInstance, ctx: AppContext) {
   });
 
   // Body: the zipped save folder (application/octet-stream). ?device= names the computer.
-  app.post<{ Params: { id: string }; Querystring: { device?: string } }>("/api/games/:id/saves", async (req) => {
+  // ?runner=recomp:<id> marks saves a recomp made, kept apart from the emulator's.
+  app.post<{ Params: { id: string }; Querystring: { device?: string; runner?: string } }>("/api/games/:id/saves", async (req) => {
     const user = requirePerson(req);
     game(req, req.params.id);
+    const runner = req.query.runner?.trim() || null;
+    if (runner && !/^recomp:[a-z0-9_-]{1,40}$/.test(runner)) throw new HttpProblem(400, "Unknown runner");
     if (!req.body || typeof (req.body as Readable).pipe !== "function") throw new HttpProblem(400, "Send the zip as application/octet-stream");
     try {
-      return await ctx.saves.add(user.id, req.params.id, req.body as Readable, req.query.device ?? null);
+      return await ctx.saves.add(user.id, req.params.id, req.body as Readable, req.query.device ?? null, runner);
     } catch (err) {
       throw new HttpProblem(400, (err as Error).message);
     }

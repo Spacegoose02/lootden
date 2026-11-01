@@ -12,6 +12,7 @@ export { firstExisting, pcReport, runningStoreGames, streamingPaths } from "./pr
 export { missingSunshineApps, moonlightCommand, streamWithMoonlight, sunshineAppFor, syncSunshine } from "./streaming.js";
 export { isRobloxPlayer, setRobloxFullscreen, trackRoblox, withFullscreen } from "./roblox.js";
 export * from "./emulators.js";
+export * from "./recomps.js";
 export { backupSaves, expandSavePath, restoreSaves } from "./saves.js";
 export { installedTruckModKey, installTruckMod, linkTruckMod, listTruckMods, readTruckManifest, removeTruckMod, scanTruckMods, truckGameVersion, truckModsFolder, TRUCK_MODS_LIST } from "./truckmods.js";
 export { switchSaveSlot, type SaveSlotOptions } from "./saveslots.js";

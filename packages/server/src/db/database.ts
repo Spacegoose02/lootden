@@ -726,6 +726,10 @@ export const MIGRATIONS: string[] = [
     error TEXT
   );
   `,
+  `
+  -- Saves made by a recomp (a native PC version of a console game) instead of the game's emulator.
+  ALTER TABLE saves ADD COLUMN runner TEXT;
+  `,
 ];
 
 export function openDatabase(file: string): Db {
