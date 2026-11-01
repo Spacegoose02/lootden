@@ -107,6 +107,14 @@ can be set once by an admin on the add-on's card (`PUT /api/addons/:id/shared`, 
 like accounts, never sent back); a person's own value wins. `Integrations` (IGDB and other admin keys in the settings table) aren't encrypted yet; the
 vault can do it.
 
+## Tall Steam covers on the wishlist (0.26.2)
+
+Steam keeps newer games' art under hashed paths, so the fixed `header.jpg` URL from 0.26.1
+404'd. Steam art now comes from `IStoreBrowseService/GetItems` with `include_assets`, using
+`library_capsule` (600x900) built from `asset_url_format`, falling back to the header and the
+old library URL. A migration clears wishlist images still on the old header URL so the next
+sync refills them. A cover that fails to load shows the letter placeholder.
+
 ## Wishlist covers for Watchmask entries (0.26.1)
 
 Watchmask (formerly Yamtrack) feed entries carry no image, so after each sync, entries without
