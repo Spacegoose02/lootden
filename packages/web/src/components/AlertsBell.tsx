@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { api, type Alert } from "../api";
 import { useLive } from "../live";
+import { useEscape } from "../escape";
 
 const ICON: Record<Alert["kind"], string> = { released: "🎉", found: "🔎", grabbed: "⬇️", imported: "✅", updates: "🔄", flagged: "🛡️", sources: "📰", failed: "⚠️", test: "🔔" };
 
@@ -29,6 +30,8 @@ export function AlertsBell() {
     document.addEventListener("mousedown", close);
     return () => document.removeEventListener("mousedown", close);
   }, [open]);
+  // Esc, and B on a controller (sent as Esc while a pop-up is open), close it; it used to trap the d-pad.
+  useEscape(() => setOpen(false), open);
   const toggle = () => {
     setOpen(!open);
     if (!open && data.unread) void api.readAlerts().then(() => setData((d) => ({ ...d, unread: 0 })));

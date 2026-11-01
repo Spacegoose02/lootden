@@ -144,12 +144,31 @@ function nearest(items: HTMLElement[], to: DOMRect): HTMLElement | undefined {
   return best;
 }
 
+/**
+ * Where an item sits when it isn't lifted. A focused game on a shelf rises a few pixels (see
+ * styles.css), which put the games beside it "below" it: down went sideways along the row.
+ */
+function restingRect(el: HTMLElement): DOMRect {
+  if (getComputedStyle(el).transform === "none") return el.getBoundingClientRect();
+  const { transform, transition } = el.style;
+  el.style.transition = "none";
+  el.style.transform = "none";
+  const r = el.getBoundingClientRect();
+  el.style.transform = transform;
+  void el.offsetWidth; // back to lifted before transitions return, so it doesn't bounce
+  el.style.transition = transition;
+  return r;
+}
+
+/** A pop-up the d-pad stays inside: one with something to pick, or a modal one even while its buttons are off (the roulette mid-spin). */
+const trapping = (popup: Element | null): popup is Element => !!popup && (popup.getAttribute("aria-modal") === "true" || !!popup.querySelector(FOCUSABLE));
+
 export function moveFocus(dir: Dir, repeating = false): void {
   setNavMode("pad");
   setEditing(null);
   // An open menu, alerts panel or picture keeps the d-pad inside it until B closes it.
   const popup = openPopup();
-  const scope: ParentNode = popup?.querySelector(FOCUSABLE) ? popup : document;
+  const scope: ParentNode = trapping(popup) ? popup : document;
   const items = [...scope.querySelectorAll<HTMLElement>(FOCUSABLE)].filter(visible);
   const current = document.activeElement as HTMLElement | null;
   if (!current || current === document.body || !items.includes(current)) {
@@ -163,7 +182,7 @@ export function moveFocus(dir: Dir, repeating = false): void {
     }
     return;
   }
-  const from = current.getBoundingClientRect();
+  const from = restingRect(current);
   const here = zoneOf(current);
   // From the page itself, the page comes first: up through a long library goes row by row,
   // scrolling the rows above back out from under the top bar, and only reaches the menu at the top.
@@ -209,6 +228,8 @@ export function moveFocus(dir: Dir, repeating = false): void {
 export function switchZone(): void {
   setNavMode("pad");
   setEditing(null);
+  // Not out of an open pop-up into the page behind it.
+  if (openPopup()) return;
   const current = document.activeElement as HTMLElement | null;
   const zones = [...document.querySelectorAll("main .filters, main .collection, main [data-nav-zone]")];
   if (zones.length < 2) return;
@@ -223,6 +244,7 @@ export function switchZone(): void {
 
 /** LT and RT: the previous or next tab of the page's tab bar (Library's Installed, All games, Backlog...). */
 export function switchTab(by: number): void {
+  if (openPopup()) return;
   const bar = document.querySelector<HTMLElement>('main [role="tablist"]');
   const tabs = bar ? [...bar.querySelectorAll<HTMLElement>('[role="tab"]')].filter(visible) : [];
   if (tabs.length < 2) return;
@@ -243,6 +265,7 @@ export const SECTION_EVENT = "lootden:section";
 export function switchSection(by: number): void {
   setNavMode("pad");
   setEditing(null);
+  if (openPopup()) return;
   window.dispatchEvent(new CustomEvent<number>(SECTION_EVENT, { detail: by }));
 }
 
@@ -272,7 +295,8 @@ const keepsKey = (el: Element | null, dir: Dir) => {
   if (!(el instanceof HTMLInputElement) || ["checkbox", "radio", "button", "submit", "range"].includes(el.type) || (dir !== "left" && dir !== "right")) return false;
   const start = el.selectionStart;
   const end = el.selectionEnd;
-  if (start === null || end === null) return true; // number and similar inputs don't say
+  // Number, time and date boxes don't say where the cursor is: let the d-pad move on rather than stay stuck in them.
+  if (start === null || end === null) return false;
   return dir === "left" ? start > 0 || end > 0 : start < el.value.length || end < el.value.length;
 };
 
@@ -320,6 +344,11 @@ export function installSpatialNavigation(onBack: () => void): () => void {
     if (el instanceof HTMLSelectElement && (e.key === "Enter" || (e.key === "Escape" && el === editing))) {
       e.preventDefault();
       toggleEditing(el);
+      return;
+    }
+    // Esc in a text box leaves it, like B on a gamepad (the Ally sends Esc for B in Desktop mode).
+    if (e.key === "Escape" && !e.defaultPrevented && !openPopup() && isTextField(el) && !(el instanceof HTMLSelectElement)) {
+      (el as HTMLElement).blur();
       return;
     }
     // Esc goes back a page, like B. The ROG Ally sends Esc for B when Armoury Crate has LootDen in Desktop mode.
