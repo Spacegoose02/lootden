@@ -107,6 +107,14 @@ can be set once by an admin on the add-on's card (`PUT /api/addons/:id/shared`, 
 like accounts, never sent back); a person's own value wins. `Integrations` (IGDB and other admin keys in the settings table) aren't encrypted yet; the
 vault can do it.
 
+## Controller d-pad fixes (0.24.1)
+
+- `moveFocus` measures the focused item without its hover lift (`restingRect` in `gamepad.ts`),
+  so down on Home goes to the next row instead of sideways.
+- `aria-modal` pop-ups keep the d-pad inside even with only disabled buttons (roulette spin);
+  Y, LT/RT and LB/RB do nothing while a pop-up or menu is open; B/Esc close the alerts panel;
+  left/right leave time and number boxes; Esc leaves a text box (Ally Desktop mode sends B as Esc).
+
 ## Family live: Now Playing, PCs, Send to PC, game night, family wall, streaming, Den Duty (0.24.0)
 
 - **Heartbeat** (`POST /api/me/presence`, shared types in `shared/src/presence.ts`): the desktop
