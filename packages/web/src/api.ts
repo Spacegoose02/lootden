@@ -1,5 +1,8 @@
 import { desktop } from "./desktop";
 import type {
+  AchievementSummary,
+  GameAchievements,
+  AchievementSource,
   AchievementView,
   Allowance,
   NowPlaying,
@@ -268,9 +271,9 @@ export interface GameRequest {
   libraryId: string | null;
 }
 
-export const BACKLOG = ["backlog", "playing", "done", "shelved", "dropped", "wishlist"] as const;
+export const BACKLOG = ["backlog", "playing", "done", "completed", "shelved", "dropped", "wishlist"] as const;
 export type BacklogStatus = (typeof BACKLOG)[number];
-export const BACKLOG_LABELS: Record<BacklogStatus, string> = { backlog: "Backlog", playing: "Playing", done: "Finished", shelved: "On hold", dropped: "Dropped", wishlist: "Want to play" };
+export const BACKLOG_LABELS: Record<BacklogStatus, string> = { backlog: "Backlog", playing: "Playing", done: "Beaten", completed: "Completed 100%", shelved: "On hold", dropped: "Dropped", wishlist: "Want to play" };
 
 export interface Journal {
   gameId: string;
@@ -668,9 +671,9 @@ export const api = {
   updatesBehind: () => call<Array<VersionCheck & { title: string }>>("GET", "/api/updates"),
   version: (id: string) => call<VersionCheck | null>("GET", `/api/games/${id}/version`),
   checkVersion: (id: string) => call<VersionCheck>("POST", `/api/games/${id}/version`),
-  journal: (id: string) => call<Journal>("GET", `/api/games/${id}/journal`),
-  saveJournal: (id: string, patch: { status?: BacklogStatus | null; rating?: number | null; notes?: string }) => call<Journal>("PUT", `/api/games/${id}/journal`, patch),
-  addJournalEntry: (id: string, text: string) => call<Journal>("POST", `/api/games/${id}/journal/entries`, { text }),
+  journal: (id: string) => call<Journal>("GET", `/api/games/${encodeURIComponent(id)}/journal`),
+  saveJournal: (id: string, patch: { status?: BacklogStatus | null; rating?: number | null; notes?: string }) => call<Journal>("PUT", `/api/games/${encodeURIComponent(id)}/journal`, patch),
+  addJournalEntry: (id: string, text: string) => call<Journal>("POST", `/api/games/${encodeURIComponent(id)}/journal/entries`, { text }),
   deleteJournalEntry: (entryId: number) => call("DELETE", `/api/journal/entries/${entryId}`),
   backlog: () => call<BacklogData>("GET", "/api/backlog"),
   roulette: (status = "backlog", controller = false) => call<{ game: GameSummary; from: string; poolSize: number }>("GET", `/api/backlog/roulette${qs({ status, controller: controller ? "1" : undefined })}`),
@@ -798,7 +801,46 @@ export const api = {
   unshelveGame: (id: number, gameId: string) => call<Shelf>("DELETE", `/api/shelves/${id}/games/${encodeURIComponent(gameId)}`),
   gameShelves: (gameId: string) => call<number[]>("GET", `/api/games/${encodeURIComponent(gameId)}/shelves`),
   setTogether: (id: string, together: string[] | null) => call<GameDetail>("PATCH", `/api/games/${id}`, { together }),
+  gameAchievements: (id: string, refresh = false) => call<AchievementsAnswer>("GET", `/api/games/${encodeURIComponent(id)}/achievements${refresh ? "?refresh=1" : ""}`),
+  storeAchievements: (addon: string, id: string, refresh = false) =>
+    call<AchievementsAnswer>("GET", `/api/store-games/${encodeURIComponent(addon)}/${encodeURIComponent(id)}/achievements${refresh ? "?refresh=1" : ""}`),
+  myAchievements: () => call<AchievementSummary>("GET", "/api/me/achievements"),
+  familyAchievements: () => call<Array<{ userId: number; name: string; avatar: string | null; unlocked: number; perfect: number }>>("GET", "/api/family/achievements"),
+  gameSessions: (id: string) => call<GameSessions>("GET", `/api/games/${encodeURIComponent(id)}/sessions`),
+  playHistory: (days = 30, everyone = false) =>
+    call<PlayHistory>("GET", `/api/me/play-history${qs({ days: String(days), everyone: everyone ? "1" : undefined, tz: Intl.DateTimeFormat().resolvedOptions().timeZone })}`),
 };
+
+/** A game's achievements as the server found them, with which accounts are connected. */
+export interface AchievementsAnswer {
+  achievements: GameAchievements | null;
+  error: string | null;
+  connected: AchievementSource[];
+  /** The account that would show this game's achievements, when it isn't connected yet. */
+  wants: AchievementSource | null;
+}
+
+export interface GameSessions {
+  sessions: Array<{ device: string | null; seconds: number; startedAt: string; endedAt: string }>;
+  count: number;
+  totalSeconds: number;
+  averageSeconds: number;
+  longestSeconds: number;
+  firstPlayedAt: string | null;
+}
+
+export interface PlayHistory {
+  days: number;
+  totalSeconds: number;
+  sessionCount: number;
+  perDay: Array<{ day: string; seconds: number }>;
+  perWeekday: Array<{ day: string; seconds: number }>;
+  perHour: Array<{ hour: number; seconds: number }>;
+  genres: Array<{ name: string; seconds: number }>;
+  devices: Array<{ name: string; seconds: number }>;
+  games: Array<{ id: string; title: string; seconds: number }>;
+  recent: Array<{ gameId: string; title: string | null; device: string | null; seconds: number; startedAt: string }>;
+}
 
 export interface FamilySettings {
   timeZone: string;

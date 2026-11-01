@@ -127,6 +127,13 @@ export class AddonRegistry {
     return this.effective("steam", own).apiKey ?? "";
   }
 
+  /** A connected account's settings with shared values filled in, or null when not connected. Server side only. */
+  accountConfig(userId: number, id: string): Record<string, string> | null {
+    const row = this.account(userId, id);
+    if (!row || !this.enabled(id)) return null;
+    return this.effective(id, this.config(row));
+  }
+
   enabled(id: string): boolean {
     return this.switches()[id]?.enabled !== false;
   }

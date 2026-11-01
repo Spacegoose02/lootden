@@ -103,6 +103,17 @@ export interface LocalGameCopy {
   cover: string | null;
 }
 
+/** A screenshot found on this PC: a token stands in for its path. */
+export interface LocalShot {
+  token: string;
+  from: "steam" | "captures";
+  takenAt: string;
+  bytes: number;
+  /** A small data: URL, null when the picture couldn't be read. */
+  thumb: string | null;
+  name: string;
+}
+
 /** Bridge the desktop app injects (packages/desktop/src/preload.ts). Absent in a normal browser. */
 export interface DesktopBridge {
   version: number;
@@ -120,6 +131,10 @@ export interface DesktopBridge {
   localGame?(gameId: string): Promise<LocalGameCopy | null>;
   /** Library add-ons: store games installed on this PC, and starting one through its launcher (apps from 0.14.0). */
   storeGames?(): Promise<LocalStoreGame[]>;
+  /** A game's screenshots already on this PC (Steam's and Xbox Game Bar's), sharing one to the family wall, and opening one (newer apps only). */
+  localScreenshots?(q: { steamAppId?: string | null; title: string }): Promise<LocalShot[]>;
+  shareLocalScreenshot?(token: string, gameId?: string | null, title?: string | null): Promise<void>;
+  openLocalScreenshot?(token: string): Promise<void>;
   launchStore?(url: string): Promise<void>;
   /** Steam Workshop items in an installed game's mods folder, and adding or removing one (newer apps only). */
   workshopItems?(gameId: string): Promise<InstalledWorkshopItem[]>;

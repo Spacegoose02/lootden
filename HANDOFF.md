@@ -107,6 +107,27 @@ can be set once by an admin on the add-on's card (`PUT /api/addons/:id/shared`, 
 like accounts, never sent back); a person's own value wins. `Integrations` (IGDB and other admin keys in the settings table) aren't encrypted yet; the
 vault can do it.
 
+## Game achievements, play history, local screenshots (unreleased)
+
+- **Achievements** (`users/achievements.ts`, `routes/achievements.ts`, types in
+  `shared/src/achievements.ts`): Steam (GetSchemaForGame, GetPlayerAchievements, global
+  percentages; the game's `metadata.steamAppId` or a Steam store game's id), Xbox through
+  OpenXBL (`/api/v2/achievements/title/<titleId>`, Xbox store games) and RetroAchievements
+  (emulated games, matched by `looseTitle` against the person's completion progress list). The
+  accounts are the Game libraries add-ons; RetroAchievements is a new add-on that lists no games.
+  Results are cached per person in `achievement_cache` for six hours (`?refresh=1` asks again);
+  the profile summary and `GET /api/family/achievements` come from that cache, so games count
+  once their page has been opened.
+- **Completion**: backlog status `completed` ("Completed 100%"; `done` is now labelled Beaten).
+  Journals accept `store:<addon>:<id>` ids, so store games get ratings and statuses (they don't
+  show in the Backlog tab, which lists library games).
+- **Play history**: `GET /api/games/:id/sessions` and `GET /api/me/play-history?days=&tz=`
+  (admins: `everyone=1`) from `play_sessions`; days follow the browser's time zone.
+- **Local screenshots** (`client/src/localshots.ts`): Steam's
+  `userdata/<id>/760/remote/<appid>/screenshots` and Windows' `Videos/Captures` files that start
+  with the game's title. The app hands the page tokens and thumbnails, never paths
+  (`gm:localScreenshots`, `gm:shareLocalScreenshot`).
+
 ## Game version tags (0.24.2)
 
 Every LootDen install and applied update saves the game's version in `.lootden.json`, with

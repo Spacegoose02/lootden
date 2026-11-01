@@ -261,7 +261,7 @@ export class FamilyService {
     s.systems = systems.size;
     const journal = this.db.prepare("SELECT status, rating FROM journal WHERE user_id = ?").all(userId) as Array<{ status: string | null; rating: number | null }>;
     s.sorted = journal.filter((j) => j.status).length;
-    s.finished = journal.filter((j) => j.status === "done").length;
+    s.finished = journal.filter((j) => j.status === "done" || j.status === "completed").length;
     s.ratings = journal.filter((j) => j.rating != null).length;
     s.journalEntries = (this.db.prepare("SELECT COUNT(*) AS n FROM journal_entries WHERE user_id = ?").get(userId) as { n: number }).n;
     const mine = granted ?? this.requests().list(userId);

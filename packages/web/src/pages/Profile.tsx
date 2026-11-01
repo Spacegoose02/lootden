@@ -12,6 +12,7 @@ import { StreamingSetup } from "../components/Streaming";
 import { AchievementsGrid, HoloCard, RaccoonBuilder, useProgress } from "../components/Progress";
 import { PlayTimeCard } from "../components/PlayTime";
 import { BanditProfileCard } from "../components/Bandit";
+import { AchievementSummaryPanel } from "../components/Achievements";
 
 export function Profile() {
   const { me, refresh } = useAuth();
@@ -127,6 +128,8 @@ export function Profile() {
           </section>
 
           {progress && <AchievementsGrid achievements={progress.achievements} />}
+
+          <AchievementSummaryPanel />
 
           <section className="panel">
             <h2>My games</h2>

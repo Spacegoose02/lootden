@@ -64,6 +64,13 @@ installs games from it on any PC in the house.
   game time bought in Den Duty's rewards shop turns into bonus time here, reaching a family goal
   unlocks a game night, and Den Duty's family wall shows who's playing, the next game night and
   a screenshot slideshow.
+- **Game achievements** from Steam, Xbox (OpenXBL) and RetroAchievements (for emulated games) on
+  each game's page, with rarity, a profile summary and a family "Achievement hunters" board.
+- **Play history**: every session per game (when, which PC, how long), and charts of play time per
+  day, weekday, hour, genre and PC on Library, Stats. Ratings and statuses (now with Completed
+  100%) work for other stores' games too.
+- **Screenshots on this PC**: a game's Steam and Xbox Game Bar screenshots show on its page in the
+  app, one click from the family wall.
 - `lootden` command-line client and a Playnite plugin.
 
 ## Running the server
