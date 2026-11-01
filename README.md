@@ -71,6 +71,13 @@ installs games from it on any PC in the house.
 - **Discord status, launch splash and pause**: show what you're playing on Discord, cover the screen
   with the game's art while it loads (handheld mode or always), and pause a running game with
   Ctrl+Shift+P or the Pause button. Each one is switched on or off under Profile, This computer.
+- **Game achievements** from Steam, Xbox (OpenXBL) and RetroAchievements (for emulated games) on
+  each game's page, with rarity, a profile summary and a family "Achievement hunters" board.
+- **Play history**: every session per game (when, which PC, how long), and charts of play time per
+  day, weekday, hour, genre and PC on Library, Stats. Ratings and statuses (now with Completed
+  100%) work for other stores' games too.
+- **Screenshots on this PC**: a game's Steam and Xbox Game Bar screenshots show on its page in the
+  app, one click from the family wall.
 - `lootden` command-line client and a Playnite plugin.
 
 ## Running the server

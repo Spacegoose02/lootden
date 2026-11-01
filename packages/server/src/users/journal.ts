@@ -1,6 +1,6 @@
 import { now, type Db } from "../db/database.js";
 
-export const BACKLOG_STATUSES = ["backlog", "playing", "done", "shelved", "dropped", "wishlist"] as const;
+export const BACKLOG_STATUSES = ["backlog", "playing", "done", "completed", "shelved", "dropped", "wishlist"] as const;
 export type BacklogStatus = (typeof BACKLOG_STATUSES)[number];
 
 export interface JournalEntry {

@@ -43,6 +43,7 @@ import type { LibraryRefresh } from "./catalog/refresh.js";
 import type { DenDutyLink } from "./users/denduty.js";
 import type { GameNights } from "./users/gamenight.js";
 import type { ScreenshotWall } from "./users/screenshots.js";
+import type { AchievementService } from "./users/achievements.js";
 
 /** Everything route modules need, built once in buildApp. */
 export interface AppContext {
@@ -99,6 +100,8 @@ export interface AppContext {
   gameNights: GameNights;
   /** The family screenshot wall. */
   screenshots: ScreenshotWall;
+  /** Real game achievements from Steam, RetroAchievements and Xbox. */
+  achievements: AchievementService;
   /** Bandit, the AI gaming helper. */
   helper: HelperService;
   timeToBeat: (providerId: string | null, title: string) => Promise<TimeToBeat | null>;

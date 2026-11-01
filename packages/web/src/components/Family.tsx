@@ -5,6 +5,7 @@ import { api, avatarUrl, formatPlaytime, type PlayerCard } from "../api";
 import { useAuth } from "../auth";
 import { HoloCard } from "./Progress";
 import { useEscape } from "../escape";
+import { FamilyAchievementBoard } from "./Achievements";
 
 const day = (d: string, opts: Intl.DateTimeFormatOptions) => new Date(`${d}T12:00:00Z`).toLocaleDateString(undefined, { ...opts, timeZone: "UTC" });
 const range = (r: WeeklyRecap) => `${day(r.from, { day: "numeric", month: "short" })} to ${day(r.to, { day: "numeric", month: "short" })}`;
@@ -203,6 +204,7 @@ export function FamilyRecap() {
         </ol>
       )}
       <p className="muted small">Play time counts games started from the LootDen app. {me?.user?.kidMode ? "" : "Kids see the leaderboard too, without the names of grown-up games."}</p>
+      <FamilyAchievementBoard />
       {card && (
         <div className="celebration" role="dialog" aria-modal="true" aria-label={`${card.displayName}'s card`} onClick={(e) => e.target === e.currentTarget && setCard(null)}>
           <div className="card-popup">

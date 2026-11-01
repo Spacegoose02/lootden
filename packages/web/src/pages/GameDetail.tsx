@@ -16,6 +16,8 @@ import { TOGETHER_TAGS } from "@lootden/shared";
 import { UpdatesPanel } from "../components/UpdatesPanel";
 import { PreparePanel } from "../components/PreparePanel";
 import { JournalPanel, ModsPanel, WorkshopPanel, VersionBanner } from "../components/GameExtras";
+import { GameAchievementsPanel, GameSessionsPanel } from "../components/Achievements";
+import { LocalScreenshots } from "../components/LocalScreenshots";
 import { TruckModsPanel } from "../components/TruckMods";
 import { TruckModListPanel } from "../components/TruckModList";
 import { bridgeError, desktop, type LocalGameCopy } from "../desktop";
@@ -153,6 +155,9 @@ export function GameDetail() {
       </div>
 
       {me?.user && !isAddon && <JournalPanel gameId={game.id} />}
+      {me?.user && !isAddon && <GameAchievementsPanel gameId={game.id} journalId={game.id} />}
+      {me?.user && !isAddon && <GameSessionsPanel gameId={game.id} />}
+      {!isAddon && <LocalScreenshots title={m?.name ?? game.title} steamAppId={m?.steamAppId ?? null} gameId={game.id} />}
 
       {m?.screenshots.length ? (
         <section className="row">

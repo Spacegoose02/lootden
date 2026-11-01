@@ -4879,3 +4879,25 @@ html[data-lootden-frame] .lightbox {
 .launch-step .grow { flex: 1 1 16rem; min-width: 10rem; }
 .launch-step input[type="number"] { width: 5.5rem; }
 .launch-step-tools { margin-left: auto; display: inline-flex; gap: 0.2rem; }
+/* Game achievements and play history */
+.achievements-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.6rem; }
+.achievements-head h2 { margin-right: auto; }
+.achievement-progress { display: block; height: 8px; border-radius: 99px; background: var(--border); overflow: hidden; margin: 0.4rem 0; }
+.achievement-progress > span { display: block; height: 100%; background: var(--accent); border-radius: inherit; }
+.achievement-progress.small { width: 8rem; height: 6px; margin: 0; }
+.achievement-list { list-style: none; padding: 0; margin: 0.5rem 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(17rem, 1fr)); gap: 0.5rem; }
+.achievement-list li { display: flex; gap: 0.6rem; align-items: center; padding: 0.4rem; border-radius: 10px; border: 1px solid var(--border); }
+.achievement-list li.locked { opacity: 0.55; }
+.achievement-list img, .achievement-icon { width: 48px; height: 48px; border-radius: 8px; flex: none; display: grid; place-items: center; font-size: 1.6rem; }
+.achievement-list.compact img, .achievement-list.compact .achievement-icon { width: 36px; height: 36px; }
+.achievement-text { display: grid; gap: 0.1rem; min-width: 0; }
+.achievement-text small { overflow: hidden; text-overflow: ellipsis; }
+.achievement-games { list-style: none; padding: 0; margin: 0; display: grid; gap: 0.35rem; }
+.achievement-games li { display: grid; grid-template-columns: 1fr auto auto; gap: 0.6rem; align-items: center; }
+.stat-grid .panel.wide { grid-column: 1 / -1; }
+.session-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 0.35rem; }
+.local-shot-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr)); gap: 0.6rem; }
+.local-shot { margin: 0; display: grid; gap: 0.3rem; }
+.local-shot-open { padding: 0; border: 0; background: none; border-radius: 10px; overflow: hidden; aspect-ratio: 16 / 9; display: grid; place-items: center; }
+.local-shot-open img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.local-shot figcaption { display: flex; justify-content: space-between; align-items: center; gap: 0.4rem; }

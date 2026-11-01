@@ -4,7 +4,9 @@ import { ROBLOX_ADDON, truckGameForSteamApp, type GameListing, type LocalStoreGa
 import { api, formatPlaytime } from "../api";
 import { bridgeError, desktop } from "../desktop";
 import { ArtworkPicker } from "../components/ArtworkEditor";
-import { WorkshopPanel } from "../components/GameExtras";
+import { JournalPanel, WorkshopPanel } from "../components/GameExtras";
+import { GameAchievementsPanel } from "../components/Achievements";
+import { LocalScreenshots } from "../components/LocalScreenshots";
 import { TruckModsPanel } from "../components/TruckMods";
 import { TruckModListPanel } from "../components/TruckModList";
 import { GameMedia } from "../components/GameMedia";
@@ -124,7 +126,10 @@ export function StoreGame() {
 
       {editing && <StoreGameEditor addon={addon} id={id} title={localTitle} detail={detail} onChange={setDetail} />}
 
+      {me?.user && addon !== ROBLOX_ADDON && <JournalPanel gameId={`store:${addon}:${id}`} />}
+      {me?.user && (addon === "steam" || addon === "xbox") && <GameAchievementsPanel store={{ addon, id }} journalId={`store:${addon}:${id}`} />}
       {info && <GameMedia game={info} />}
+      {addon !== ROBLOX_ADDON && <LocalScreenshots title={game.title} steamAppId={addon === "steam" ? id : null} />}
       {addon === "steam" && /^\d+$/.test(id) && !me?.user?.kidMode && <WorkshopPanel steamAppId={id} isAdmin={me?.role === "admin"} installedHere={!!local} />}
       {addon === "steam" && truckGameForSteamApp(id) && !me?.user?.kidMode && <TruckModsPanel game={truckGameForSteamApp(id)!} />}
       {addon === "steam" && truckGameForSteamApp(id) && !me?.user?.kidMode && <TruckModListPanel game={truckGameForSteamApp(id)!} />}

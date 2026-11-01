@@ -671,6 +671,23 @@ const MIGRATIONS: string[] = [
     UNIQUE (game, name)
   );
   `,
+  `
+  -- Game achievements (Steam, RetroAchievements, Xbox) as last looked up, per person and game.
+  CREATE TABLE achievement_cache (
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    source TEXT NOT NULL,
+    source_id TEXT NOT NULL,
+    title TEXT NOT NULL,
+    link TEXT,
+    data TEXT NOT NULL,
+    unlocked INTEGER NOT NULL DEFAULT 0,
+    total INTEGER NOT NULL DEFAULT 0,
+    last_unlocked_at TEXT,
+    fetched_at TEXT NOT NULL,
+    PRIMARY KEY (user_id, source, source_id)
+  );
+  CREATE INDEX play_sessions_user_game ON play_sessions(user_id, game_id, ended_at);
+  `,
 ];
 
 export function openDatabase(file: string): Db {

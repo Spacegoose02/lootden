@@ -97,19 +97,24 @@ export function extraRoutes(app: FastifyInstance, ctx: AppContext) {
   });
 
   // ---- Backlog and journal ----------------------------------------------------------------
+  /** Journals are for library games, and for other stores' games as store:<addon>:<id> (the person's own). */
+  const journalGame = (req: FastifyRequest, id: string) => {
+    if (/^store:[a-z0-9-]{1,40}:[^/]{1,200}$/i.test(id)) return;
+    visible(req, id);
+  };
   app.get<{ Params: { id: string } }>("/api/games/:id/journal", async (req) => {
     const user = requirePerson(req);
-    visible(req, req.params.id);
+    journalGame(req, req.params.id);
     return ctx.journal.get(user.id, req.params.id);
   });
   app.put<{ Params: { id: string }; Body: { status?: string | null; rating?: number | null; notes?: string } }>("/api/games/:id/journal", async (req) => {
     const user = requirePerson(req);
-    visible(req, req.params.id);
+    journalGame(req, req.params.id);
     return fail(() => ctx.journal.set(user.id, req.params.id, req.body ?? {}));
   });
   app.post<{ Params: { id: string }; Body: { text?: string } }>("/api/games/:id/journal/entries", async (req) => {
     const user = requirePerson(req);
-    visible(req, req.params.id);
+    journalGame(req, req.params.id);
     return fail(() => ctx.journal.addEntry(user.id, req.params.id, String(req.body?.text ?? "")));
   });
   app.delete<{ Params: { id: string } }>("/api/journal/entries/:id", async (req) => {

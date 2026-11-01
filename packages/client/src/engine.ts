@@ -19,6 +19,7 @@ export { findSetup, prepareGame, runLocalSetup, uploadInstalledFolder, type Prep
 export { applyUpdate, BACKUP_FOLDER, undoUpdate, UpdateMismatchError, updateProblem, type AppliedUpdate, type ApplyUpdateOptions } from "./updates.js";
 export { scanStoreGames, STORE_SCANNERS, type StoreScanner } from "./stores/index.js";
 export { steamLibraryCover } from "./stores/steam.js";
+export { findLocalScreenshots, type LocalScreenshot } from "./localshots.js";
 export { applyTruckLoadOrder, enableTruckTextSaves, oldModsFolder, readTruckProfile, retireTruckModFiles, steamWorkshopSubscriptions, truckProfiles } from "./truckmodlist.js";
 export { downloadWorkshopItem, ensureSteamCmd, installWorkshopItem, listWorkshopItems, removeWorkshopItem, steamCmdResult, type InstalledWorkshopItem } from "./workshop.js";
 export { isStoreLaunchUrl, robloxPlaceOf, robloxPlayId } from "@lootden/shared";
