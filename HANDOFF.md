@@ -107,6 +107,15 @@ can be set once by an admin on the add-on's card (`PUT /api/addons/:id/shared`, 
 like accounts, never sent back); a person's own value wins. `Integrations` (IGDB and other admin keys in the settings table) aren't encrypted yet; the
 vault can do it.
 
+## Game version tags (0.24.2)
+
+Every LootDen install and applied update saves the game's version in `.lootden.json`, with
+the device and date and a fingerprint of the game's exe. "Updated outside LootDen" now shows
+only when that exe has changed since LootDen last touched it; a generic exe stamp (1.0.0.0)
+no longer overrides a recorded version. Older installs get a fingerprint and a backfilled
+version the first time games are listed. Copying an update over a read-only or briefly
+locked file clears the read-only bit and retries instead of failing with EPERM.
+
 ## Controller d-pad fixes (0.24.1)
 
 - `moveFocus` measures the focused item without its hover lift (`restingRect` in `gamepad.ts`),
