@@ -4888,6 +4888,9 @@ html[data-lootden-frame] .lightbox {
 .launch-options { margin-top: 0.75rem; }
 .launch-options > summary { cursor: pointer; padding: 0.25rem 0; }
 .launch-options h4 { margin: 1rem 0 0.4rem; font-size: 0.95rem; }
+.recomp-settings { margin-top: 0.75rem; }
+.recomp-settings > summary { cursor: pointer; padding: 0.25rem 0; }
+.recomp-settings label { display: block; margin: 0.4rem 0; }
 .launch-action { border: 1px solid var(--border); border-radius: 10px; padding: 0.6rem; margin-bottom: 0.6rem; }
 .launch-steps ol { list-style: decimal; margin: 0.3rem 0 0.5rem; padding-left: 1.4rem; display: grid; gap: 0.4rem; }
 .launch-step { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; }

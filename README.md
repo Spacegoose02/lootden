@@ -44,7 +44,9 @@ installs games from it on any PC in the house.
 - Recomps: native PC versions of console games (Zelda 64: Recompiled, Star Fox 64: Recompiled).
   The desktop app downloads each one from its developer's GitHub releases, checks it against
   GitHub's SHA-256, and plays the ROM from your library with it, with save backups kept apart
-  from the emulator's. Releases that ship a `recomplauncher.json` are started the way it says.
+  from the emulator's. Releases that ship a `recomplauncher.json` are started the way it says,
+  with their settings on the game's page, their setup step run once, and their own messages for
+  exit codes. Admins can add more recomps by GitHub link, and the Emulation page shows updates.
 - Optional download tools for admins: Prowlarr search, qBittorrent, Transmission, Deluge
   and SABnzbd, a download manager for direct file-host links, import clean-up, a wanted
   list, virus scanning and alerts (Apprise).

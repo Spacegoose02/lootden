@@ -7,7 +7,13 @@ import { after, before, describe, it } from "node:test";
 import { spawn } from "node:child_process";
 import type { FastifyInstance } from "fastify";
 import {
+  cleanCustomRecomp,
+  currentChoice,
   n64Header,
+  prepareProgress,
+  readConfigKeys,
+  settingApplies,
+  writeConfigKeys,
   parseRecompManifest,
   pickRecompAsset,
   recompRomProblem,
@@ -22,7 +28,7 @@ import { GameServerClient } from "../src/api.js";
 import { readTools } from "../src/emulators.js";
 import { findSevenZip, type SevenZip } from "../src/extractor.js";
 import { installGame } from "../src/installer.js";
-import { installRecomp, planRecomp, playRecomp, recompDir, removeRecomp, restoreRecompSaves } from "../src/recomps.js";
+import { installRecomp, planRecomp, playRecomp, recompDir, recompSettings, recompUpdates, removeRecomp, restoreRecompSaves, setRecompSetting } from "../src/recomps.js";
 
 /** A tiny N64 ROM: big-endian header with the game's name, country and revision. */
 function rom(name: string, country = "E", size = 0x1000): Uint8Array {
@@ -77,8 +83,53 @@ describe("recomps: matching, files and ROMs", () => {
       start: { program: ["bin/game.exe", "../../evil.exe", "C:\\Windows\\x.exe"], args: ["--iso", "{game}"], env: { MY_DATA: "{documents}/X", PATH: "/tmp", "bad name": "x" } },
       saves: ["{install}/saves"],
     });
-    assert.deepEqual(m, { programs: ["bin/game.exe"], args: ["--iso", "{game}"], env: { MY_DATA: "{documents}/X" }, saves: ["{install}/saves"] });
-    assert.deepEqual(parseRecompManifest("nonsense"), { programs: [], args: [], env: {}, saves: [] });
+    assert.deepEqual({ ...m, config: undefined, settings: undefined, prepare: undefined, exitCodes: undefined }, { programs: ["bin/game.exe"], args: ["--iso", "{game}"], env: { MY_DATA: "{documents}/X" }, saves: ["{install}/saves"], config: undefined, settings: undefined, prepare: undefined, exitCodes: undefined });
+    assert.deepEqual(parseRecompManifest("nonsense"), { programs: [], args: [], env: {}, saves: [], config: [], settings: [], prepare: null, exitCodes: {} });
+    const full = parseRecompManifest({
+      config: [{ format: "toml", file: [{ path: "{install}/game.toml", if: "{install}/portable.txt" }, { path: "{documents}/G/game.toml" }], game_path: "iso_path", ensure: { a: "1" }, new: { b: "2" } }, { format: "yaml", file: "x" }],
+      settings: [{ id: "res", label: "Resolution", choices: [{ label: "1x", set: { scale: "1" } }, { label: "2x", set: { scale: "2" } }], defaults: { scale: "1" } }, { id: "bad" }],
+      prepare: { program: ["prep.exe", "../x.exe"], args: ["--game", "{game}"], label: "Fonts", timeout: 99999 },
+      exit_codes: { "252968961": "Pick your copy again.", abc: "no" },
+    });
+    assert.equal(full.config.length, 1);
+    assert.deepEqual(full.config[0], { id: "main", format: "toml", file: [{ path: "{install}/game.toml", if: "{install}/portable.txt" }, { path: "{documents}/G/game.toml" }], gamePath: "iso_path", ensure: { a: "1" }, always: {}, fresh: { b: "2" } });
+    assert.deepEqual(full.settings.map((x) => x.id), ["res"]);
+    assert.deepEqual(full.prepare, { programs: ["prep.exe"], args: ["--game", "{game}"], label: "Fonts", timeout: 3600 });
+    assert.deepEqual(full.exitCodes, { "252968961": "Pick your copy again." });
+  });
+
+  it("edits TOML, INI and JSON settings files without losing what's there", () => {
+    const toml = '# my settings\nfullscreen = true\n\n[graphics]\n# how sharp\nscale = 1\n\n[audio]\nvolume = 80\n';
+    const out = writeConfigKeys(toml, "toml", { "graphics.scale": "2", "graphics.api": '"vulkan"', fullscreen: "false", top: "1", "input.pad": '"xbox"' });
+    assert.equal(out, '# my settings\nfullscreen = false\ntop = 1\n\n[graphics]\n# how sharp\nscale = 2\napi = "vulkan"\n\n[audio]\nvolume = 80\n\n[input]\npad = "xbox"\n');
+    assert.deepEqual(readConfigKeys(out, "toml"), { fullscreen: "false", top: "1", "graphics.scale": "2", "graphics.api": '"vulkan"', "audio.volume": "80", "input.pad": '"xbox"' });
+    assert.equal(writeConfigKeys("[Video]\r\nWidth=640\r\n", "ini", { "Video.Width": "1280" }), "[Video]\r\nWidth=1280\r\n");
+    const json = writeConfigKeys('{"disc":"old","video":{"vsync":true}}', "json", { disc: '"D:/x.iso"', "video.fps": "60" });
+    assert.deepEqual(JSON.parse(json), { disc: "D:/x.iso", video: { vsync: true, fps: 60 } });
+    assert.deepEqual(readConfigKeys(json, "json"), { disc: '"D:/x.iso"', "video.vsync": "true", "video.fps": "60" });
+    assert.equal(writeConfigKeys("", "toml", { a: "1" }), "a = 1\n");
+  });
+
+  it("works out which choice a setting is on, and when it applies", () => {
+    const s = { id: "w", label: "Window", help: "", in: "main", choices: [{ label: "Small", set: { w: "640" }, args: [] }, { label: "Big", set: { w: "1280" }, args: [] }], defaults: { w: "640", fullscreen: "false" }, when: { fullscreen: "false" } };
+    assert.equal(currentChoice(s, {}), 0);
+    assert.equal(currentChoice(s, { w: "1280" }), 1);
+    assert.equal(currentChoice(s, { w: "999" }), -1);
+    assert.equal(settingApplies(s, {}), true);
+    assert.equal(settingApplies(s, { fullscreen: "true" }), false);
+    assert.deepEqual(prepareProgress("progress 0.4 Unpacking menu art"), { fraction: 0.4, text: "Unpacking menu art" });
+    assert.deepEqual(prepareProgress("progress 7"), { fraction: 1, text: "" });
+    assert.equal(prepareProgress("hello"), null);
+  });
+
+  it("cleans a recomp an admin adds by link", () => {
+    const r = cleanCustomRecomp({ repo: "https://github.com/luckvj/streetball-revival/releases", platform: "ps2", titles: ["NBA Street Vol. 2"] }, ["pc", "ps2"]);
+    assert.deepEqual(r, { id: "streetballrevival", name: "streetball revival", game: "NBA Street Vol. 2", repo: "luckvj/streetball-revival", platform: "ps2", titles: ["nbastreetvol2"], programs: [], custom: true });
+    assert.equal(cleanCustomRecomp({ repo: "luckvj/streetball-revival.git", platform: "ps2", titles: ["x y z"] }, ["ps2"]).repo, "luckvj/streetball-revival");
+    assert.throws(() => cleanCustomRecomp({ repo: "not a link", platform: "ps2", titles: ["A"] }, ["ps2"]), /GitHub link/);
+    assert.throws(() => cleanCustomRecomp({ repo: "a/b", platform: "pc", titles: ["Abc"] }, ["pc"]), /console/);
+    assert.throws(() => cleanCustomRecomp({ repo: "a/b", platform: "ps2", titles: [] }, ["ps2"]), /title/);
+    assert.throws(() => cleanCustomRecomp({ repo: "Zelda64Recomp/Zelda64Recomp", platform: "n64", titles: ["Zelda"] }, ["n64"]), /already knows/);
   });
 });
 
@@ -116,6 +167,8 @@ before(async () => {
   const g = path.join(work, "games");
   await mkdir(path.join(g, "Emulation", "n64"), { recursive: true });
   await writeFile(path.join(g, "Emulation", "n64", "Legend of Zelda, The - Majora's Mask (USA).v64"), v64(rom("ZELDA MAJORA'S MASK")));
+  await mkdir(path.join(g, "Emulation", "ps2"), { recursive: true });
+  await writeFile(path.join(g, "Emulation", "ps2", "NBA Street Vol. 2 (USA).iso"), "disc");
   const built = buildApp({ ...loadConfig({}), gamesDir: g, dataDir: path.join(work, "data"), logLevel: "silent" }, openDatabase(":memory:"));
   app = built.app;
   await built.ctx.library.rescan();
@@ -183,5 +236,85 @@ describe("recomps: install and play", { skip: process.platform === "win32" }, ()
     assert.equal((await readTools(tools)).recomps.zelda64recomp, undefined);
     assert.equal(await readFile(path.join(data, "saves", "mm.n64.us.1.0.bin"), "utf8"), "owl statue\n");
     await assert.rejects(planRecomp(dir, "zelda64recomp", { toolsDir: tools, sevenZip, platform: "linux" }), /Set up Zelda 64: Recompiled first/);
+  });
+});
+
+describe("recomps: added by an admin, with a recomplauncher.json", { skip: process.platform === "win32" }, () => {
+  it("is listed by the server, writes its settings, runs its setup step once and explains its exit codes", async () => {
+    // The server keeps the admin's list; players can read it.
+    const added = await api.json<{ id: string }>("/api/recomps", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ repo: "https://github.com/luckvj/streetball-revival", platform: "ps2", titles: ["NBA Street Vol. 2"] }) });
+    assert.equal(added.id, "streetballrevival");
+    const list = await api.recomps();
+    assert.deepEqual(list.added.map((r) => r.id), ["streetballrevival"]);
+    assert.ok(list.builtIn.some((r) => r.id === "zelda64recomp"));
+    const info = list.added[0]!;
+
+    const tools = path.join(work, "tools-sb");
+    const rel = path.join(work, "release-sb");
+    await mkdir(rel, { recursive: true });
+    await writeFile(
+      path.join(rel, "recomplauncher.json"),
+      JSON.stringify({
+        format: 1,
+        start: { program: ["street-game"], args: ["--iso", "{game}"], env: { SB_DATA: "{install}/data" } },
+        config: [{ id: "launcher", format: "json", file: [{ path: "{install}/launcher.json" }], game_path: "disc", new: { volume: "80" } }],
+        settings: [
+          { id: "picture", label: "Picture", in: "args", choices: [{ label: "Game's option", args: [] }, { label: "Wide", args: ["--widescreen", "wide"] }] },
+          { id: "volume", label: "Volume", in: "launcher", choices: [{ label: "Loud", set: { volume: "100" } }, { label: "Normal", set: { volume: "80" } }] },
+        ],
+        prepare: { program: ["prep"], args: ["--game", "{game}"], label: "Fonts from your disc" },
+        exit_codes: { "7": "Pick your copy again." },
+      }),
+    );
+    await writeFile(path.join(rel, "street-game"), '#!/bin/sh\necho "$* $SB_DATA" > args.txt\nmkdir -p saves\necho court > saves/s.bin\n[ -f fail ] && exit 7\nexit 0\n');
+    await writeFile(path.join(rel, "prep"), '#!/bin/sh\necho "progress 0.5 Fonts"\necho run >> prep.log\n');
+    const zip = path.join(work, "sb.zip");
+    await zipDir(rel, zip);
+    const bytes = await readFile(zip);
+    const github = (tag: string) =>
+      (async (url: string | URL | Request) => {
+        const u = String(url);
+        if (u.startsWith("https://api.github.com/repos/luckvj/streetball-revival/releases"))
+          return Response.json([{ tag_name: tag, prerelease: false, draft: false, assets: [{ name: "StreetballRevival-Linux-x64.zip", browser_download_url: "https://example.test/sb.zip" }] }]);
+        if (u === "https://example.test/sb.zip") return new Response(new Uint8Array(bytes));
+        return new Response("not found", { status: 404 });
+      }) as typeof fetch;
+
+    await installRecomp("streetballrevival", { added: list.added, toolsDir: tools, sevenZip, platform: "linux", arch: "x64", fetchImpl: github("v1.0") });
+    // Offline later: the details it was set up with are kept.
+    assert.equal((await readTools(tools)).recomps.streetballrevival!.info?.repo, "luckvj/streetball-revival");
+    const data = recompDir(tools, "streetballrevival");
+
+    // Settings on the game's page: one passed on the command line, one in its settings file.
+    assert.deepEqual((await recompSettings("streetballrevival", { toolsDir: tools, platform: "linux" })).map((x) => [x.id, x.current]), [["picture", 0], ["volume", -1]]);
+    await setRecompSetting("streetballrevival", "picture", 1, { toolsDir: tools, platform: "linux" });
+    const after = await setRecompSetting("streetballrevival", "volume", 0, { toolsDir: tools, platform: "linux" });
+    assert.deepEqual(after.map((x) => [x.id, x.current]), [["picture", 1], ["volume", 0]]);
+
+    const game = games.find((x) => x.platform === "ps2")!;
+    const dir = await installGame(api, game.id, { installDir: path.join(work, "install-sb"), keepArchives: false, sevenZipPath: "", device: "desktop" });
+    const events: string[] = [];
+    const first = await playRecomp(api, game.id, dir, "streetballrevival", { toolsDir: tools, sevenZip, platform: "linux", device: "desktop", onEvent: (e) => events.push(e.message) });
+    const iso = path.join(dir, "NBA Street Vol. 2 (USA).iso");
+    assert.equal(await readFile(path.join(data, "args.txt"), "utf8"), `--iso ${iso} --widescreen wide ${data}/data\n`);
+    assert.deepEqual(JSON.parse(await readFile(path.join(data, "launcher.json"), "utf8")), { volume: 100, disc: iso });
+    assert.ok(events.includes("Fonts from your disc: Fonts (50%)"), events.join(" | "));
+    assert.equal(first.problem, null);
+    assert.equal(first.backup?.runner, "recomp:streetballrevival");
+
+    // The setup step only runs again when the game file changes; exit codes get the recomp's own message.
+    await writeFile(path.join(data, "fail"), "");
+    const second = await playRecomp(api, game.id, dir, "streetballrevival", { toolsDir: tools, sevenZip, platform: "linux", device: "desktop" });
+    assert.equal(await readFile(path.join(data, "prep.log"), "utf8"), "run\n");
+    assert.equal(second.exitCode, 7);
+    assert.equal(second.problem, "Pick your copy again.");
+
+    // Updates: only when GitHub has a newer full release.
+    assert.deepEqual(await recompUpdates({ toolsDir: tools, platform: "linux", arch: "x64", fetchImpl: github("v1.0") }), []);
+    assert.deepEqual(await recompUpdates({ toolsDir: tools, platform: "linux", arch: "x64", fetchImpl: github("v1.1") }), [{ id: "streetballrevival", installed: "v1.0", latest: "v1.1" }]);
+
+    // Taking it off the server's list.
+    assert.deepEqual(await api.json("/api/recomps/streetballrevival", { method: "DELETE" }), { ok: true });
+    assert.deepEqual((await api.recomps()).added, []);
   });
 });

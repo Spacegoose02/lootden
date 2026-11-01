@@ -15,6 +15,8 @@ export function EmulatorSetup() {
   const [data, setData] = useState<EmulationOverview | null>(null);
   const [local, setLocal] = useState<{ toolsDir: string; emulators: Setup[] } | null>(null);
   const [recomps, setRecomps] = useState<RecompSetup[] | null>(null);
+  const [recompList, setRecompList] = useState<{ builtIn: RecompInfo[]; added: RecompInfo[] }>({ builtIn: RECOMPS, added: [] });
+  const [updates, setUpdates] = useState<Record<string, string>>({});
   const [status, setStatus] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState<string | null>(null);
   const [message, setMessage] = useState("");
@@ -25,9 +27,12 @@ export function EmulatorSetup() {
     setData(await api.emulation());
     if (desktop?.emulators) setLocal(await desktop.emulators());
     if (desktop?.recomps) setRecomps((await desktop.recomps()).recomps);
+    setRecompList(await api.recomps().catch(() => ({ builtIn: RECOMPS, added: [] })));
   };
   useEffect(() => {
     load().catch((e: Error) => setError(e.message));
+    // Newer releases of the recomps set up here, checked on GitHub once per visit.
+    void desktop?.recompUpdates?.().then((list) => setUpdates(Object.fromEntries(list.map((u) => [u.id, u.latest]))), () => {});
     return desktop?.onProgress((p) => {
       if (p.gameId.startsWith("emu:") && p.type === "prepare") setStatus((s) => ({ ...s, [p.gameId.slice(4)]: p.message }));
       if (p.gameId.startsWith("recomp:") && p.type === "prepare") setStatus((s) => ({ ...s, [p.gameId]: p.message }));
@@ -111,10 +116,19 @@ export function EmulatorSetup() {
       </p>
       {!desktop?.recomps && <p className="notice">Recomps are set up on each PC from the LootDen desktop app (update it if this message stays in the app).</p>}
       <div className="emulator-list">
-        {RECOMPS.map((r) => (
+        {[...recompList.builtIn, ...recompList.added].map((r) => (
           <RecompCard
             key={r.id}
             info={r}
+            latest={updates[r.id]}
+            isAdmin={isAdmin}
+            onDelete={() =>
+              confirm(`Take ${r.name} off the list for everyone? PCs that set it up keep it until they remove it.`) &&
+              run(`recomp-del:${r.id}`, async () => {
+                await api.removeRecomp(r.id);
+                return `${r.name} is off the list.`;
+              })
+            }
             setup={recomps?.find((x) => x.id === r.id)}
             canSetUp={Boolean(desktop?.recomps)}
             busy={busy}
@@ -122,6 +136,7 @@ export function EmulatorSetup() {
             onInstall={() =>
               run(`recomp:${r.id}`, async () => {
                 const x = await desktop!.installRecomp!(r.id);
+                setUpdates(({ [r.id]: _done, ...rest }) => rest);
                 return x.updated ? `${r.name} ${x.version} is ready.` : `${r.name} ${x.version} is already the latest.`;
               })
             }
@@ -135,6 +150,8 @@ export function EmulatorSetup() {
           />
         ))}
       </div>
+
+      {isAdmin && <AddRecomp platforms={data.platforms.filter((p) => p.id !== "pc").map((p) => ({ id: p.id, name: p.name }))} onAdded={load} />}
 
       {isAdmin && <Ps2BrowserPanel data={data} onChange={load} />}
       {isAdmin && <ServerBios data={data} onChange={load} />}
@@ -254,6 +271,9 @@ function EmulatorCard(props: {
 
 function RecompCard(props: {
   info: RecompInfo;
+  latest: string | undefined;
+  isAdmin: boolean;
+  onDelete: () => void;
   setup: RecompSetup | undefined;
   canSetUp: boolean;
   busy: string | null;
@@ -279,8 +299,8 @@ function RecompCard(props: {
         {props.canSetUp && (
           <div className="inline">
             {installed && <span className="badge">Version {installed.version}</span>}
-            <button className={installed ? "" : "primary"} disabled={!!props.busy} onClick={props.onInstall}>
-              {working ? "Working…" : installed ? "Update" : "Set up"}
+            <button className={installed && !props.latest ? "" : "primary"} disabled={!!props.busy} onClick={props.onInstall}>
+              {working ? "Working…" : installed ? (props.latest ? `Update to ${props.latest}` : "Update") : "Set up"}
             </button>
             {installed && (
               <button className="ghost" disabled={!!props.busy} onClick={props.onRemove}>
@@ -292,6 +312,71 @@ function RecompCard(props: {
       </div>
       {working && props.status && <p className="small">{props.status}</p>}
       {info.note && <p className="muted small">{info.note}</p>}
+      {info.custom && (
+        <p className="muted small">
+          Added by an admin · plays {info.titles.join(", ")}
+          {props.isAdmin && (
+            <>
+              {" "}
+              <button className="small ghost" disabled={!!props.busy} onClick={props.onDelete}>
+                Take off the list
+              </button>
+            </>
+          )}
+        </p>
+      )}
+    </section>
+  );
+}
+
+/** Admin: a recomp LootDen doesn't know yet, from its GitHub link. */
+function AddRecomp({ platforms, onAdded }: { platforms: Array<{ id: string; name: string }>; onAdded: () => Promise<void> }) {
+  const [repo, setRepo] = useState("");
+  const [platform, setPlatform] = useState("");
+  const [title, setTitle] = useState("");
+  const [name, setName] = useState("");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const add = async () => {
+    setBusy(true);
+    setError("");
+    try {
+      await api.addRecomp({ repo, platform, titles: [title], game: title, name: name || undefined });
+      setRepo("");
+      setTitle("");
+      setName("");
+      await onAdded();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <section className="panel">
+      <h2>Add a recomp</h2>
+      <p className="muted small">
+        For a recomp LootDen doesn't list yet. Paste its GitHub link and name the game it plays as it appears in your library; that game's page then offers it.
+        PCs download it from the developer's releases. Recomps that ship a <code>recomplauncher.json</code> are handed the game file and get their settings on
+        the game's page; others start as they are and ask for the game themselves.
+      </p>
+      <div className="inline">
+        <input value={repo} onChange={(e) => setRepo(e.target.value)} placeholder="https://github.com/owner/name" aria-label="GitHub link" />
+        <select value={platform} onChange={(e) => setPlatform(e.target.value)} aria-label="Console">
+          <option value="">Console…</option>
+          {platforms.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.name}
+            </option>
+          ))}
+        </select>
+        <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Game title, e.g. NBA Street Vol. 2" aria-label="Game title" />
+        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Name (optional)" aria-label="Recomp name" />
+        <button className="primary" disabled={busy || !repo || !platform || !title} onClick={() => void add()}>
+          Add
+        </button>
+      </div>
+      {error && <p className="error">{error}</p>}
     </section>
   );
 }
