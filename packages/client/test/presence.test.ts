@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import type { LocalStoreGame } from "@lootden/shared";
 import { runningStoreGames, streamingPaths } from "../src/presence.js";
+import { missingSunshineApps, moonlightCommand, sunshineAppFor } from "../src/streaming.js";
 
 const games: LocalStoreGame[] = [
   { addon: "steam", externalId: "620", title: "Portal 2", installDir: "/games/steam/steamapps/common/Portal 2" },
@@ -36,5 +37,28 @@ describe("now playing on this PC", () => {
     assert.equal(w.sunshine[0], "C:\\Program Files\\Sunshine\\sunshine.exe");
     assert.ok(w.moonlight.includes("C:\\Program Files\\Moonlight Game Streaming\\Moonlight.exe"));
     assert.ok(streamingPaths("linux", {}).moonlight.includes("/usr/bin/moonlight-qt"));
+  });
+});
+
+
+describe("game streaming", () => {
+  it("adds games to Sunshine as LootDen play links, once", () => {
+    const app = sunshineAppFor({ gameId: "abc", title: "Celeste" }, "C:\\Program Files\\LootDen\\LootDen.exe");
+    assert.equal(app.name, "Celeste");
+    assert.equal(app.cmd, '"C:\\Program Files\\LootDen\\LootDen.exe" "lootden://play/abc"');
+    assert.equal(app["auto-detach"], "true");
+    const games = [
+      { gameId: "a", title: "Celeste" },
+      { gameId: "b", title: "Hades" },
+    ];
+    assert.deepEqual(missingSunshineApps(games, [{ name: "celeste " }, { name: "Desktop" }]).map((g) => g.gameId), ["b"]);
+  });
+
+  it("starts Moonlight on a game, the Flatpak one too", () => {
+    assert.deepEqual(moonlightCommand("C:\\Program Files\\Moonlight Game Streaming\\Moonlight.exe", "192.168.1.20", "Hades"), {
+      cmd: "C:\\Program Files\\Moonlight Game Streaming\\Moonlight.exe",
+      args: ["stream", "192.168.1.20", "Hades"],
+    });
+    assert.deepEqual(moonlightCommand("/var/lib/flatpak/app/com.moonlight_stream.Moonlight", "10.0.0.2", "Hades").cmd, "flatpak");
   });
 });

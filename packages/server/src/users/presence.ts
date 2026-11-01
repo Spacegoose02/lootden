@@ -14,6 +14,7 @@ import {
   type PresenceAnswer,
   type PresenceReport,
   type RunningGame,
+  type StreamHost,
 } from "@lootden/shared";
 import type { Library } from "../catalog/library.js";
 import { json, type Db } from "../db/database.js";
@@ -36,6 +37,7 @@ interface PcRow {
   disks: string;
   sunshine: number;
   moonlight: number;
+  stream_games: string;
   last_seen: string;
   last_user: number | null;
 }
@@ -265,13 +267,14 @@ export class PresenceService {
           return typeof d?.path === "string" && Number.isFinite(free) && Number.isFinite(total) && total > 0 ? [{ path: d.path.slice(0, 200), freeBytes: free, totalBytes: total }] : [];
         })
       : json<PcDisk[]>(before?.disks, []);
+    const streamGames = Array.isArray(pc?.streamGames) ? [...new Set(pc!.streamGames.slice(0, 2000).map((x) => String(x).slice(0, 300)))] : json<string[]>(before?.stream_games, []);
     const str = (x: unknown, keep: string | null | undefined) => (typeof x === "string" ? x.slice(0, 40) : (keep ?? null));
     const flag = (x: unknown, keep: number | undefined) => (typeof x === "boolean" ? (x ? 1 : 0) : (keep ?? 0));
     this.db
       .prepare(
-        `INSERT INTO pcs (name, macs, addresses, platform, app_version, disks, sunshine, moonlight, last_seen, last_user) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `INSERT INTO pcs (name, macs, addresses, platform, app_version, disks, sunshine, moonlight, stream_games, last_seen, last_user) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(name) DO UPDATE SET macs = excluded.macs, addresses = excluded.addresses, platform = excluded.platform, app_version = excluded.app_version,
-           disks = excluded.disks, sunshine = excluded.sunshine, moonlight = excluded.moonlight, last_seen = excluded.last_seen, last_user = excluded.last_user`,
+           disks = excluded.disks, sunshine = excluded.sunshine, moonlight = excluded.moonlight, stream_games = excluded.stream_games, last_seen = excluded.last_seen, last_user = excluded.last_user`,
       )
       .run(
         name,
@@ -282,6 +285,7 @@ export class PresenceService {
         JSON.stringify(disks),
         flag(pc?.sunshine, before?.sunshine),
         flag(pc?.moonlight, before?.moonlight),
+        JSON.stringify(streamGames),
         new Date(this.clock()).toISOString(),
         userId,
       );
@@ -303,10 +307,19 @@ export class PresenceService {
       disks: json<PcDisk[]>(r.disks, []),
       sunshine: r.sunshine === 1,
       moonlight: r.moonlight === 1,
+      streamGames: json<string[]>(r.stream_games, []),
       playing: [...this.live.values()]
         .filter((l) => l.device === r.name)
         .map((l) => ({ title: l.game.title, name: this.users.byId(l.userId)?.displayName ?? "Someone", startedAt: l.game.startedAt })),
     }));
+  }
+
+  /** PCs that stream this game with Sunshine, on first. */
+  streamHosts(gameId: string, except?: string): StreamHost[] {
+    return this.pcs()
+      .filter((p) => p.sunshine && p.streamGames.includes(gameId) && p.name !== except)
+      .map((p) => ({ name: p.name, addresses: p.addresses, online: p.online }))
+      .sort((a, b) => Number(b.online) - Number(a.online));
   }
 
   /** Admin: forget a PC (an old one, or a renamed one). */

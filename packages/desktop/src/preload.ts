@@ -45,6 +45,11 @@ const bridge = {
   openBrowser: (url?: string) => ipcRenderer.invoke("gm:openBrowser", url),
   storeScan: (patch?: object) => ipcRenderer.invoke("gm:storeScan", patch),
   addStoreFolder: () => ipcRenderer.invoke("gm:addStoreFolder"),
+  streaming: () => ipcRenderer.invoke("gm:streaming"),
+  linkSunshine: (user: string, pass: string) => ipcRenderer.invoke("gm:linkSunshine", user, pass),
+  syncSunshine: () => ipcRenderer.invoke("gm:syncSunshine"),
+  unlinkSunshine: () => ipcRenderer.invoke("gm:unlinkSunshine"),
+  streamGame: (host: string, title: string) => ipcRenderer.invoke("gm:streamGame", host, title),
   changeServer: () => ipcRenderer.invoke("gm:changeServer"),
   /** The server stopped answering: switch to the offline library if it really is gone. */
   goOffline: () => ipcRenderer.invoke("gm:goOffline"),

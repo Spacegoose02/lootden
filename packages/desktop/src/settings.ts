@@ -50,6 +50,8 @@ export interface DesktopSettings {
   browserLinks?: "auto" | "on" | "off";
   /** ATS and ETS2 mod folders picked on this PC (a custom -homedir); missing means the usual one in Documents. */
   truckModFolders?: Partial<Record<"ats" | "ets2", string>>;
+  /** Sunshine's web login on this PC (the password sealed with the OS keychain when it can be), and the LootDen games added to it. */
+  sunshine?: { user: string; pass: string; sealed: boolean; streamGames: string[] };
 }
 
 export function defaultSettings(): DesktopSettings {

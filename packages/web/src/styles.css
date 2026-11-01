@@ -4788,3 +4788,10 @@ html[data-lootden-frame] .lightbox {
 .next-game-night > span:nth-child(2) {
   flex: 1;
 }
+.stream-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  margin: 0.4rem 0;
+}

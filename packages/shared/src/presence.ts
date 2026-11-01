@@ -38,6 +38,8 @@ export interface PcReport {
   sunshine?: boolean;
   /** Moonlight (game streaming player) is installed on this PC. */
   moonlight?: boolean;
+  /** LootDen games added to Sunshine on this PC, so they can be streamed from it. */
+  streamGames?: string[];
 }
 
 /** POST /api/me/presence: the desktop app's heartbeat. */
@@ -97,6 +99,8 @@ export interface PcInfo {
   disks: PcDisk[];
   sunshine: boolean;
   moonlight: boolean;
+  /** LootDen games this PC streams with Sunshine. */
+  streamGames: string[];
   /** What runs there now. */
   playing: Array<Pick<NowPlaying, "title" | "name" | "startedAt">>;
 }
@@ -214,4 +218,12 @@ export function imageKind(bytes: Uint8Array): "jpg" | "png" | "webp" | null {
   if (bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47) return "png";
   if (bytes.length > 12 && String.fromCharCode(...bytes.slice(0, 4)) === "RIFF" && String.fromCharCode(...bytes.slice(8, 12)) === "WEBP") return "webp";
   return null;
+}
+
+/** A PC that can stream a game (Sunshine has it), for the game page's Stream button. */
+export interface StreamHost {
+  name: string;
+  /** Its home network addresses, for Moonlight. */
+  addresses: string[];
+  online: boolean;
 }

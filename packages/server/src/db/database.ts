@@ -632,6 +632,10 @@ const MIGRATIONS: string[] = [
     PRIMARY KEY (screenshot_id, user_id, emoji)
   );
   `,
+  `
+  -- LootDen games each PC streams with Sunshine.
+  ALTER TABLE pcs ADD COLUMN stream_games TEXT NOT NULL DEFAULT '[]';
+  `,
 ];
 
 export function openDatabase(file: string): Db {

@@ -4,7 +4,7 @@ import { existsSync } from "node:fs";
 import { mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { app, BrowserWindow, desktopCapturer, dialog, globalShortcut, ipcMain, Menu, nativeImage, net, Notification, screen, session, shell, Tray, type IpcMainInvokeEvent } from "electron";
+import { app, BrowserWindow, desktopCapturer, dialog, globalShortcut, ipcMain, Menu, nativeImage, net, Notification, safeStorage, screen, session, shell, Tray, type IpcMainInvokeEvent } from "electron";
 import {
   isBrowsable,
   addBiosFile,
@@ -33,6 +33,10 @@ import {
   pcReport,
   processesIn,
   runningStoreGames,
+  streamWithMoonlight,
+  syncSunshine,
+  firstExisting,
+  streamingPaths,
   listInstalled,
   listWorkshopItems,
   downloadWorkshopItem,
@@ -415,6 +419,8 @@ let heartbeatTimer: NodeJS.Timeout | null = null;
 let beating = false;
 /** Installs a game from the server; set once the IPC handlers exist. */
 let installRemote: ((gameId: string) => Promise<unknown>) | null = null;
+/** Starts an installed game (lootden://play links, which Sunshine uses); set once the IPC handlers exist. */
+let playRemote: ((gameId: string) => Promise<unknown>) | null = null;
 /** Commands already carried out, so a repeat delivery does nothing twice. */
 const handledCommands = new Set<string>();
 
@@ -489,7 +495,7 @@ async function heartbeat(): Promise<void> {
     lastPlayingNow = playingNow;
     updateScreenshotKey(playingNow.length > 0);
     const api = clientFor(currentPlayer()) ?? (await client());
-    const answer = await api.presence({ device: os.hostname(), playing: playingNow, pc: await pcReport(app.getVersion()) });
+    const answer = await api.presence({ device: os.hostname(), playing: playingNow, pc: { ...(await pcReport(app.getVersion())), streamGames: settings.get().sunshine?.streamGames ?? [] } });
     for (const cmd of answer.commands) runCommand(cmd);
   } catch {
     // Offline, signed out or an older server: try again next time.
@@ -548,6 +554,46 @@ async function shareScreenshot(): Promise<void> {
   } finally {
     shooting = false;
   }
+}
+
+// ---- Game streaming (Sunshine and Moonlight) ------------------------------------
+
+const sunshineAuth = (): { user: string; pass: string } | null => {
+  const s = settings.get().sunshine;
+  if (!s) return null;
+  try {
+    return { user: s.user, pass: s.sealed ? safeStorage.decryptString(Buffer.from(s.pass, "base64")) : s.pass };
+  } catch {
+    return null;
+  }
+};
+
+/** The LootDen games on this PC that are ready to play (not still installers), for Sunshine. */
+async function playableGames(): Promise<Array<{ gameId: string; title: string }>> {
+  const games = await listInstalled(await searchDirs());
+  return games.filter((g) => !g.needsSetup || g.installedDir).map((g) => ({ gameId: g.gameId, title: g.title }));
+}
+
+/** Adds this PC's LootDen games to Sunshine (the ones it doesn't have yet). */
+async function sunshineSyncNow(): Promise<string[]> {
+  const auth = sunshineAuth();
+  if (!auth) throw new Error("Link Sunshine first");
+  const games = await playableGames();
+  const added = await syncSunshine(games, process.env.PORTABLE_EXECUTABLE_FILE ?? process.execPath, auth);
+  settings.update({ sunshine: { ...settings.get().sunshine!, streamGames: games.map((g) => g.gameId) } });
+  scheduleHeartbeat(1000);
+  return added;
+}
+
+async function streamingStatus() {
+  const p = streamingPaths();
+  return {
+    hostname: os.hostname(),
+    sunshine: !!(await firstExisting(p.sunshine)),
+    moonlight: !!(await firstExisting(p.moonlight)),
+    linked: !!settings.get().sunshine,
+    streamGames: settings.get().sunshine?.streamGames.length ?? 0,
+  };
 }
 
 // ---- Covers for the offline page ------------------------------------------------
@@ -1019,6 +1065,7 @@ function registerIpc(): void {
     return installFromServer(gameId, dir);
   });
   installRemote = (gameId) => installFromServer(gameId);
+  playRemote = (gameId) => play(gameId);
 
   /** Downloads and installs a game from the server (the Install button, or Send to PC from another device). */
   async function installFromServer(gameId: string, dir?: string) {
@@ -1049,6 +1096,8 @@ function registerIpc(): void {
         },
       });
       void cacheDetails([gameId]).catch(() => {});
+      // A streaming PC gets the new game in Sunshine too.
+      if (settings.get().sunshine) void sunshineSyncNow().catch(() => {});
       return { gameDir };
     } catch (err) {
       send({ gameId, type: controller.signal.aborted ? "cancelled" : "error", message: (err as Error).message });
@@ -1577,6 +1626,42 @@ function registerIpc(): void {
     }
     return storeScanView();
   });
+  ipcMain.handle("gm:streaming", async (e) => {
+    fromServer(e);
+    return streamingStatus();
+  });
+  /** Saves Sunshine's web login (checked first) and adds this PC's games to it. */
+  ipcMain.handle("gm:linkSunshine", async (e, user: string, pass: string) => {
+    fromServer(e);
+    if (typeof user !== "string" || typeof pass !== "string" || !user.trim() || !pass) throw new Error("Type Sunshine's username and password");
+    const sealed = safeStorage.isEncryptionAvailable();
+    const prev = settings.get().sunshine;
+    settings.update({ sunshine: { user: user.trim(), pass: sealed ? safeStorage.encryptString(pass).toString("base64") : pass, sealed, streamGames: prev?.streamGames ?? [] } });
+    try {
+      return { ...(await streamingStatus()), added: await sunshineSyncNow() };
+    } catch (err) {
+      settings.update({ sunshine: prev });
+      throw err;
+    }
+  });
+  ipcMain.handle("gm:syncSunshine", async (e) => {
+    fromServer(e);
+    const added = await sunshineSyncNow();
+    return { ...(await streamingStatus()), added };
+  });
+  ipcMain.handle("gm:unlinkSunshine", async (e) => {
+    fromServer(e);
+    settings.update({ sunshine: undefined });
+    scheduleHeartbeat(1000);
+    return streamingStatus();
+  });
+  /** Streams a game from another PC with Moonlight. */
+  ipcMain.handle("gm:streamGame", async (e, host: string, title: string) => {
+    fromServer(e);
+    if (typeof host !== "string" || typeof title !== "string") throw new Error("Pick a PC to stream from");
+    await streamWithMoonlight(host, title);
+  });
+
   /** Starts (or installs) a store game through its launcher. Only store launcher links open. */
   ipcMain.handle("gm:launchStore", async (e, url: string) => {
     fromServer(e);
@@ -1786,9 +1871,16 @@ function registerIpc(): void {
 
 /**
  * lootden://install/<id> from a browser opens the game page with the install panel.
+ * lootden://play/<id> starts an installed game (Sunshine's apps use it for streaming).
  * lootden://auth?code=... finishes a single sign-on the app started in the browser.
  */
 async function openDeepLink(link: string): Promise<void> {
+  // lootden://play/<id>: Sunshine (game streaming) starts games this way. No window needed.
+  const playLink = link.match(/^lootden:\/\/play\/([\w-]+)/);
+  if (playLink) {
+    void playRemote?.(playLink[1]!).catch((err: Error) => playNotice(playLink[1]!, "Couldn't start the game", err.message));
+    return;
+  }
   const install = link.match(/^(?:lootden|gamemanager):\/\/install\/([\w-]+)/);
   const auth = link.match(/^(?:lootden|gamemanager):\/\/auth\/?\?code=([\w-]+)/);
   if (!(install || auth) || !win || !origin()) return;

@@ -7,6 +7,7 @@ import type {
   GameNight,
   GameNightPick,
   Screenshot,
+  StreamHost,
   Level,
   PlayerStats,
   PlayLimits,
@@ -756,6 +757,7 @@ export const api = {
   closeOnPc: (device: string, gameId: string, text?: string) => call("POST", `/api/pcs/${encodeURIComponent(device)}/close`, { gameId, text }),
   bonusNow: (userId: number, minutes: number) => call<{ allowance: Allowance }>("POST", `/api/family/now-playing/${userId}/bonus`, { minutes }),
   pcs: () => call<PcInfo[]>("GET", "/api/pcs"),
+  streamHosts: (gameId: string, from?: string) => call<StreamHost[]>("GET", `/api/games/${encodeURIComponent(gameId)}/stream-hosts${qs({ from })}`),
   gameNights: () => call<GameNightList>("GET", "/api/game-nights"),
   screenshots: (q: { before?: number; limit?: number; userId?: number; gameId?: string } = {}) =>
     call<Screenshot[]>("GET", `/api/screenshots${qs({ before: q.before, limit: q.limit, userId: q.userId, gameId: q.gameId })}`),

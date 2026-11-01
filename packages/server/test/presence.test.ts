@@ -150,6 +150,18 @@ describe("now playing", () => {
     assert.deepEqual(got.commands.map((c) => [c.kind, c.kind === "install" ? c.title : ""]), [["install", portal.title]]);
   });
 
+  it("lists the PCs that stream a game", async () => {
+    const { app, ctx } = await makeApp(root);
+    const mom = await person(app, ctx, "ma", { role: "admin" });
+    const game = ctx.library.list({})[0]!;
+    await app.inject({ method: "POST", url: "/api/me/presence", headers: mom.headers, payload: { device: "GAMING-PC", playing: [], pc: { sunshine: true, streamGames: [game.id], addresses: ["192.168.1.5"] } } });
+    await app.inject({ method: "POST", url: "/api/me/presence", headers: mom.headers, payload: { device: "TV-PC", playing: [], pc: { moonlight: true } } });
+    const hosts = (await app.inject({ url: `/api/games/${encodeURIComponent(game.id)}/stream-hosts?from=TV-PC`, headers: mom.headers })).json() as Array<{ name: string; addresses: string[] }>;
+    assert.deepEqual(hosts, [{ name: "GAMING-PC", addresses: ["192.168.1.5"], online: true }]);
+    const self = (await app.inject({ url: `/api/games/${encodeURIComponent(game.id)}/stream-hosts?from=GAMING-PC`, headers: mom.headers })).json() as unknown[];
+    assert.equal(self.length, 0, "not from the PC itself");
+  });
+
   it("builds magic packets and reads MAC addresses", () => {
     assert.equal(cleanMac("AA-BB-CC-DD-EE-FF"), "aa:bb:cc:dd:ee:ff");
     assert.equal(cleanMac("00:00:00:00:00:00"), null);

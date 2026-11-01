@@ -74,6 +74,14 @@ export function presenceRoutes(app: FastifyInstance, ctx: AppContext) {
       .map((pc) => ({ name: pc.name, online: pc.online, lastUser: pc.lastUser, freeBytes: pc.disks.reduce((n, d) => Math.max(n, d.freeBytes), 0) }));
   });
 
+  /** Game streaming: PCs that have this game in Sunshine. `from` leaves the asking PC out. */
+  app.get<{ Params: { id: string }; Querystring: { from?: string } }>("/api/games/:id/stream-hosts", async (req) => {
+    const p = requireUser(req);
+    const game = ctx.library.get(req.params.id, false);
+    if (!game || (p.kidMode && game.kidSafe !== true)) throw new HttpProblem(404, "No such game");
+    return ctx.presence.streamHosts(game.id, req.query.from);
+  });
+
   // ---- PCs -----------------------------------------------------------------------------------
   app.get("/api/pcs", async (req) => {
     requireAdmin(req);
