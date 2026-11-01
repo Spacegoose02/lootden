@@ -107,6 +107,12 @@ can be set once by an admin on the add-on's card (`PUT /api/addons/:id/shared`, 
 like accounts, never sent back); a person's own value wins. `Integrations` (IGDB and other admin keys in the settings table) aren't encrypted yet; the
 vault can do it.
 
+## Centred wishlist cards (0.26.3)
+
+The "wish granted" celebration's `.wish-art` rules in `fun.css` are scoped to
+`.wish-granted .wish-art`, so wishlist cards (same class) no longer pick up its 160px glowing
+frame. Card covers are a centred 2:3 poster with the text centred under it.
+
 ## Tall Steam covers on the wishlist (0.26.2)
 
 Steam keeps newer games' art under hashed paths, so the fixed `header.jpg` URL from 0.26.1
