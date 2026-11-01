@@ -40,6 +40,7 @@ import type { RobloxCatalog } from "./roblox/catalog.js";
 import type { PresenceService } from "./users/presence.js";
 import type { DenDutyLink } from "./users/denduty.js";
 import type { GameNights } from "./users/gamenight.js";
+import type { ScreenshotWall } from "./users/screenshots.js";
 
 /** Everything route modules need, built once in buildApp. */
 export interface AppContext {
@@ -91,6 +92,8 @@ export interface AppContext {
   denDuty: DenDutyLink;
   /** Family game nights: the picker, plans and their calendar feed. */
   gameNights: GameNights;
+  /** The family screenshot wall. */
+  screenshots: ScreenshotWall;
   /** Bandit, the AI gaming helper. */
   helper: HelperService;
   timeToBeat: (providerId: string | null, title: string) => Promise<TimeToBeat | null>;

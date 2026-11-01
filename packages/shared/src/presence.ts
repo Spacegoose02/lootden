@@ -180,3 +180,38 @@ export interface GameNightPick {
 export function icsText(s: string): string {
   return s.replace(/\\/g, "\\\\").replace(/;/g, "\;").replace(/,/g, "\\,").replace(/\r?\n/g, "\\n");
 }
+
+// ---- Screenshot wall -------------------------------------------------------------------
+
+export const SCREENSHOT_REACTIONS = ["😂", "🔥", "😮", "❤️", "👏", "🏆"] as const;
+export type ScreenshotReaction = (typeof SCREENSHOT_REACTIONS)[number];
+
+/** A screenshot on the family wall. */
+export interface Screenshot {
+  id: number;
+  imageUrl: string;
+  by: { id: number; name: string; avatar: string };
+  game: { id: string | null; title: string } | null;
+  caption: string | null;
+  width: number | null;
+  height: number | null;
+  createdAt: string;
+  /** Emoji to how many, and which ones this viewer gave. */
+  reactions: Array<{ emoji: string; count: number; mine: boolean }>;
+  canDelete: boolean;
+}
+
+/** What the Den Duty family wall shows from LootDen. */
+export interface FamilyWall {
+  nowPlaying: Array<{ name: string; avatar: string; title: string; device: string; startedAt: string; playedFor: string }>;
+  nextGameNight: GameNight | null;
+  screenshots: Array<{ id: number; imageUrl: string; by: string; game: string | null; caption: string | null; createdAt: string }>;
+}
+
+/** JPEG, PNG or WebP by their first bytes; null for anything else. */
+export function imageKind(bytes: Uint8Array): "jpg" | "png" | "webp" | null {
+  if (bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return "jpg";
+  if (bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47) return "png";
+  if (bytes.length > 12 && String.fromCharCode(...bytes.slice(0, 4)) === "RIFF" && String.fromCharCode(...bytes.slice(8, 12)) === "WEBP") return "webp";
+  return null;
+}

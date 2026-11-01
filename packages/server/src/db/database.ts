@@ -609,6 +609,29 @@ const MIGRATIONS: string[] = [
   );
   CREATE INDEX game_nights_day ON game_nights(day);
   `,
+  `
+  -- The family screenshot wall: pictures people took while playing, and emoji reactions.
+  CREATE TABLE screenshots (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    game_id TEXT,
+    game_title TEXT,
+    caption TEXT,
+    file TEXT NOT NULL,
+    width INTEGER,
+    height INTEGER,
+    -- Kid profiles see it: taken by a kid, or in a game known to be kid-safe.
+    kid_safe INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL
+  );
+  CREATE INDEX screenshots_created ON screenshots(created_at);
+  CREATE TABLE screenshot_reactions (
+    screenshot_id INTEGER NOT NULL REFERENCES screenshots(id) ON DELETE CASCADE,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    emoji TEXT NOT NULL,
+    PRIMARY KEY (screenshot_id, user_id, emoji)
+  );
+  `,
 ];
 
 export function openDatabase(file: string): Db {

@@ -4,7 +4,7 @@ import { existsSync } from "node:fs";
 import { mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, net, Notification, screen, session, shell, Tray, type IpcMainInvokeEvent } from "electron";
+import { app, BrowserWindow, desktopCapturer, dialog, globalShortcut, ipcMain, Menu, nativeImage, net, Notification, screen, session, shell, Tray, type IpcMainInvokeEvent } from "electron";
 import {
   isBrowsable,
   addBiosFile,
@@ -421,6 +421,8 @@ const handledCommands = new Set<string>();
 /** A game LootDen started is running: it goes on the family's Now Playing board. */
 function markRunning(gameId: string, title: string, source: PlaySource, stop?: AbortController): void {
   nowRunning.set(gameId, { game: { gameId, title, source, startedAt: new Date().toISOString() }, stop });
+  lastPlayingNow = [...nowRunning.values()].map((r) => r.game);
+  updateScreenshotKey(true);
   scheduleHeartbeat(1000);
 }
 
@@ -484,6 +486,8 @@ async function heartbeat(): Promise<void> {
     const stores = await storeGamesForPresence();
     const procs = stores.length ? await listProcesses().catch(() => []) : [];
     const playingNow = [...[...nowRunning.values()].map((r) => r.game), ...runningStoreGames(procs, stores, storeSince, mine)];
+    lastPlayingNow = playingNow;
+    updateScreenshotKey(playingNow.length > 0);
     const api = clientFor(currentPlayer()) ?? (await client());
     const answer = await api.presence({ device: os.hostname(), playing: playingNow, pc: await pcReport(app.getVersion()) });
     for (const cmd of answer.commands) runCommand(cmd);
@@ -499,6 +503,51 @@ function scheduleHeartbeat(ms: number): void {
   if (heartbeatTimer) clearTimeout(heartbeatTimer);
   heartbeatTimer = setTimeout(() => void heartbeat(), ms);
   heartbeatTimer.unref?.();
+}
+
+// ---- Screenshot wall ------------------------------------------------------------
+
+/** Shares the screen to the family wall. Only taken while a game runs, so it never steals the keys from other programs. */
+const SCREENSHOT_KEY = "Ctrl+Shift+S";
+let shotKeyOn = false;
+
+/** The screenshot key works while a game runs (LootDen's or another launcher's). */
+function updateScreenshotKey(gamesRunning: boolean): void {
+  if (gamesRunning === shotKeyOn || !app.isReady()) return;
+  if (gamesRunning) shotKeyOn = globalShortcut.register(SCREENSHOT_KEY.replace("Ctrl", "CommandOrControl"), () => void shareScreenshot());
+  else {
+    globalShortcut.unregister(SCREENSHOT_KEY.replace("Ctrl", "CommandOrControl"));
+    shotKeyOn = false;
+  }
+}
+
+let lastPlayingNow: RunningGame[] = [];
+let shooting = false;
+
+/** Takes the screen the mouse is on and puts it on the family screenshot wall, with the game running. */
+async function shareScreenshot(): Promise<void> {
+  if (shooting) return;
+  shooting = true;
+  try {
+    const display = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
+    const size = { width: Math.round(display.size.width * display.scaleFactor), height: Math.round(display.size.height * display.scaleFactor) };
+    const sources = await desktopCapturer.getSources({ types: ["screen"], thumbnailSize: size });
+    const source = sources.find((x) => x.display_id === String(display.id)) ?? sources[0];
+    if (!source || source.thumbnail.isEmpty()) throw new Error("Couldn't capture the screen");
+    const jpeg = source.thumbnail.toJPEG(88);
+    const game = lastPlayingNow[0];
+    const q = new URLSearchParams({ width: String(source.thumbnail.getSize().width), height: String(source.thumbnail.getSize().height) });
+    if (game && (game.source === "lootden" || game.source === "emulated")) q.set("gameId", game.gameId);
+    if (game) q.set("title", game.title);
+    const api = clientFor(currentPlayer()) ?? (await client());
+    const res = await net.fetch(`${origin()}/api/screenshots?${q}`, { method: "POST", headers: api.headers({ "content-type": "image/jpeg" }), body: new Uint8Array(jpeg) });
+    if (!res.ok) throw new Error(((await res.json().catch(() => ({}))) as { error?: string }).error ?? `The server answered ${res.status}`);
+    if (Notification.isSupported()) new Notification({ title: "📸 Shared with the family", body: game ? `Your ${game.title} screenshot is on the wall.` : "Your screenshot is on the wall.", silent: true }).show();
+  } catch (err) {
+    if (Notification.isSupported()) new Notification({ title: "Couldn't share the screenshot", body: (err as Error).message }).show();
+  } finally {
+    shooting = false;
+  }
 }
 
 // ---- Covers for the offline page ------------------------------------------------
@@ -702,6 +751,7 @@ function refreshTray(): void {
       { label: "Open LootDen", click: () => showWindow() },
       { label: "Installed games", click: () => showWindow("/library?tab=installed") },
       { label: "Web browser", click: () => void browser.open() },
+      { label: `Share a screenshot (${SCREENSHOT_KEY})`, click: () => void shareScreenshot() },
       { type: "separator" },
       u.state === "ready"
         ? { label: `Restart to update to ${u.version}`, click: () => void installNow() }
@@ -1880,6 +1930,7 @@ app.on("second-instance", (_e, argv) => {
   if (argv.includes("--browser")) void browser.open();
 });
 app.on("before-quit", () => (quitting = true));
+app.on("will-quit", () => globalShortcut.unregisterAll());
 app.on("open-url", (e, url) => {
   e.preventDefault();
   void openDeepLink(url);
