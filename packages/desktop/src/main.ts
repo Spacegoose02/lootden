@@ -1392,7 +1392,7 @@ function registerIpc(): void {
         const r = await dialog.showOpenDialog(win!, { title: `Which file starts ${game.title}?`, defaultPath: folder, properties: ["openFile"] });
         if (!r.canceled) exe = relTo(game.dir, r.filePaths[0]!);
       }
-      await saveManifest(game.dir, { installedDir: folder, executable: exe ?? undefined, setupAt: new Date().toISOString() });
+      await saveManifest(game.dir, { installedDir: folder, executable: exe ?? undefined, exeStamp: null, setupAt: new Date().toISOString() });
       // The setup files aren't needed to play; offer the space back when the game went inside the folder.
       const rel = path.relative(game.dir, folder);
       if (rel && !rel.startsWith("..") && !path.isAbsolute(rel)) {

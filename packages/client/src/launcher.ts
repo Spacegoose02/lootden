@@ -55,7 +55,8 @@ export async function findExecutable(dir: string, title: string, platform: NodeJ
 
 /** Remembers the chosen executable in the install manifest. */
 export async function saveExecutable(dir: string, rel: string): Promise<void> {
-  await saveManifest(dir, { executable: rel });
+  // A different exe gets a fresh stamp the next time games are listed.
+  await saveManifest(dir, { executable: rel, exeStamp: null });
 }
 
 /** A running process: its id and where it was started from (executable path or command line). */

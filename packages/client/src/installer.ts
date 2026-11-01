@@ -1,7 +1,7 @@
 import { mkdir, readdir, rename, rm, statfs, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { groupArchiveSets, safeFolderName, type GameDetail, type GameSummary } from "@lootden/shared";
+import { groupArchiveSets, safeFolderName, versionFromName, type GameDetail, type GameSummary } from "@lootden/shared";
 import type { GameServerClient } from "./api.js";
 import { downloadFile } from "./downloader.js";
 import { extractArchive, findSevenZip } from "./extractor.js";
@@ -168,7 +168,7 @@ export async function installGame(api: GameServerClient, gameId: string, opts: I
   await writeFile(
     path.join(gameDir, MANIFEST_NAME),
     JSON.stringify(
-      { gameId: game.id, title: game.title, source: game.source, platform: game.platform, needsSetup, version: game.version ?? null, serverModifiedAt: game.modifiedAt, installedAt: new Date().toISOString() },
+      { gameId: game.id, title: game.title, source: game.source, platform: game.platform, needsSetup, version: game.version ?? versionFromName(game.title) ?? versionFromName(game.source ?? "") ?? null, versionSetBy: { how: "install", device: opts.device ?? os.hostname(), at: new Date().toISOString() }, serverModifiedAt: game.modifiedAt, installedAt: new Date().toISOString() },
       null,
       2,
     ) + "\n",
