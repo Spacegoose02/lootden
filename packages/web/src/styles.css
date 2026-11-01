@@ -1755,10 +1755,15 @@ button.small,
   overflow: hidden;
   min-width: 0;
 }
+/* A tall cover centred at the top of the card. */
 .wish-art {
   position: relative;
   display: block;
-  aspect-ratio: 460 / 215;
+  width: min(170px, calc(100% - 24px));
+  aspect-ratio: 2 / 3;
+  margin: 12px auto 0;
+  border-radius: 8px;
+  overflow: hidden;
   background: var(--bg-2);
 }
 .wish-art img {
@@ -1783,9 +1788,18 @@ button.small,
 .wish-body {
   display: flex;
   flex-direction: column;
+  align-items: center;
+  text-align: center;
   gap: 6px;
   padding: 10px 12px 12px;
   flex: 1;
+}
+.wish-body .inline {
+  justify-content: center;
+}
+.wish-body .wanted-line {
+  align-self: stretch;
+  align-items: center;
 }
 .wish-body strong {
   overflow-wrap: anywhere;
