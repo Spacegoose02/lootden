@@ -1,0 +1,65 @@
+# Builds TabStationToo (PCSX2 compiled to WebAssembly, GPL-3.0) at the commit pinned in
+# emulators/tabstationtoo.env and publishes it as the pre-release "tabstationtoo-<commit>",
+# whose tarball the Dockerfile downloads for PS2 games in the browser. Runs when the pin or the
+# build script changes on main, and by hand. A build that already exists is left alone.
+name: PS2 browser emulator
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - emulators/tabstationtoo.env
+      - scripts/build-tabstationtoo.sh
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: tabstationtoo
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: pin
+        run: |
+          . emulators/tabstationtoo.env
+          tag="tabstationtoo-$(echo "$TABSTATIONTOO_COMMIT" | cut -c1-12)"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "emscripten=$EMSCRIPTEN_VERSION" >> "$GITHUB_OUTPUT"
+          echo "cmake=$CMAKE_VERSION" >> "$GITHUB_OUTPUT"
+          if gh release view "$tag" > /dev/null 2>&1; then echo "exists=true" >> "$GITHUB_OUTPUT"; fi
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      # TabStationToo builds with CMake 4 (the runner's CMake 3 configures libzip wrongly under Emscripten).
+      - if: steps.pin.outputs.exists != 'true'
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q --no-install-recommends ninja-build
+          PIPX_BIN_DIR="$HOME/.local/bin" pipx install "cmake==${{ steps.pin.outputs.cmake }}"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - if: steps.pin.outputs.exists != 'true'
+        uses: actions/cache@v4
+        with:
+          path: ~/emsdk
+          key: emsdk-${{ steps.pin.outputs.emscripten }}-${{ runner.os }}
+
+      - if: steps.pin.outputs.exists != 'true'
+        run: scripts/build-tabstationtoo.sh "out/${{ steps.pin.outputs.tag }}.tar.gz"
+
+      - if: steps.pin.outputs.exists != 'true'
+        run: |
+          . emulators/tabstationtoo.env
+          gh release create "${{ steps.pin.outputs.tag }}" "out/${{ steps.pin.outputs.tag }}.tar.gz" \
+            --prerelease --target "$GITHUB_SHA" \
+            --title "TabStationToo ${TABSTATIONTOO_COMMIT:0:12} (PS2 browser emulator)" \
+            --notes "TabStationToo (GPL-3.0) built without changes from $TABSTATIONTOO_REPO at commit $TABSTATIONTOO_COMMIT, for LootDen's PS2 games in the browser. The Docker image downloads this tarball; its SOURCE.txt and COPYING.GPLv3 name the source and licence."
+        env:
+          GH_TOKEN: ${{ github.token }}

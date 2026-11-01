@@ -103,6 +103,16 @@ export interface EmulationOverview {
   /** Systems in the library with game counts. */
   library: Array<{ id: string; count: number; sizeBytes: number }>;
   bios: ServerBiosFile[];
+  ps2Browser: Ps2BrowserStatus;
+}
+
+/** Whether PS2 games play in the browser on this server (TabStationToo), and why not. */
+export interface Ps2BrowserStatus {
+  enabled: boolean;
+  installed: boolean;
+  bios: string | null;
+  available: boolean;
+  reason: string | null;
 }
 
 export interface GameFilters {
@@ -542,6 +552,8 @@ export const api = {
   importFromFolder: (name: string, platform: string | null) => call<{ target: string }>("POST", "/api/downloads/folder/import", { name, platform }),
   skipFolderItem: (name: string) => call("POST", "/api/downloads/folder/skip", { name }),
   emulation: () => call<EmulationOverview>("GET", "/api/emulation"),
+  ps2Browser: () => call<Ps2BrowserStatus>("GET", "/api/emulation/ps2-browser"),
+  setPs2Browser: (enabled: boolean) => call<Ps2BrowserStatus>("PUT", "/api/emulation/settings", { ps2Browser: enabled }),
   uploadBios: (file: File, emulator?: string) =>
     upload<ServerBiosFile>("PUT", `/api/emulation/bios/${encodeURIComponent(file.name)}${emulator ? `?emulator=${emulator}` : ""}`, file, "application/octet-stream"),
   deleteBios: (name: string) => call("DELETE", `/api/emulation/bios/${encodeURIComponent(name)}`),

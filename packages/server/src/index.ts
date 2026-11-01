@@ -18,7 +18,9 @@ const db = openDatabase(dbFile);
 
 // The built web UI sits next to the server in the image (see Dockerfile).
 const webDir = process.env.GM_WEB_DIR || path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../web/dist");
-const { app, ctx } = buildApp(config, db, { webDir });
+// TabStationToo, for PS2 games in the browser, also sits next to the packages (see Dockerfile).
+const ps2Dir = process.env.GM_PS2_EMULATOR_DIR || path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../../emulators/tabstationtoo");
+const { app, ctx } = buildApp(config, db, { webDir, ps2Dir });
 
 if (ctx.users.count() === 0 && config.admin.username && config.admin.password) {
   await ctx.users.create({ username: config.admin.username, password: config.admin.password, role: "admin" });

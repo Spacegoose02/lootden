@@ -58,6 +58,7 @@ is a commented copy for Docker Compose.
 | `LOOTDEN_WATCH` | `true` | Watch the games folder for changes |
 | `LOOTDEN_SCAN_INTERVAL_MINUTES` | `30` | Backup rescan interval; `0` turns it off |
 | `LOOTDEN_EMULATORJS_DATA` | EmulatorJS CDN | Where browser emulation loads EmulatorJS from |
+| `LOOTDEN_PS2_EMULATOR_DIR` | `/app/emulators/tabstationtoo` | The TabStationToo build that plays PS2 games in the browser (the image ships one). The switch for it is under Emulation, Emulators and BIOS |
 | `LOOTDEN_7Z_PATH` | | A 7-Zip with RAR support for imports (the image ships one) |
 
 ### Bandit (AI helper)

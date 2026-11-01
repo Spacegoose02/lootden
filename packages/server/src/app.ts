@@ -3,7 +3,7 @@ import path from "node:path";
 import cookie from "@fastify/cookie";
 import fastifyStatic from "@fastify/static";
 import Fastify, { type FastifyInstance } from "fastify";
-import { API_VERSION, zonedParts, type HealthResponse } from "@lootden/shared";
+import { API_VERSION, platformFor, zonedParts, type HealthResponse } from "@lootden/shared";
 import { OidcService } from "./auth/oidc.js";
 import { AuthService, SESSION_COOKIE } from "./auth/service.js";
 import { Library } from "./catalog/library.js";
@@ -36,6 +36,7 @@ import { GameUpdates } from "./news/updates.js";
 import { FreeGames } from "./news/freegames.js";
 import { loadConnectorSettings } from "./connectors/settings.js";
 import { emulationRoutes } from "./routes/emulation.js";
+import { ISOLATION_HEADERS, loadEmulationSettings, PLAY_PAGE_ISOLATION_HEADERS, PS2_WEB_PREFIX } from "./emulation/ps2-web.js";
 import { extraRoutes } from "./routes/extras.js";
 import { Notifier } from "./alerts/notifier.js";
 import { Scanner } from "./connectors/scan.js";
@@ -92,11 +93,19 @@ const SECURITY_HEADERS = {
   "referrer-policy": "strict-origin-when-cross-origin",
 };
 
+/** Play pages for games whose browser emulator needs cross-origin isolation (PS2 through TabStationToo). */
+function isolatedPlayPage(ctx: AppContext, id: string): boolean {
+  const game = ctx.library.get(id);
+  return Boolean(game && platformFor(game.platform).browserPlayer && loadEmulationSettings(ctx.db).ps2Browser);
+}
+
 export interface BuildOptions {
   /** Injected for tests so metadata providers never hit the network. */
   fetchImpl?: FetchLike;
   /** Folder with the built web UI; served at / when present. */
   webDir?: string;
+  /** Folder with the built TabStationToo site (PS2 in the browser); served at /emulators/ps2/ when present. */
+  ps2Dir?: string;
   /** Tests: the library add-ons to offer, and DNS for their private-network check. */
   addons?: LibraryAddon[];
   resolveHost?: (host: string) => Promise<string[]>;
@@ -240,7 +249,7 @@ export function buildApp(config: ServerConfig, db: Db, opts: BuildOptions = {}):
   authRoutes(app, ctx);
   userRoutes(app, ctx);
   gameRoutes(app, ctx);
-  emulationRoutes(app, ctx);
+  emulationRoutes(app, ctx, opts.ps2Dir ?? "");
   newsRoutes(app, ctx);
   downloadRoutes(app, ctx);
   settingsRoutes(app, ctx);
@@ -261,12 +270,35 @@ export function buildApp(config: ServerConfig, db: Db, opts: BuildOptions = {}):
   familyRoutes(app, ctx);
   helperRoutes(app, ctx);
 
+  // TabStationToo for PS2 games in the browser, cross-origin isolated, unless an admin switched it off.
+  const ps2Dir = opts.ps2Dir;
+  if (ps2Dir && existsSync(path.join(ps2Dir, "index.html"))) {
+    app.register(async (scope) => {
+      scope.addHook("onRequest", async (_req, reply) => {
+        if (!loadEmulationSettings(ctx.db).ps2Browser) return reply.code(404).send({ error: "PS2 in the browser is turned off" });
+      });
+      await scope.register(fastifyStatic, {
+        root: ps2Dir,
+        prefix: PS2_WEB_PREFIX,
+        decorateReply: false,
+        // Its page stamps every file with ?v=<build>, so only the page itself must be checked each time.
+        setHeaders: (res, file) => {
+          for (const [k, v] of Object.entries(ISOLATION_HEADERS)) res.header(k, v);
+          res.header("cache-control", file.endsWith(".html") ? "no-cache" : "public, max-age=3600");
+        },
+      });
+    });
+  }
+
   const webDir = opts.webDir;
   if (webDir && existsSync(path.join(webDir, "index.html"))) {
     app.register(fastifyStatic, { root: webDir });
     // Client-side routing: unknown non-API paths get the app shell.
     app.setNotFoundHandler((req, reply) => {
       if (req.url.startsWith("/api/") || req.method !== "GET") return reply.code(404).send({ error: "Not found" });
+      // A PS2 game's play page holds the emulator's frame, which is only isolated when this page is.
+      const play = /^\/play\/([^/?#]+)/.exec(req.url);
+      if (play && isolatedPlayPage(ctx, decodedPath(play[1]!))) reply.headers(PLAY_PAGE_ISOLATION_HEADERS);
       return reply.sendFile("index.html");
     });
   }

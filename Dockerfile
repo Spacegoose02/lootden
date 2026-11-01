@@ -63,6 +63,21 @@ RUN case "${TARGETARCH:-$(uname -m)}" in \
 # innoextract unpacks Inno Setup installers (most GOG games) during import, so PCs get the game
 # ready to play. Without it (an architecture Alpine doesn't build it for) installers run on a PC.
 RUN apk add --no-cache innoextract || echo "innoextract isn't available here; installers will run on PCs"
+# TabStationToo (PCSX2 compiled to WebAssembly, GPL-3.0) for PS2 games in the browser: the build
+# of the commit pinned in emulators/tabstationtoo.env, which the "PS2 browser emulator" workflow
+# publishes as a release asset (scripts/build-tabstationtoo.sh). It's a separate program LootDen
+# serves as it is; SOURCE.txt and COPYING.GPLv3 beside it name its source and licence. Without
+# it, the image still builds and PS2 games just don't offer browser play.
+ARG TABSTATIONTOO_URL=
+COPY emulators/tabstationtoo.env /app/emulators/tabstationtoo.env
+RUN . /app/emulators/tabstationtoo.env \
+    && tag="tabstationtoo-$(echo "$TABSTATIONTOO_COMMIT" | cut -c1-12)" \
+    && url="${TABSTATIONTOO_URL:-https://github.com/Spacegoose02/lootden/releases/download/$tag/$tag.tar.gz}" \
+    && mkdir -p /app/emulators/tabstationtoo \
+    && if wget -qO /tmp/tabstationtoo.tar.gz "$url"; then \
+         tar -xzf /tmp/tabstationtoo.tar.gz -C /app/emulators/tabstationtoo && test -f /app/emulators/tabstationtoo/index.html; \
+       else echo "No TabStationToo build at $url; PS2 games won't play in the browser" >&2; fi \
+    && rm -f /tmp/tabstationtoo.tar.gz
 EXPOSE 8080
 VOLUME ["/data"]
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s \

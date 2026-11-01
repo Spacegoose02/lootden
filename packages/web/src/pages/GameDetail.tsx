@@ -1,7 +1,7 @@
 import { useEffect, useState, type CSSProperties } from "react";
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { browserRomFile, platformFor, type GameDetail as Game } from "@lootden/shared";
-import { api, formatBytes, type ApiError, type Candidate } from "../api";
+import { api, formatBytes, type ApiError, type Candidate, type Ps2BrowserStatus } from "../api";
 import { useAuth } from "../auth";
 import { Badges } from "../components/Badges";
 import { Cover } from "../components/Cover";
@@ -113,14 +113,7 @@ export function GameDetail() {
           ) : null}
           {m?.summary && <p className="summary">{m.summary}</p>}
 
-          {browserRomFile(game.files, platformFor(game.platform)) && (
-            <div className="inline">
-              <Link className="button primary" to={`/play/${game.id}`}>
-                ▶ Play in the browser
-              </Link>
-              <span className="muted small">Your save carries over to and from the desktop app.</span>
-            </div>
-          )}
+          {browserRomFile(game.files, platformFor(game.platform)) && <PlayInBrowserButton game={game} />}
 
           {isAddon ? (
             <div className="install panel">
@@ -484,5 +477,38 @@ function AlsoOnStores({ gameId }: { gameId: string }) {
       ))}
       {error && <span className="error"> {error}</span>}
     </p>
+  );
+}
+
+/**
+ * EmulatorJS systems always offer it. PS2 runs in TabStationToo, which needs the server to have
+ * it, a PS2 BIOS uploaded, and the admin's switch on; its play page is cross-origin isolated, so
+ * it opens as a fresh page load instead of an in-app navigation.
+ */
+function PlayInBrowserButton({ game }: { game: Game }) {
+  const ps2 = Boolean(platformFor(game.platform).browserPlayer);
+  const [status, setStatus] = useState<Ps2BrowserStatus | null>(null);
+  useEffect(() => {
+    if (ps2) api.ps2Browser().then(setStatus, () => setStatus(null));
+  }, [ps2, game.id]);
+  if (!ps2)
+    return (
+      <div className="inline">
+        <Link className="button primary" to={`/play/${game.id}`}>
+          ▶ Play in the browser
+        </Link>
+        <span className="muted small">Your save carries over to and from the desktop app.</span>
+      </div>
+    );
+  // Switched off or not in this image: nothing to offer. Only a missing BIOS is worth a word.
+  if (!status || !status.enabled || !status.installed) return null;
+  if (!status.available) return <p className="muted small">PS2 in the browser: {status.reason}</p>;
+  return (
+    <div className="inline">
+      <a className="button primary" href={`/play/${game.id}`}>
+        ▶ Play in the browser (experimental)
+      </a>
+      <span className="muted small">Needs a fast PC with Chrome or Edge. Memory card saves stay in this browser; the desktop app plays PS2 best.</span>
+    </div>
   );
 }

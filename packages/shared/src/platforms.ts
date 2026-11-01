@@ -22,6 +22,11 @@ export interface Platform {
   rawg: number | null;
   /** EmulatorJS core for playing in the browser; null when the system is too heavy for it. */
   browserCore?: string;
+  /**
+   * A browser emulator of its own instead of EmulatorJS: "tabstationtoo" is PCSX2 compiled to
+   * WebAssembly, served by the LootDen server when the image includes it and an admin allows it.
+   */
+  browserPlayer?: "tabstationtoo";
 }
 
 const p = (x: Platform) => x;
@@ -29,7 +34,7 @@ const p = (x: Platform) => x;
 export const PLATFORMS: Platform[] = [
   p({ id: "pc", name: "PC", short: "PC", aliases: ["windows", "win"], coverAspect: 3 / 4, color: "#4aa8ff", emulator: null, extensions: [], igdb: 6, rawg: 4 }),
   p({ id: "ps1", name: "PlayStation", short: "PS1", aliases: ["psx", "playstation", "ps"], coverAspect: 1, color: "#9aa0a6", emulator: "duckstation", extensions: ["m3u", "cue", "chd", "pbp", "iso", "bin", "img", "ecm"], igdb: 7, rawg: 27, browserCore: "psx" }),
-  p({ id: "ps2", name: "PlayStation 2", short: "PS2", aliases: ["playstation2"], coverAspect: 0.7, color: "#3b5fd9", emulator: "pcsx2", extensions: ["chd", "iso", "cso", "zso", "cue", "bin", "gz"], igdb: 8, rawg: 15 }),
+  p({ id: "ps2", name: "PlayStation 2", short: "PS2", aliases: ["playstation2"], coverAspect: 0.7, color: "#3b5fd9", emulator: "pcsx2", extensions: ["chd", "iso", "cso", "zso", "cue", "bin", "gz"], igdb: 8, rawg: 15, browserPlayer: "tabstationtoo" }),
   p({ id: "ps3", name: "PlayStation 3", short: "PS3", aliases: ["playstation3"], coverAspect: 0.86, color: "#d0d4da", emulator: "rpcs3", extensions: ["bin", "iso", "pkg"], igdb: 9, rawg: 16 }),
   p({ id: "xbox", name: "Xbox", short: "Xbox", aliases: ["xbox-original", "ogxbox"], coverAspect: 0.7, color: "#3fbf3f", emulator: "xemu", extensions: ["xiso", "iso"], igdb: 11, rawg: 80 }),
   p({ id: "psp", name: "PlayStation Portable", short: "PSP", aliases: [], coverAspect: 0.58, color: "#6c6f75", emulator: "retroarch", extensions: ["chd", "cso", "iso", "pbp"], igdb: 38, rawg: 17, browserCore: "psp" }),
@@ -87,14 +92,20 @@ export function romTitle(name: string, isFile = false): string {
 }
 
 /**
+ * Disc images TabStationToo reads, best first. A BIN/CUE game plays when it has one .bin
+ * (TabStationToo checks it holds a PS2 data track); multi-file BIN/CUE and CHDs with a parent don't.
+ */
+export const TABSTATIONTOO_DISCS = ["chd", "iso", "cso", "zso", "bin", "img", "gz"];
+
+/**
  * The file to stream to the in-browser emulator, or null when the game can't play there.
  * The browser loads one file, so cue sheets with separate tracks and multi-file games don't work;
  * CHD, PBP, ISO, single-track BIN and cartridge ROMs (zipped or not) do.
  */
 export function browserRomFile(files: Array<{ path: string; index: number }>, platform: Platform): { path: string; index: number } | null {
-  if (!platform.browserCore) return null;
-  if (files.length === 1) return files[0]!;
-  const singles = platform.extensions.filter((e) => !["m3u", "cue", "gdi"].includes(e));
+  if (!platform.browserCore && !platform.browserPlayer) return null;
+  const singles = (platform.browserPlayer === "tabstationtoo" ? TABSTATIONTOO_DISCS : platform.extensions).filter((e) => !["m3u", "cue", "gdi"].includes(e));
+  if (files.length === 1) return !platform.browserPlayer || singles.some((e) => files[0]!.path.toLowerCase().endsWith(`.${e}`)) ? files[0]! : null;
   for (const ext of singles) {
     const hits = files.filter((f) => f.path.toLowerCase().endsWith(`.${ext}`));
     if (hits.length === 1) return hits[0]!;

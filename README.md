@@ -37,7 +37,10 @@ installs games from it on any PC in the house.
   switches on. Bring your own Anthropic API key; admins pick the model and set daily limits
   and a monthly budget, and see what it costs.
 - Emulation: console games in their own section. The desktop app sets up RetroArch,
-  DuckStation, PCSX2, RPCS3 and xemu, and many systems also play in the browser.
+  DuckStation, PCSX2, RPCS3 and xemu, and many systems also play in the browser. PS2 games
+  play in the browser too (experimental, on a fast PC in Chrome or Edge) through
+  [TabStationToo](https://github.com/TabStationToo/TabStationToo), PCSX2 compiled to
+  WebAssembly (GPL-3.0); admins can switch it off under Emulation, Emulators and BIOS.
 - Optional download tools for admins: Prowlarr search, qBittorrent, Transmission, Deluge
   and SABnzbd, a download manager for direct file-host links, import clean-up, a wanted
   list, virus scanning and alerts (Apprise).
