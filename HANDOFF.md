@@ -107,6 +107,14 @@ can be set once by an admin on the add-on's card (`PUT /api/addons/:id/shared`, 
 like accounts, never sent back); a person's own value wins. `Integrations` (IGDB and other admin keys in the settings table) aren't encrypted yet; the
 vault can do it.
 
+## Wishlist covers for Watchmask entries (0.26.1)
+
+Watchmask (formerly Yamtrack) feed entries carry no image, so after each sync, entries without
+one look up the Steam store search by exact name (a trailing year is ignored) and use the
+Steam header image, linking the entry to that app unless another entry has it. Misses retry
+once a day. Feed images (enclosure, media:thumbnail, `<img>`) still win. User-facing text
+follows the rename to Watchmask.
+
 ## Recomps, Roblox cover fixes (0.26.0)
 
 - **Recomps** (`shared/src/recomps.ts`, `client/src/recomps.ts`): a native PC recomp is a second
