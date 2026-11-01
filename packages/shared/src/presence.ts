@@ -50,7 +50,9 @@ export interface PresenceReport {
 /** Something a parent sent to a PC; the desktop app picks it up with its next heartbeat. */
 export type PcCommand =
   | { id: string; kind: "message"; text: string; from: string }
-  | { id: string; kind: "close"; gameId: string; from: string; text?: string };
+  | { id: string; kind: "close"; gameId: string; from: string; text?: string }
+  /** Send to PC: download and install a LootDen game there. */
+  | { id: string; kind: "install"; gameId: string; title: string; from: string };
 
 /** The server's answer to a heartbeat. */
 export interface PresenceAnswer {

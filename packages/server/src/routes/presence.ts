@@ -51,6 +51,29 @@ export function presenceRoutes(app: FastifyInstance, ctx: AppContext) {
     return { allowance: ctx.family.allowance(user.id) };
   });
 
+  /**
+   * Send to PC: the game downloads and installs on that PC as soon as its app hears about it
+   * (within half a minute, or when it next comes on). Admins send to any PC, others to PCs they use.
+   */
+  app.post<{ Params: { device: string }; Body: { gameId?: string } }>("/api/pcs/:device/install", async (req) => {
+    const p = requireUser(req);
+    const admin = p.role === "admin";
+    if (!admin && (!p.user || ctx.presence.lastUserOf(req.params.device) !== p.user.id)) throw new HttpProblem(403, "You can send games to PCs you use");
+    const game = ctx.library.get(String(req.body?.gameId ?? ""), false);
+    if (!game || (p.kidMode && game.kidSafe !== true)) throw new HttpProblem(404, "No such game");
+    if (game.kind !== "game") throw new HttpProblem(400, "Updates and DLC are applied from the Updates page");
+    return fail(() => ctx.presence.send(req.params.device, p.user?.displayName ?? "A grown-up", { kind: "install", gameId: game.id, title: game.title }));
+  });
+
+  /** PCs a game can be sent to: every PC for admins, the ones they use for others. */
+  app.get("/api/pcs/targets", async (req) => {
+    const p = requireUser(req);
+    return ctx.presence
+      .pcs()
+      .filter((pc) => p.role === "admin" || (p.user && ctx.presence.lastUserOf(pc.name) === p.user.id))
+      .map((pc) => ({ name: pc.name, online: pc.online, lastUser: pc.lastUser, freeBytes: pc.disks.reduce((n, d) => Math.max(n, d.freeBytes), 0) }));
+  });
+
   // ---- PCs -----------------------------------------------------------------------------------
   app.get("/api/pcs", async (req) => {
     requireAdmin(req);

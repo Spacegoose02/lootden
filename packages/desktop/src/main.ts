@@ -413,6 +413,8 @@ const storeSince = new Map<string, string>();
 let storeGamesCache: { at: number; games: LocalStoreGame[] } | null = null;
 let heartbeatTimer: NodeJS.Timeout | null = null;
 let beating = false;
+/** Installs a game from the server; set once the IPC handlers exist. */
+let installRemote: ((gameId: string) => Promise<unknown>) | null = null;
 /** Commands already carried out, so a repeat delivery does nothing twice. */
 const handledCommands = new Set<string>();
 
@@ -450,6 +452,16 @@ function runCommand(cmd: PcCommand): void {
   handledCommands.add(cmd.id);
   if (cmd.kind === "message") {
     playNotice("", `Message from ${cmd.from}`, cmd.text);
+    return;
+  }
+  if (cmd.kind === "install") {
+    playNotice(cmd.gameId, `${cmd.from} sent you ${cmd.title}`, "It's downloading now and will be ready to play here.");
+    void installRemote?.(cmd.gameId).then(
+      () => playNotice(cmd.gameId, `${cmd.title} is ready`, `${cmd.from} sent it to this PC. Have fun!`),
+      (err: Error) => {
+        if (!/Already install/.test(err.message)) playNotice(cmd.gameId, `Couldn't install ${cmd.title}`, err.message);
+      },
+    );
     return;
   }
   const mine = nowRunning.get(cmd.gameId);
@@ -954,6 +966,12 @@ function registerIpc(): void {
 
   ipcMain.handle("gm:install", async (e, gameId: string, dir?: string) => {
     fromServer(e);
+    return installFromServer(gameId, dir);
+  });
+  installRemote = (gameId) => installFromServer(gameId);
+
+  /** Downloads and installs a game from the server (the Install button, or Send to PC from another device). */
+  async function installFromServer(gameId: string, dir?: string) {
     if (running.has(gameId)) throw new Error("Already installing");
     // Never download a second copy of something already on this computer.
     const existing = await findCopies(await searchDirs(), await gameRef(gameId));
@@ -988,7 +1006,7 @@ function registerIpc(): void {
     } finally {
       running.delete(gameId);
     }
-  });
+  }
 
   ipcMain.handle("gm:cancel", (e, gameId: string) => {
     fromServer(e);

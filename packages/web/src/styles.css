@@ -4577,3 +4577,21 @@ html[data-lootden-frame] .lightbox {
   display: grid;
   gap: 0.35rem;
 }
+.menu-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: 0;
+  padding: 0.45rem 0.5rem;
+  border-radius: 6px;
+  color: inherit;
+  cursor: pointer;
+}
+.menu-item:hover,
+.menu-item:focus-visible {
+  background: color-mix(in srgb, var(--accent, #8b5cf6) 18%, transparent);
+}

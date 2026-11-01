@@ -1,3 +1,4 @@
+import { SendToPcButton } from "../components/SendToPc";
 import { useEffect, useState, type CSSProperties } from "react";
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { browserRomFile, platformFor, truckGameFor, type GameDetail as Game } from "@lootden/shared";
@@ -107,6 +108,7 @@ export function GameDetail() {
           )}
           <Badges game={game} />
           {me?.user && !isAddon && <ShelfButton gameId={game.id} />}
+          {me?.user && !isAddon && game.platform === "pc" && <SendToPcButton gameId={game.id} title={game.title} sizeBytes={game.sizeBytes} />}
           <AlsoOnStores gameId={game.id} />
           {game.platform === "pc" && !isAddon && <VersionBanner gameId={game.id} isAdmin={me?.role === "admin"} />}
           {m?.ageRatings.length ? (

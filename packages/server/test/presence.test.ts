@@ -132,6 +132,24 @@ describe("now playing", () => {
     assert.equal(((await app.inject({ url: "/api/pcs", headers: admin.headers })).json() as PcInfo[]).length, 0);
   });
 
+  it("sends a game to a PC, which installs it on its next heartbeat", async () => {
+    const { app, ctx } = await makeApp(root);
+    const admin = await person(app, ctx, "pops", { role: "admin" });
+    const kid = await person(app, ctx, "zoe", { kidMode: true });
+    const other = await person(app, ctx, "sam");
+    const portal = ctx.library.list({}).find((g) => /portal/i.test(g.title))!;
+    await app.inject({ method: "POST", url: "/api/me/presence", headers: kid.headers, payload: { device: "ZOE-PC", playing: [] } });
+    assert.equal((await app.inject({ method: "POST", url: "/api/pcs/ZOE-PC/install", headers: other.headers, payload: { gameId: portal.id } })).statusCode, 403, "not someone else's PC");
+    assert.equal((await app.inject({ method: "POST", url: "/api/pcs/ZOE-PC/install", headers: admin.headers, payload: { gameId: "nope" } })).statusCode, 404);
+    assert.equal((await app.inject({ method: "POST", url: "/api/pcs/NOWHERE/install", headers: admin.headers, payload: { gameId: portal.id } })).statusCode, 400);
+    assert.equal((await app.inject({ method: "POST", url: "/api/pcs/ZOE-PC/install", headers: admin.headers, payload: { gameId: portal.id } })).statusCode, 200);
+    const targets = (await app.inject({ url: "/api/pcs/targets", headers: kid.headers })).json() as Array<{ name: string }>;
+    assert.deepEqual(targets.map((t) => t.name), ["ZOE-PC"], "people see the PCs they use");
+    assert.deepEqual(((await app.inject({ url: "/api/pcs/targets", headers: other.headers })).json() as unknown[]).length, 0);
+    const got = (await app.inject({ method: "POST", url: "/api/me/presence", headers: kid.headers, payload: { device: "ZOE-PC", playing: [] } })).json() as PresenceAnswer;
+    assert.deepEqual(got.commands.map((c) => [c.kind, c.kind === "install" ? c.title : ""]), [["install", portal.title]]);
+  });
+
   it("builds magic packets and reads MAC addresses", () => {
     assert.equal(cleanMac("AA-BB-CC-DD-EE-FF"), "aa:bb:cc:dd:ee:ff");
     assert.equal(cleanMac("00:00:00:00:00:00"), null);

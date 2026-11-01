@@ -135,7 +135,8 @@ export class PresenceService {
     }
     this.savePc(device, userId, input.pc);
     if (changed) this.onChange();
-    const queue = (this.commands.get(device) ?? []).filter((c) => t - c.at < 10 * 60_000);
+    // Messages and closes go stale in ten minutes; Send to PC waits a day for the PC to come on.
+    const queue = (this.commands.get(device) ?? []).filter((c) => t - c.at < (c.kind === "install" ? 86400_000 : 10 * 60_000));
     this.commands.delete(device);
     return { commands: queue.map(({ at: _at, ...c }) => c as PcCommand), nextInSeconds: PRESENCE_INTERVAL_SECONDS };
   }
@@ -217,11 +218,12 @@ export class PresenceService {
   }
 
   /** A parent's message or "close the game", for that PC's next heartbeat. */
-  send(device: string, from: string, cmd: { kind: "message"; text: unknown } | { kind: "close"; gameId: unknown; text?: unknown }): PcCommand {
+  send(device: string, from: string, cmd: { kind: "message"; text: unknown } | { kind: "close"; gameId: unknown; text?: unknown } | { kind: "install"; gameId: string; title: string }): PcCommand {
     const known = [...this.live.values()].some((l) => l.device === device) || this.pcRow(device);
     if (!known) throw new Error("No such PC");
     let command: PcCommand;
-    if (cmd.kind === "message") command = { id: randomUUID(), kind: "message", text: cleanPcMessage(cmd.text), from };
+    if (cmd.kind === "install") command = { id: randomUUID(), kind: "install", gameId: cmd.gameId, title: cmd.title, from };
+    else if (cmd.kind === "message") command = { id: randomUUID(), kind: "message", text: cleanPcMessage(cmd.text), from };
     else {
       const gameId = String(cmd.gameId ?? "");
       if (![...this.live.values()].some((l) => l.device === device && l.game.gameId === gameId)) throw new Error("That game isn't running there any more");
@@ -232,6 +234,11 @@ export class PresenceService {
     queue.push({ ...command, at: this.clock() });
     this.commands.set(device, queue.slice(-20));
     return command;
+  }
+
+  /** Who signed in to a PC's app last (Send to PC: people may send to their own PCs). */
+  lastUserOf(device: string): number | null {
+    return this.pcRow(device)?.last_user ?? null;
   }
 
   /** The PC a game runs on, for parents' buttons on the board. */
