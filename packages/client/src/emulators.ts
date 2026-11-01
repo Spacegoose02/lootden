@@ -27,6 +27,8 @@ const hostOs = (): OS => (process.platform === "win32" ? "win32" : "linux");
 /** What the app has set up in its tools folder, kept in lootden-tools.json. */
 export interface ToolsManifest {
   emulators: Record<string, { version: string; exe: string; installedAt: string; cores?: string[] }>;
+  /** Recomps set up on this PC (see recomps.ts); exe is relative to the tools folder. */
+  recomps: Record<string, { version: string; exe: string; installedAt: string; sha256: string | null }>;
   /** Last save backup restored per game, so the same backup isn't applied twice. */
   restored: Record<string, number>;
 }
@@ -37,13 +39,13 @@ const UA = { "User-Agent": "LootDen", Accept: "application/vnd.github+json" };
 export async function readTools(toolsDir: string): Promise<ToolsManifest> {
   try {
     const m = JSON.parse(await readFile(path.join(toolsDir, MANIFEST), "utf8")) as Partial<ToolsManifest>;
-    return { emulators: m.emulators ?? {}, restored: m.restored ?? {} };
+    return { emulators: m.emulators ?? {}, recomps: m.recomps ?? {}, restored: m.restored ?? {} };
   } catch {
-    return { emulators: {}, restored: {} };
+    return { emulators: {}, recomps: {}, restored: {} };
   }
 }
 
-async function writeTools(toolsDir: string, m: ToolsManifest): Promise<void> {
+export async function writeTools(toolsDir: string, m: ToolsManifest): Promise<void> {
   await mkdir(toolsDir, { recursive: true });
   await writeFile(path.join(toolsDir, MANIFEST), JSON.stringify(m, null, 2) + "\n");
 }
@@ -121,7 +123,7 @@ const EXE: Record<string, RegExp> = {
   xemu: /^(xemu\.exe|xemu.*\.AppImage)$/i,
 };
 
-async function download(fetchImpl: Fetch, url: string, dest: string, onProgress?: (received: number, total: number) => void, signal?: AbortSignal): Promise<void> {
+export async function download(fetchImpl: Fetch, url: string, dest: string, onProgress?: (received: number, total: number) => void, signal?: AbortSignal): Promise<void> {
   const res = await fetchImpl(url, { headers: { "User-Agent": "LootDen" }, signal, redirect: "follow" });
   if (!res.ok || !res.body) throw new Error(`Download failed with ${res.status}: ${url}`);
   const total = Number(res.headers.get("content-length") ?? 0);
@@ -138,7 +140,7 @@ async function download(fetchImpl: Fetch, url: string, dest: string, onProgress?
   await rename(`${dest}.part`, dest);
 }
 
-async function findFile(dir: string, pattern: RegExp, depth = 0): Promise<string | null> {
+export async function findFile(dir: string, pattern: RegExp, depth = 0): Promise<string | null> {
   if (depth > 3) return null;
   const entries = await readdir(dir, { withFileTypes: true }).catch(() => []);
   for (const e of entries) if (e.isFile() && pattern.test(e.name)) return path.join(dir, e.name);
@@ -535,7 +537,7 @@ export async function setIni(file: string, section: string, values: Record<strin
   await writeFile(file, lines.join("\n").replace(/\n*$/, "\n"));
 }
 
-async function listFiles(dir: string, rel = ""): Promise<string[]> {
+export async function listFiles(dir: string, rel = ""): Promise<string[]> {
   const out: string[] = [];
   for (const e of await readdir(path.join(dir, rel), { withFileTypes: true }).catch(() => [])) {
     if (e.name.startsWith(".")) continue;
@@ -559,7 +561,7 @@ async function snapshot(plan: LaunchPlan): Promise<Map<string, number>> {
   return out;
 }
 
-function zipFiles(sevenZip: SevenZip, cwd: string, files: string[], zip: string): Promise<void> {
+export function zipFiles(sevenZip: SevenZip, cwd: string, files: string[], zip: string): Promise<void> {
   return new Promise((resolve, reject) => {
     const child = spawn(sevenZip.path, ["a", "-tzip", "-bd", "-y", zip, ...files], { cwd, stdio: ["ignore", "ignore", "pipe"], windowsHide: true });
     let err = "";
@@ -575,7 +577,8 @@ function zipFiles(sevenZip: SevenZip, cwd: string, files: string[], zip: string)
  */
 export async function restoreEmulatorSaves(api: GameServerClient, gameId: string, plan: LaunchPlan, toolsDir: string, sevenZip: SevenZip, device: string): Promise<SaveBackup | null> {
   if (!plan.saveDirs.length) return null;
-  const latest = (await api.listSaves(gameId))[0];
+  // Saves a recomp made for the same game are its own, not the emulator's.
+  const latest = (await api.listSaves(gameId)).filter((s) => !s.runner)[0];
   const tools = await readTools(toolsDir);
   if (!latest || tools.restored[gameId] === latest.id || latest.device === device) return null;
   const tmp = await mkdtemp(path.join(os.tmpdir(), "lootden-emusave-"));

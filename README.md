@@ -41,6 +41,10 @@ installs games from it on any PC in the house.
   play in the browser too (experimental, on a fast PC in Chrome or Edge) through
   [TabStationToo](https://github.com/TabStationToo/TabStationToo), PCSX2 compiled to
   WebAssembly (GPL-3.0); admins can switch it off under Emulation, Emulators and BIOS.
+- Recomps: native PC versions of console games (Zelda 64: Recompiled, Star Fox 64: Recompiled).
+  The desktop app downloads each one from its developer's GitHub releases, checks it against
+  GitHub's SHA-256, and plays the ROM from your library with it, with save backups kept apart
+  from the emulator's. Releases that ship a `recomplauncher.json` are started the way it says.
 - Optional download tools for admins: Prowlarr search, qBittorrent, Transmission, Deluge
   and SABnzbd, a download manager for direct file-host links, import clean-up, a wanted
   list, virus scanning and alerts (Apprise).

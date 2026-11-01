@@ -117,7 +117,8 @@ const SYNC_SCRIPT = String.raw`
   async function restore() {
     try {
       var list = await (await fetch("/api/games/" + cfg.gameId + "/saves", { credentials: "same-origin" })).json();
-      var latest = list && list[0];
+      // Recomps keep their own saves; only the emulator's carry over.
+      var latest = list && list.filter(function (b) { return !b.runner; })[0];
       if (!latest || String(latest.id) === localStorage.getItem(KEY)) return;
       var buf = await (await fetch("/api/games/" + cfg.gameId + "/saves/" + latest.id, { credentials: "same-origin" })).arrayBuffer();
       var data = await unzipOne(buf, cfg.savePath);

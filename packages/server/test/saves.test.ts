@@ -46,6 +46,15 @@ describe("save sync", () => {
     assert.equal((await app.inject({ url: `${url}/${first.json().id}`, headers: alice })).statusCode, 404);
     assert.equal((await app.inject({ url: "/api/saves", headers: alice })).json().length, 1);
 
+    // A recomp's saves are marked and pruned on their own, so they never push out the emulator's.
+    const recomp = (body: string, runner = "recomp:zelda64recomp") =>
+      app.inject({ method: "POST", url: `${url}?device=Ally&runner=${encodeURIComponent(runner)}`, headers: { ...alice, "content-type": "application/octet-stream" }, payload: Buffer.from(body) });
+    assert.equal((await recomp("PK-recomp", "../../etc")).statusCode, 400);
+    for (let i = 1; i <= KEEP_SAVES + 1; i++) assert.equal((await recomp(`PK-recomp-${i}`)).json().runner, "recomp:zelda64recomp");
+    const both = (await app.inject({ url, headers: alice })).json() as Array<{ runner: string | null }>;
+    assert.equal(both.filter((b) => b.runner === "recomp:zelda64recomp").length, KEEP_SAVES);
+    assert.equal(both.filter((b) => b.runner === null).length, KEEP_SAVES);
+
     // Save locations are set by admins.
     const body = { path: "%APPDATA%/Studio/Game" };
     assert.equal((await app.inject({ method: "PUT", url: `/api/games/${game!.id}/save-path`, headers: alice, payload: body })).statusCode, 403);

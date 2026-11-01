@@ -19,10 +19,11 @@ interface SaveRow {
   created_at: string;
   size: number;
   device: string | null;
+  runner: string | null;
   file: string;
 }
 
-const toBackup = (r: SaveRow): SaveBackup => ({ id: r.id, gameId: r.game_id, createdAt: r.created_at, size: r.size, device: r.device });
+const toBackup = (r: SaveRow): SaveBackup => ({ id: r.id, gameId: r.game_id, createdAt: r.created_at, size: r.size, device: r.device, runner: r.runner ?? null });
 
 /**
  * Per-player save backups: zips the clients upload, kept in <data>/saves/<user>/<game>/.
@@ -63,7 +64,7 @@ export class SaveStore {
     return r ? { path: path.join(this.dir, r.file), backup: toBackup(r) } : null;
   }
 
-  async add(userId: number, gameId: string, body: Readable, device: string | null): Promise<SaveBackup> {
+  async add(userId: number, gameId: string, body: Readable, device: string | null, runner: string | null = null): Promise<SaveBackup> {
     const created = now();
     const folder = path.join(String(userId), safeSegment(gameId));
     const name = `${created.replace(/[:.]/g, "-")}-${randomBytes(3).toString("hex")}.zip`;
@@ -89,9 +90,9 @@ export class SaveStore {
     await rename(part, target);
     const cleanDevice = device?.trim().slice(0, 80) || null;
     const { lastInsertRowid } = this.db
-      .prepare("INSERT INTO saves (user_id, game_id, created_at, size, device, file) VALUES (?, ?, ?, ?, ?, ?)")
-      .run(userId, gameId, created, (await stat(target)).size, cleanDevice, rel);
-    await this.prune(userId, gameId);
+      .prepare("INSERT INTO saves (user_id, game_id, created_at, size, device, runner, file) VALUES (?, ?, ?, ?, ?, ?, ?)")
+      .run(userId, gameId, created, (await stat(target)).size, cleanDevice, runner, rel);
+    await this.prune(userId, gameId, runner);
     return toBackup(this.row(userId, Number(lastInsertRowid))!);
   }
 
@@ -103,10 +104,11 @@ export class SaveStore {
     return true;
   }
 
-  private async prune(userId: number, gameId: string): Promise<void> {
+  /** Keeps the newest backups per game, counted separately for the emulator and each recomp. */
+  private async prune(userId: number, gameId: string, runner: string | null): Promise<void> {
     const old = this.db
-      .prepare("SELECT * FROM saves WHERE user_id = ? AND game_id = ? ORDER BY created_at DESC, id DESC LIMIT -1 OFFSET ?")
-      .all(userId, gameId, KEEP_SAVES) as unknown as SaveRow[];
+      .prepare("SELECT * FROM saves WHERE user_id = ? AND game_id = ? AND runner IS ? ORDER BY created_at DESC, id DESC LIMIT -1 OFFSET ?")
+      .all(userId, gameId, runner, KEEP_SAVES) as unknown as SaveRow[];
     for (const r of old) await this.remove(userId, r.id);
   }
 }

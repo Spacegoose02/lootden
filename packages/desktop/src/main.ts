@@ -20,6 +20,11 @@ import {
   emulatorOverview,
   installEmulator,
   playEmulated,
+  installRecomp,
+  playRecomp,
+  recompInfo,
+  recompOverview,
+  removeRecomp,
   backupSaves,
   expandSavePath,
   offlineAllowance,
@@ -1358,7 +1363,11 @@ function registerIpc(): void {
    */
   async function startGame(gameId: string, actionId?: string) {
     const game = await findInstalled(gameId);
-    if (game.platform && game.platform !== "pc") return playEmulatedGame(gameId, game.dir, game.platform);
+    if (game.platform && game.platform !== "pc") {
+      // "recomp:<id>": a native PC version of the console game, handed the library ROM.
+      if (actionId?.startsWith("recomp:")) return playRecompGame(gameId, game.dir, actionId.slice(7));
+      return playEmulatedGame(gameId, game.dir, game.platform);
+    }
     if (game.needsSetup && !game.installedDir) throw new Error(`${game.title} is still ${game.needsSetup === "disc" ? "a disc image" : "an installer"}. Use Run installer first.`);
     const home = game.installedDir ?? game.dir;
     const profile = launchProfile(launchKey({ gameId }));
@@ -1645,6 +1654,83 @@ function registerIpc(): void {
     // Errors before the emulator starts (missing BIOS, no emulator yet) go straight back to the page.
     return Promise.race([ready, session.then(() => ({ executable: "" }))]);
   }
+
+  /** Console games played with a recomp: ROM in place, newer saves in, play, back up what changed. */
+  async function playRecompGame(gameId: string, dir: string, recompId: string) {
+    const info = recompInfo(recompId);
+    if (!info) throw new Error("Unknown recomp");
+    const api = await clientOrOffline();
+    const player = currentPlayer();
+    const today = await todaysAllowance(api);
+    if (today && !today.canPlay) throw new Error(today.reason ?? "No play time left today");
+    let unwatch = () => {};
+    let started: (v: { executable: string }) => void = () => {};
+    const ready = new Promise<{ executable: string }>((resolve) => (started = resolve));
+    const session = playRecomp(api, gameId, dir, recompId, {
+      toolsDir: toolsDir(),
+      sevenZip: await sevenZip(),
+      device: os.hostname(),
+      onEvent: (ev) => send({ gameId, type: "prepare", message: ev.message }),
+      onStarted: (plan) => {
+        unwatch = guardPlay(api, gameId, info.game, today);
+        markRunning(gameId, info.game, "emulated");
+        send({ gameId, type: "playing" });
+        started({ executable: info.name });
+      },
+    });
+    session.then(
+      async (r) => {
+        unwatch();
+        send({ gameId, type: "stopped", seconds: r.seconds });
+        await recordPlay(api, gameId, r.seconds, player);
+        if (r.backup) send({ gameId, type: "saves", backupId: r.backup.id, size: r.backup.size });
+      },
+      (err: Error) => {
+        unwatch();
+        send({ gameId, type: "error", message: err.message });
+      },
+    );
+    // Errors before it starts (not set up, wrong ROM) go straight back to the page.
+    return Promise.race([ready, session.then(() => ({ executable: "" }))]);
+  }
+
+  // ---- Recomps ---------------------------------------------------------------------
+
+  ipcMain.handle("gm:recomps", async (e) => {
+    fromServer(e);
+    return { toolsDir: toolsDir(), recomps: await recompOverview(toolsDir()) };
+  });
+
+  ipcMain.handle("gm:installRecomp", async (e, id: string) => {
+    fromServer(e);
+    const key = `recomp:${id}`;
+    if (running.has(key)) throw new Error("Already downloading");
+    const controller = new AbortController();
+    running.set(key, controller);
+    let last = 0;
+    try {
+      const r = await installRecomp(id, {
+        toolsDir: toolsDir(),
+        sevenZip: await sevenZip(),
+        signal: controller.signal,
+        onEvent: (ev) => {
+          const now = Date.now();
+          if (ev.total && now - last < 300) return;
+          last = now;
+          send({ gameId: key, type: "prepare", message: ev.total ? `${ev.message} (${Math.floor(((ev.received ?? 0) / ev.total) * 100)}%)` : ev.message });
+        },
+      });
+      return { version: r.version, updated: r.updated };
+    } finally {
+      running.delete(key);
+    }
+  });
+
+  ipcMain.handle("gm:removeRecomp", async (e, id: string) => {
+    fromServer(e);
+    if (!recompInfo(id)) throw new Error("Unknown recomp");
+    return removeRecomp(id, toolsDir());
+  });
 
   // ---- Emulators ------------------------------------------------------------------
 

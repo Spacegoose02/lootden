@@ -14,6 +14,7 @@ export * from "./packages.js";
 import type { KindReason, PackageKind } from "./packages.js";
 export * from "./platforms.js";
 export * from "./presence.js";
+export * from "./recomps.js";
 export * from "./roblox.js";
 export * from "./truckmods.js";
 export * from "./truckmodlist.js";
@@ -151,6 +152,8 @@ export interface SaveBackup {
   size: number;
   /** The computer it came from, as the client named it. */
   device: string | null;
+  /** What made it when not the game or its emulator: "recomp:<id>". Missing from older servers. */
+  runner?: string | null;
 }
 
 export interface LibraryStats {

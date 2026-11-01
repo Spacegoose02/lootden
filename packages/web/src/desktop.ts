@@ -45,6 +45,11 @@ export interface EmulatorSetup {
   bios: Array<{ id: string; present: string | null }>;
 }
 
+export interface RecompSetup {
+  id: string;
+  installed: { version: string; installedAt: string } | null;
+}
+
 export type Progress =
   | { gameId: string; type: "start"; gameDir: string; totalBytes: number }
   | { gameId: string; type: "download"; file: string; index: number; count: number; received: number; total: number }
@@ -235,6 +240,10 @@ export interface DesktopBridge {
   addBios?(id: string): Promise<string[]>;
   biosFromServer?(): Promise<{ added: string[]; skipped: string[] }>;
   openTools?(): Promise<void>;
+  /** Recomps (native PC versions of console games): missing in older apps. */
+  recomps?(): Promise<{ toolsDir: string; recomps: RecompSetup[] }>;
+  installRecomp?(id: string): Promise<{ version: string; updated: boolean }>;
+  removeRecomp?(id: string): Promise<{ keptSaves: boolean }>;
   changeServer(): Promise<void>;
   /** Switches to the app's offline library when the server really can't be reached (apps from 0.13.2). */
   goOffline?(): Promise<boolean>;

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { EMULATORS, platformFor, type GameDetail, type SaveBackup } from "@lootden/shared";
+import { EMULATORS, platformFor, recompInfo, type GameDetail, type SaveBackup } from "@lootden/shared";
 import { api, formatBytes } from "../api";
 import { useAuth } from "../auth";
 import { bridgeError, desktop, useDesktopGame } from "../desktop";
@@ -109,7 +109,10 @@ export function SavesPanel({ game, onChange }: { game: GameDetail; onChange: (g:
             {saves.map((s) => (
               <tr key={s.id}>
                 <td>{new Date(s.createdAt).toLocaleString()}</td>
-                <td className="muted">{s.device ?? ""}</td>
+                <td className="muted">
+                  {s.device ?? ""}
+                  {s.runner?.startsWith("recomp:") ? ` · ${recompInfo(s.runner.slice(7))?.name ?? "recomp"}` : ""}
+                </td>
                 <td className="num">{formatBytes(s.size)}</td>
                 <td className="actions">
                   {canSync && desktop?.restoreSaves && (

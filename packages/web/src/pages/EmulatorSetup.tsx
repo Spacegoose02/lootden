@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from "react";
-import { platformFor, type EmulatorInfo } from "@lootden/shared";
+import { platformFor, RECOMPS, type EmulatorInfo, type RecompInfo } from "@lootden/shared";
 import { api, formatBytes, type EmulationOverview } from "../api";
 import { useAuth } from "../auth";
-import { bridgeError, desktop, type EmulatorSetup as Setup } from "../desktop";
+import { bridgeError, desktop, type EmulatorSetup as Setup, type RecompSetup } from "../desktop";
 import { connectedPads } from "../gamepad";
 
 /**
@@ -14,6 +14,7 @@ export function EmulatorSetup() {
   const isAdmin = me?.role === "admin";
   const [data, setData] = useState<EmulationOverview | null>(null);
   const [local, setLocal] = useState<{ toolsDir: string; emulators: Setup[] } | null>(null);
+  const [recomps, setRecomps] = useState<RecompSetup[] | null>(null);
   const [status, setStatus] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState<string | null>(null);
   const [message, setMessage] = useState("");
@@ -23,11 +24,13 @@ export function EmulatorSetup() {
   const load = async () => {
     setData(await api.emulation());
     if (desktop?.emulators) setLocal(await desktop.emulators());
+    if (desktop?.recomps) setRecomps((await desktop.recomps()).recomps);
   };
   useEffect(() => {
     load().catch((e: Error) => setError(e.message));
     return desktop?.onProgress((p) => {
       if (p.gameId.startsWith("emu:") && p.type === "prepare") setStatus((s) => ({ ...s, [p.gameId.slice(4)]: p.message }));
+      if (p.gameId.startsWith("recomp:") && p.type === "prepare") setStatus((s) => ({ ...s, [p.gameId]: p.message }));
     });
   }, []);
 
@@ -94,6 +97,39 @@ export function EmulatorSetup() {
               run(`bios:${e.id}`, async () => {
                 const added = await desktop!.addBios!(e.id);
                 return added.length ? `Added: ${added.join(", ")}.` : undefined;
+              })
+            }
+          />
+        ))}
+      </div>
+
+      <h2>Recomps</h2>
+      <p className="muted small">
+        Native PC versions of console games, rebuilt by their developers from the original game. They play the copy in your library instead of an emulator, with
+        widescreen, high frame rates and mods where the recomp has them. Each one downloads from its developer's GitHub releases, checked against GitHub's
+        checksum. Once it's set up, the game's page has a Play with button for it.
+      </p>
+      {!desktop?.recomps && <p className="notice">Recomps are set up on each PC from the LootDen desktop app (update it if this message stays in the app).</p>}
+      <div className="emulator-list">
+        {RECOMPS.map((r) => (
+          <RecompCard
+            key={r.id}
+            info={r}
+            setup={recomps?.find((x) => x.id === r.id)}
+            canSetUp={Boolean(desktop?.recomps)}
+            busy={busy}
+            status={status[`recomp:${r.id}`]}
+            onInstall={() =>
+              run(`recomp:${r.id}`, async () => {
+                const x = await desktop!.installRecomp!(r.id);
+                return x.updated ? `${r.name} ${x.version} is ready.` : `${r.name} ${x.version} is already the latest.`;
+              })
+            }
+            onRemove={() =>
+              confirm(`Remove ${r.name} from this PC? Its saves stay, for when you set it up again.`) &&
+              run(`recomp-rm:${r.id}`, async () => {
+                await desktop!.removeRecomp!(r.id);
+                return `Removed ${r.name}. Its saves are still in the recomps folder.`;
               })
             }
           />
@@ -212,6 +248,50 @@ function EmulatorCard(props: {
           )}
         </>
       )}
+    </section>
+  );
+}
+
+function RecompCard(props: {
+  info: RecompInfo;
+  setup: RecompSetup | undefined;
+  canSetUp: boolean;
+  busy: string | null;
+  status: string | undefined;
+  onInstall: () => void;
+  onRemove: () => void;
+}) {
+  const { info, setup } = props;
+  const installed = setup?.installed;
+  const working = props.busy === `recomp:${info.id}`;
+  return (
+    <section className="panel emulator-card">
+      <div className="inline" style={{ justifyContent: "space-between" }}>
+        <div>
+          <h2>{info.name}</h2>
+          <p className="muted small">
+            {info.game} ({platformFor(info.platform).short}) ·{" "}
+            <a href={`https://github.com/${info.repo}`} target="_blank" rel="noreferrer">
+              github.com/{info.repo}
+            </a>
+          </p>
+        </div>
+        {props.canSetUp && (
+          <div className="inline">
+            {installed && <span className="badge">Version {installed.version}</span>}
+            <button className={installed ? "" : "primary"} disabled={!!props.busy} onClick={props.onInstall}>
+              {working ? "Working…" : installed ? "Update" : "Set up"}
+            </button>
+            {installed && (
+              <button className="ghost" disabled={!!props.busy} onClick={props.onRemove}>
+                Remove
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+      {working && props.status && <p className="small">{props.status}</p>}
+      {info.note && <p className="muted small">{info.note}</p>}
     </section>
   );
 }
