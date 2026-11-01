@@ -100,8 +100,48 @@ export function EmulatorSetup() {
         ))}
       </div>
 
+      {isAdmin && <Ps2BrowserPanel data={data} onChange={load} />}
       {isAdmin && <ServerBios data={data} onChange={load} />}
     </div>
+  );
+}
+
+/** The admin's switch for PS2 games in the browser (TabStationToo), which needs a fast PC. */
+function Ps2BrowserPanel({ data, onChange }: { data: EmulationOverview; onChange: () => Promise<void> }) {
+  const s = data.ps2Browser;
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const toggle = async (on: boolean) => {
+    setBusy(true);
+    setError("");
+    try {
+      await api.setPs2Browser(on);
+      await onChange();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <section className="panel">
+      <h2>PS2 in the browser (experimental)</h2>
+      <label className="check">
+        <input type="checkbox" checked={s.enabled} disabled={busy} onChange={(e) => void toggle(e.target.checked)} />
+        Let players play PS2 games in the browser
+      </label>
+      <p className="muted small">
+        Runs PCSX2 in the browser through <a href="https://github.com/TabStationToo/TabStationToo" target="_blank" rel="noreferrer">TabStationToo</a> (GPL-3.0),
+        streaming the disc from this server. It needs a fast PC with Chrome or Edge, doesn't work on phones, and keeps memory cards in each browser. Turn it off if
+        it's too demanding for your PCs; the desktop app still plays PS2 games in PCSX2.
+      </p>
+      {s.enabled && (
+        <p className="muted small">
+          {s.available ? `Ready, with ${s.bios} from the BIOS files below.` : s.reason}
+        </p>
+      )}
+      {error && <p className="error">{error}</p>}
+    </section>
   );
 }
 

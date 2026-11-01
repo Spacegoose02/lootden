@@ -33,3 +33,6 @@ packages/desktop/vendor/
 playnite/**/bin/
 playnite/**/obj/
 !packages/desktop/build/
+
+# TabStationToo builds (scripts/build-tabstationtoo.sh); the pin file is tracked.
+emulators/tabstationtoo/

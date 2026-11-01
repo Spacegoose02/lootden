@@ -29,7 +29,8 @@ export function PlayInBrowser() {
     api.allowance().then(setToday, () => setToday(null));
   }, []);
   const blocked = today && today.limited && !today.canPlay ? (today.reason ?? "No play time left today") : "";
-  const running = today !== undefined && !blocked && !closed;
+  // Waits for the game too: a PS2 game's page may need loading again first (below).
+  const running = game !== null && today !== undefined && !blocked && !closed;
 
   // While it runs: heads-ups, then time's up (and with a hard stop, closed after a minute to save).
   useEffect(() => {
@@ -88,16 +89,41 @@ export function PlayInBrowser() {
   }, [running, id]);
 
   if (error) return <p className="error">{error}</p>;
+  const ps2 = Boolean(game && platformFor(game.platform).browserPlayer);
+  // PS2 (TabStationToo) needs this page cross-origin isolated, which only a full page load from the
+  // server gives. Arriving here by an in-app link, load the page again once.
+  // A reload within the last 10 seconds that didn't isolate it won't do better: show the emulator's own message.
+  if (ps2 && !self.crossOriginIsolated && Date.now() - Number(sessionStorage.getItem("lootden-isolate") ?? 0) > 10_000) {
+    sessionStorage.setItem("lootden-isolate", String(Date.now()));
+    location.reload();
+    return null;
+  }
   return (
     <div className="play-browser">
       <div className="inline play-bar">
-        <Link to={`/games/${id}`} className="button">
-          ← Back
-        </Link>
+        {/* This page is cross-origin isolated for PS2: leave it with a full page load so the rest of LootDen isn't. */}
+        {ps2 ? (
+          <a href={`/games/${id}`} className="button">
+            ← Back
+          </a>
+        ) : (
+          <Link to={`/games/${id}`} className="button">
+            ← Back
+          </Link>
+        )}
         <strong>{game?.title}</strong>
-        {game && <span className="muted small">{platformFor(game.platform).name} in the browser · your save syncs with the desktop app · click the game to give it the controller</span>}
+        {game && (
+          <span className="muted small">
+            {platformFor(game.platform).name} in the browser ·{" "}
+            {ps2 ? "experimental · memory cards stay in this browser · click the TV to give it the keyboard" : "your save syncs with the desktop app · click the game to give it the controller"}
+          </span>
+        )}
         <span style={{ flex: 1 }} />
-        <button disabled={!running} onClick={() => frame.current?.contentWindow?.postMessage("lootden:save", location.origin)}>Sync save now</button>
+        {!ps2 && (
+          <button disabled={!running} onClick={() => frame.current?.contentWindow?.postMessage("lootden:save", location.origin)}>
+            Sync save now
+          </button>
+        )}
         <button disabled={!running} onClick={() => frame.current?.requestFullscreen()}>Fullscreen</button>
       </div>
       {notice && (
@@ -109,7 +135,7 @@ export function PlayInBrowser() {
         <p className="panel">🌙 {blocked}</p>
       ) : running ? (
         /* Focused so keys and the controller go to the game, not LootDen's menus. */
-        <iframe ref={frame} onLoad={() => frame.current?.focus()} className="play-frame" src={`/api/games/${id}/play`} title={game?.title ?? "Game"} allow="fullscreen; gamepad; autoplay" allowFullScreen />
+        <iframe ref={frame} onLoad={() => frame.current?.focus()} className="play-frame" src={`/api/games/${id}/play`} title={game?.title ?? "Game"} allow="fullscreen; gamepad; autoplay; cross-origin-isolated" allowFullScreen />
       ) : today === undefined ? (
         <p className="muted">Loading…</p>
       ) : null}
