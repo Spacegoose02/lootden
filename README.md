@@ -44,6 +44,26 @@ installs games from it on any PC in the house.
 - Optional download tools for admins: Prowlarr search, qBittorrent, Transmission, Deluge
   and SABnzbd, a download manager for direct file-host links, import clean-up, a wanted
   list, virus scanning and alerts (Apprise).
+- **Playing now**: Home shows who is playing what, on which PC, for how long and with how much
+  play time left, including Steam, Epic, GOG and other launchers' games the app sees running.
+  Grown-ups can send a message to that PC ("Dinner in 5!"), add 15 minutes, or close the game
+  after a minute's warning.
+- **Send to PC**: on a game's page, pick a PC in the house and its app downloads and installs
+  the game by itself, or when that PC next comes on.
+- **PCs**: which PCs are on, free space per drive, and Wake-on-LAN to switch one on.
+- **Game night**: pick who's playing and get games you can all play together (co-op, kid-safe
+  when kids play, installed for most of you first), a "Surprise us" spin, and planned nights
+  with a calendar feed.
+- **Family wall**: press Ctrl+Shift+S while playing to share a screenshot with the family (or
+  upload one from a phone), with emoji reactions. Kids only see kid-safe games' pictures.
+- **Stream to the TV**: with [Sunshine](https://app.lizardbyte.dev/Sunshine/) on the gaming PC,
+  LootDen adds its games to Sunshine; a TV PC or laptop with
+  [Moonlight](https://moonlight-stream.org) gets "Stream from …" on game pages.
+- **[Den Duty](https://github.com/Spacegoose02/den-duty) link** (the family chore tracker): Den
+  Duty time-outs can lock games (or only Roblox), games can wait until today's chores are done,
+  game time bought in Den Duty's rewards shop turns into bonus time here, reaching a family goal
+  unlocks a game night, and Den Duty's family wall shows who's playing, the next game night and
+  a screenshot slideshow.
 - `lootden` command-line client and a Playnite plugin.
 
 ## Running the server

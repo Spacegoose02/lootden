@@ -107,6 +107,48 @@ can be set once by an admin on the add-on's card (`PUT /api/addons/:id/shared`, 
 like accounts, never sent back); a person's own value wins. `Integrations` (IGDB and other admin keys in the settings table) aren't encrypted yet; the
 vault can do it.
 
+## Family live: Now Playing, PCs, Send to PC, game night, family wall, streaming, Den Duty (0.24.0)
+
+- **Heartbeat** (`POST /api/me/presence`, shared types in `shared/src/presence.ts`): the desktop
+  app reports every 30 s what runs on its PC (`nowRunning` for games it started, plus
+  `runningStoreGames` in `client/src/presence.ts`, which matches running processes against
+  other launchers' install folders) and facts about the PC (`pcReport`: MACs, IPv4 addresses,
+  drives, Sunshine/Moonlight, games in Sunshine). The answer carries `PcCommand`s for that PC.
+  `PresenceService` (`server/src/users/presence.ts`) keeps what's playing in memory (gone after
+  90 s without a heartbeat) and PCs in the `pcs` table. Live topic `playing`.
+- **Parents' controls**: `POST /api/pcs/:device/message|close`, and
+  `POST /api/family/now-playing/:id/bonus` (bonus time plus a note on their PC). The app shows
+  messages as notifications; "close" warns, then aborts the game a minute later (LootDen and
+  Roblox games through their stop controller, other launchers' games by killing processes in
+  the install folder). Emulators can't be closed.
+- **Send to PC**: `POST /api/pcs/:device/install` queues an `install` command (kept a day);
+  `installFromServer` in `desktop/src/main.ts` is the Install button's code. Admins send to any
+  PC, others to PCs they signed in to last (`GET /api/pcs/targets`).
+- **Wake-on-LAN**: `POST /api/pcs/:device/wake` sends the magic packet (UDP 9 and 7) to
+  255.255.255.255 and each address's /24 broadcast. Needs host networking (docs/CONFIGURATION.md).
+- **Game night** (`users/gamenight.ts`, `routes/gamenight.ts`, `pages/GameNight.tsx`): the picker
+  scores library games for the players (together tags, installed for how many, kid-safe when a
+  kid plays, rating, controller support). Planned nights in `game_nights`; the iCalendar feed is
+  public at `/api/game-nights/feed/<key>/game-nights.ics` (key in settings `gamenight_feed`,
+  resettable). Den Duty family goals reached lately show up to plan a night for.
+- **Family wall** (`users/screenshots.ts`, `pages/Screenshots.tsx`): pictures in
+  `<data>/screenshots`, `screenshots` and `screenshot_reactions` tables. Kid profiles only see
+  ones from kid-safe games or taken by a kid. The desktop app registers Ctrl+Shift+S only while a
+  game runs and captures the screen under the mouse with `desktopCapturer` (exclusive full-screen
+  games may capture black; borderless works). `GET /api/family/wall` is the summary Den Duty's
+  wall shows.
+- **Streaming** (`client/src/streaming.ts`): Profile, This computer links Sunshine (its web
+  login, sealed with `safeStorage`) and adds installed games as Sunshine apps whose command is
+  `LootDen.exe lootden://play/<id>` (auto-detach), so limits and Now Playing still apply. Game
+  pages on a PC with Moonlight get "Stream from …" (`GET /api/games/:id/stream-hosts`), which
+  runs `moonlight stream <host> <title>`. Pairing is done once in Moonlight.
+- **Den Duty link** (`users/denduty.ts`, Settings, Den Duty): polls Den Duty's
+  `GET /api/v1/homes/:id/gaming` every minute with a control token (encrypted with the vault).
+  `FamilyService.externalLock` turns its time-outs (`games: all|roblox`) and "chores first" into
+  `allowance.canPlay = false` or `allowance.robloxLock`; a new lock closes running games once.
+  Game time orders are claimed in Den Duty first (`POST .../gaming/orders/:id/claim`), then
+  given as bonus time, so they're never given twice.
+
 ## PS2 in the browser with TabStationToo (0.23.0)
 
 - PS2 games get "Play in the browser (experimental)": TabStationToo (PCSX2 in WebAssembly,

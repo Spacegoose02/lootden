@@ -1,6 +1,6 @@
 {
   "name": "@lootden/desktop",
-  "version": "0.23.0",
+  "version": "0.24.0",
   "private": true,
   "description": "LootDen desktop app for Windows and Linux",
   "homepage": "https://github.com/Spacegoose02/lootden",
@@ -17,7 +17,7 @@
     "dist:linux": "npm run build && electron-builder --linux --publish never"
   },
   "dependencies": {
-    "@lootden/client": "0.23.0"
+    "@lootden/client": "0.24.0"
   },
   "devDependencies": {
     "electron": "44.10.0",
