@@ -173,9 +173,9 @@ export function Profile() {
             {states.length > 0 && (
               <p className="small muted">
                 <a href="/api/me/export/yamtrack.csv" download>
-                  Export for Yamtrack
+                  Export for Watchmask
                 </a>{" "}
-                (in Yamtrack: Settings, Import, Yamtrack CSV).
+                (in Watchmask: Settings, Import, Yamtrack CSV).
               </p>
             )}
           </section>
