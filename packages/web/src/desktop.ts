@@ -45,6 +45,16 @@ export interface EmulatorSetup {
   bios: Array<{ id: string; present: string | null }>;
 }
 
+/** One of a recomp's settings, as its recomplauncher.json describes it, and what it's on. */
+export interface RecompSettingView {
+  id: string;
+  label: string;
+  help: string;
+  choices: string[];
+  current: number;
+  disabled: boolean;
+}
+
 export interface RecompSetup {
   id: string;
   installed: { version: string; installedAt: string } | null;
@@ -244,6 +254,9 @@ export interface DesktopBridge {
   recomps?(): Promise<{ toolsDir: string; recomps: RecompSetup[] }>;
   installRecomp?(id: string): Promise<{ version: string; updated: boolean }>;
   removeRecomp?(id: string): Promise<{ keptSaves: boolean }>;
+  recompUpdates?(): Promise<Array<{ id: string; installed: string; latest: string }>>;
+  recompSettings?(id: string): Promise<RecompSettingView[]>;
+  setRecompSetting?(id: string, settingId: string, choice: number): Promise<RecompSettingView[]>;
   changeServer(): Promise<void>;
   /** Switches to the app's offline library when the server really can't be reached (apps from 0.13.2). */
   goOffline?(): Promise<boolean>;

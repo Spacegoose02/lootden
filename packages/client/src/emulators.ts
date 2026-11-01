@@ -13,6 +13,7 @@ import {
   RETROARCH_CORES,
   type BiosRequirement,
   type EmulatorInfo,
+  type RecompInfo,
   type SaveBackup,
   type ServerBiosFile,
 } from "@lootden/shared";
@@ -28,7 +29,21 @@ const hostOs = (): OS => (process.platform === "win32" ? "win32" : "linux");
 export interface ToolsManifest {
   emulators: Record<string, { version: string; exe: string; installedAt: string; cores?: string[] }>;
   /** Recomps set up on this PC (see recomps.ts); exe is relative to the tools folder. */
-  recomps: Record<string, { version: string; exe: string; installedAt: string; sha256: string | null }>;
+  recomps: Record<
+    string,
+    {
+      version: string;
+      exe: string;
+      installedAt: string;
+      sha256: string | null;
+      /** An admin-added recomp's details, so it still plays offline. */
+      info?: RecompInfo;
+      /** The game file its setup step last ran for ("path|size"). */
+      prepared?: string;
+      /** The player's picks for settings passed on the command line, by setting id. */
+      choices?: Record<string, number>;
+    }
+  >;
   /** Last save backup restored per game, so the same backup isn't applied twice. */
   restored: Record<string, number>;
 }

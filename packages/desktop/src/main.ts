@@ -24,7 +24,10 @@ import {
   playRecomp,
   recompInfo,
   recompOverview,
+  recompSettings,
+  recompUpdates,
   removeRecomp,
+  setRecompSetting,
   backupSaves,
   expandSavePath,
   offlineAllowance,
@@ -80,6 +83,7 @@ import {
   stepTarget,
   suspendProcesses,
   findLocalScreenshots,
+  readTools,
 } from "@lootden/client";
 import {
   cleanLaunchProfile,
@@ -98,6 +102,7 @@ import {
   type PcCommand,
   type PcCopy,
   type PlaySource,
+  type RecompInfo,
   type RunningGame,
 } from "@lootden/shared";
 import { cleanDiscordId, DiscordPresence, showSplash } from "./playextras.js";
@@ -1655,9 +1660,19 @@ function registerIpc(): void {
     return Promise.race([ready, session.then(() => ({ executable: "" }))]);
   }
 
+  /** Recomps an admin added on the server; none when it can't be reached (set-up ones still play offline). */
+  async function addedRecomps(): Promise<RecompInfo[]> {
+    try {
+      return (await (await client()).recomps()).added;
+    } catch {
+      return [];
+    }
+  }
+
   /** Console games played with a recomp: ROM in place, newer saves in, play, back up what changed. */
   async function playRecompGame(gameId: string, dir: string, recompId: string) {
-    const info = recompInfo(recompId);
+    const added = await addedRecomps();
+    const info = recompInfo(recompId, added) ?? (await readTools(toolsDir())).recomps[recompId]?.info;
     if (!info) throw new Error("Unknown recomp");
     const api = await clientOrOffline();
     const player = currentPlayer();
@@ -1667,6 +1682,7 @@ function registerIpc(): void {
     let started: (v: { executable: string }) => void = () => {};
     const ready = new Promise<{ executable: string }>((resolve) => (started = resolve));
     const session = playRecomp(api, gameId, dir, recompId, {
+      added,
       toolsDir: toolsDir(),
       sevenZip: await sevenZip(),
       device: os.hostname(),
@@ -1684,6 +1700,7 @@ function registerIpc(): void {
         send({ gameId, type: "stopped", seconds: r.seconds });
         await recordPlay(api, gameId, r.seconds, player);
         if (r.backup) send({ gameId, type: "saves", backupId: r.backup.id, size: r.backup.size });
+        if (r.problem) send({ gameId, type: "error", message: r.problem });
       },
       (err: Error) => {
         unwatch();
@@ -1698,7 +1715,23 @@ function registerIpc(): void {
 
   ipcMain.handle("gm:recomps", async (e) => {
     fromServer(e);
-    return { toolsDir: toolsDir(), recomps: await recompOverview(toolsDir()) };
+    return { toolsDir: toolsDir(), recomps: await recompOverview(toolsDir(), await addedRecomps()) };
+  });
+
+  ipcMain.handle("gm:recompUpdates", async (e) => {
+    fromServer(e);
+    return recompUpdates({ toolsDir: toolsDir(), added: await addedRecomps() });
+  });
+
+  ipcMain.handle("gm:recompSettings", async (e, id: string) => {
+    fromServer(e);
+    return recompSettings(String(id), { toolsDir: toolsDir() });
+  });
+
+  ipcMain.handle("gm:setRecompSetting", async (e, id: string, settingId: string, choice: number) => {
+    fromServer(e);
+    if (!Number.isInteger(choice) || choice < 0) throw new Error("Unknown choice");
+    return setRecompSetting(String(id), String(settingId), choice, { toolsDir: toolsDir() });
   });
 
   ipcMain.handle("gm:installRecomp", async (e, id: string) => {
@@ -1710,6 +1743,7 @@ function registerIpc(): void {
     let last = 0;
     try {
       const r = await installRecomp(id, {
+        added: await addedRecomps(),
         toolsDir: toolsDir(),
         sevenZip: await sevenZip(),
         signal: controller.signal,
@@ -1728,7 +1762,7 @@ function registerIpc(): void {
 
   ipcMain.handle("gm:removeRecomp", async (e, id: string) => {
     fromServer(e);
-    if (!recompInfo(id)) throw new Error("Unknown recomp");
+    if (!(await readTools(toolsDir())).recomps[id]) throw new Error("That recomp isn't set up on this PC");
     return removeRecomp(id, toolsDir());
   });
 

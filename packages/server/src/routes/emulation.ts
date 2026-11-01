@@ -2,9 +2,10 @@ import { createReadStream } from "node:fs";
 import { stat } from "node:fs/promises";
 import type { Readable } from "node:stream";
 import type { FastifyInstance } from "fastify";
-import { EMULATORS, PLATFORMS, platformFor } from "@lootden/shared";
+import { EMULATORS, PLATFORMS, platformFor, RECOMPS } from "@lootden/shared";
 import { HttpProblem, requireAdmin, requireUser, type AppContext } from "../context.js";
 import { browserPlayable, playPage } from "../emulation/browser-play.js";
+import { addCustomRecomp, customRecomps, removeCustomRecomp } from "../emulation/recomps.js";
 import { ps2BrowserStatus, ps2PlayUrl, saveEmulationSettings, type EmulationSettings } from "../emulation/ps2-web.js";
 
 /** The Emulation section: systems in the library, the emulators for them, and shared BIOS files. */
@@ -14,6 +15,27 @@ export function emulationRoutes(app: FastifyInstance, ctx: AppContext, ps2Dir: s
   app.get("/api/emulation", async (req) => {
     const kid = requireUser(req).kidMode;
     return { platforms: PLATFORMS, emulators: EMULATORS, library: ctx.library.platforms(kid), bios: ctx.bios.list(), ps2Browser: ps2Status() };
+  });
+
+  // Recomps: LootDen's own and the ones an admin added by GitHub link. The desktop apps download them.
+  app.get("/api/recomps", async (req) => {
+    requireUser(req);
+    return { builtIn: RECOMPS, added: customRecomps(ctx.db) };
+  });
+
+  app.post("/api/recomps", async (req) => {
+    requireAdmin(req);
+    try {
+      return addCustomRecomp(ctx.db, req.body);
+    } catch (err) {
+      throw new HttpProblem(400, (err as Error).message);
+    }
+  });
+
+  app.delete<{ Params: { id: string } }>("/api/recomps/:id", async (req) => {
+    requireAdmin(req);
+    if (!removeCustomRecomp(ctx.db, req.params.id)) throw new HttpProblem(404, "No such recomp");
+    return { ok: true };
   });
 
   // Whether PS2 games play in the browser here (the game page asks before showing its button).

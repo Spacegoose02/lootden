@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { EMULATORS, platformFor, recompsFor, type GameDetail } from "@lootden/shared";
-import { formatBytes } from "../api";
+import { EMULATORS, platformFor, recompsFor, type GameDetail, type RecompInfo } from "@lootden/shared";
+import { api, formatBytes } from "../api";
 import { useAuth } from "../auth";
-import { bridgeError, desktop, useDesktopGame, type Drive, type RecompSetup } from "../desktop";
+import { bridgeError, desktop, useDesktopGame, type Drive, type RecompSettingView, type RecompSetup } from "../desktop";
 import { LaunchOptionsPanel, PlayWithButtons, useLaunchOptions } from "./LaunchOptions";
 
 /** Install / play / uninstall panel shown inside the desktop app. */
@@ -19,12 +19,17 @@ export function DesktopInstall({ game, autoFocus }: { game: GameDetail; autoFocu
   const pcGame = (installed?.platform ?? "pc") === "pc";
   const launch = useLaunchOptions(installed && pcGame ? `lootden:${game.id}` : null);
   /** Recomps that play this console game, and which are set up on this PC. */
-  const recomps = pcGame ? [] : recompsFor(game);
+  const [added, setAdded] = useState<RecompInfo[]>([]);
+  useEffect(() => {
+    if (game.platform !== "pc" && desktop?.recomps) void api.recomps().then((r) => setAdded(r.added), () => {});
+  }, [game.platform]);
+  const recomps = pcGame ? [] : recompsFor(game, added);
   const [recompSetup, setRecompSetup] = useState<RecompSetup[] | null>(null);
   const recompKey = recomps.map((r) => r.id).join(",");
   useEffect(() => {
     if (recompKey && desktop?.recomps) void desktop.recomps().then((r) => setRecompSetup(r.recomps), () => {});
   }, [recompKey]);
+  const readyRecomps = recomps.filter((r) => recompSetup?.find((x) => x.id === r.id)?.installed);
   /** Running and paused, followed from the app's events (waits and messages come in between). */
   const [running, setRunning] = useState(false);
   const [paused, setPaused] = useState(false);
@@ -170,6 +175,9 @@ export function DesktopInstall({ game, autoFocus }: { game: GameDetail; autoFocu
           {p?.type === "stopped" ? ` · last session ${Math.round(p.seconds / 60)} min` : ""}
         </p>
         {error && <p className="error small">{error}</p>}
+        {readyRecomps.map((r) => (
+          <RecompSettingsPanel key={r.id} recomp={r} />
+        ))}
         {launch.state && <LaunchOptionsPanel launchKey={`lootden:${game.id}`} title={game.title} state={launch.state} onSaved={() => void launch.reload()} />}
       </div>
     );
@@ -244,5 +252,43 @@ export function DesktopInstall({ game, autoFocus }: { game: GameDetail; autoFocu
       {error && p?.type !== "cancelled" && <p className="error small">{error}</p>}
       <p className="muted small">Archives are unpacked and removed automatically once the download finishes.</p>
     </div>
+  );
+}
+
+/** A recomp's own settings (from its recomplauncher.json), changed here instead of in its files. */
+function RecompSettingsPanel({ recomp }: { recomp: RecompInfo }) {
+  const [settings, setSettings] = useState<RecompSettingView[]>([]);
+  const [error, setError] = useState("");
+  useEffect(() => {
+    void desktop?.recompSettings?.(recomp.id).then(setSettings, () => {});
+  }, [recomp.id]);
+  if (!settings.length || !desktop?.setRecompSetting) return null;
+  const pick = async (id: string, choice: number) => {
+    setError("");
+    try {
+      setSettings(await desktop!.setRecompSetting!(recomp.id, id, choice));
+    } catch (e) {
+      setError(bridgeError(e));
+    }
+  };
+  return (
+    <details className="recomp-settings">
+      <summary>{recomp.name} settings</summary>
+      {settings.map((s) => (
+        <label key={s.id} className={s.disabled ? "muted" : undefined}>
+          {s.label}{" "}
+          <select value={s.current} disabled={s.disabled} onChange={(e) => void pick(s.id, Number(e.target.value))}>
+            {s.current < 0 && <option value={-1}>Custom</option>}
+            {s.choices.map((c, i) => (
+              <option key={i} value={i}>
+                {c}
+              </option>
+            ))}
+          </select>
+          {s.help && <span className="muted small"> {s.help}</span>}
+        </label>
+      ))}
+      {error && <p className="error small">{error}</p>}
+    </details>
   );
 }

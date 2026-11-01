@@ -1,4 +1,4 @@
-import type { ActivityEvent, Allowance, PresenceAnswer, PresenceReport, GameDetail, PlayLimits, GameSummary, HealthResponse, LibraryStats, SaveBackup, TruckGame, TruckMod, User } from "@lootden/shared";
+import type { ActivityEvent, Allowance, PresenceAnswer, PresenceReport, GameDetail, PlayLimits, GameSummary, RecompInfo, HealthResponse, LibraryStats, SaveBackup, TruckGame, TruckMod, User } from "@lootden/shared";
 import type { ClientConfig } from "./config.js";
 
 /** A library game's saves, or another store's game's (store:<addon>:<id>). */
@@ -104,6 +104,10 @@ export class GameServerClient {
   /** Today's play time and limits for the person this token belongs to (404 on servers from before limits). */
   allowance() {
     return this.json<Allowance & { limits: PlayLimits; separateSaves: boolean; userId: number }>("/api/me/allowance");
+  }
+  /** Recomps LootDen knows and the ones an admin added (404 on servers before recomps). */
+  recomps() {
+    return this.json<{ builtIn: RecompInfo[]; added: RecompInfo[] }>("/api/recomps");
   }
   listSaves(gameId: string) {
     return this.json<SaveBackup[]>(savesPath(gameId));

@@ -1,5 +1,6 @@
 import { desktop } from "./desktop";
 import type {
+  RecompInfo,
   GameCompat,
   PriceSettings,
   WishPrice,
@@ -580,6 +581,10 @@ export const api = {
   uploadBios: (file: File, emulator?: string) =>
     upload<ServerBiosFile>("PUT", `/api/emulation/bios/${encodeURIComponent(file.name)}${emulator ? `?emulator=${emulator}` : ""}`, file, "application/octet-stream"),
   deleteBios: (name: string) => call("DELETE", `/api/emulation/bios/${encodeURIComponent(name)}`),
+  /** LootDen's own recomps and the ones an admin added by GitHub link. */
+  recomps: () => call<{ builtIn: RecompInfo[]; added: RecompInfo[] }>("GET", "/api/recomps"),
+  addRecomp: (body: { repo: string; platform: string; titles: string[]; name?: string; game?: string }) => call<RecompInfo>("POST", "/api/recomps", body),
+  removeRecomp: (id: string) => call("DELETE", `/api/recomps/${encodeURIComponent(id)}`),
   game: (id: string) => call<GameDetail>("GET", `/api/games/${id}`),
   setPackage: (id: string, patch: { kind?: string | null; baseGameId?: string | null }) => call<GameDetail>("PUT", `/api/games/${id}/package`, patch),
   deleteGame: (id: string, permanent = false) => call<{ deleted: string }>("DELETE", `/api/games/${id}${permanent ? "?permanent=true" : ""}`),
