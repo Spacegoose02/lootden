@@ -107,7 +107,7 @@ can be set once by an admin on the add-on's card (`PUT /api/addons/:id/shared`, 
 like accounts, never sent back); a person's own value wins. `Integrations` (IGDB and other admin keys in the settings table) aren't encrypted yet; the
 vault can do it.
 
-## Launch options, Discord, splash and pause (unreleased)
+## Launch options, Discord, splash and pause (0.25.0)
 
 - **Launch options** are per PC, in the desktop `settings.json` (`launchProfiles`, keyed by
   `launchKey`: `lootden:<gameId>` or `store:<addon>:<externalId>`; `launchScripts` for every
@@ -130,7 +130,7 @@ vault can do it.
   application id the person makes once. **Splash**: a frameless, click-through full-screen
   window with the game's art for 12 s, or until the game stops.
 
-## Game achievements, play history, local screenshots (unreleased)
+## Game achievements, play history, local screenshots (0.25.0)
 
 - **Achievements** (`users/achievements.ts`, `routes/achievements.ts`, types in
   `shared/src/achievements.ts`): Steam (GetSchemaForGame, GetPlayerAchievements, global
@@ -151,7 +151,7 @@ vault can do it.
   with the game's title. The app hands the page tokens and thumbnails, never paths
   (`gm:localScreenshots`, `gm:shareLocalScreenshot`).
 
-## Prices, store saves, more stores, compat badges, Home Assistant (unreleased)
+## Prices, store saves, more stores, compat badges, Home Assistant (0.25.0)
 
 - **Prices** (`integrations/prices.ts`, `wish_prices`): IsThereAnyDeal `games/lookup/v1` (by
   Steam app id, then title; the id is remembered) and `games/prices/v3?nondeals=true` in batches
@@ -182,7 +182,7 @@ vault can do it.
   None of the outside services could be reached from where this was built, so they're tested with
   recorded answers only.
 
-## Organizing, export and backup (unreleased)
+## Organizing, export and backup (0.25.0)
 
 - **Marks** (`users/marks.ts`, `game_marks` table, helpers in `shared/src/organize.ts`): per
   person tags, custom fields, favourite and hidden for a game key (a library game id or
