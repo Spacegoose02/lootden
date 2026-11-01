@@ -107,6 +107,22 @@ The app records the game's version (from the server's file name at install time,
 update's), and warns before applying an update made for a different version or one the
 game already has. The command-line client does the same with `lootden apply`.
 
+**Refreshing the library copy from a PC.** Each desktop app tells the server which version
+of each LootDen game it has (what LootDen recorded, or the exe's own version when the game was
+updated outside LootDen). When a PC is ahead of the library copy, and at least as new as the
+newest update on the server, the **Updates** page shows it to admins under **Newer copies on
+your PCs**. **Refresh from <PC>** asks that PC (now, or when it next comes on within a day) to
+zip its install and upload it, named `Game vX.Y.zip`. The PC needs no admin profile: the
+request carries a one-time ticket for that game. Once it's in:
+
+- the old library copy, its updates up to that version, and older full copies of the game move
+  to `.replaced` in the games folder (delete them from there when you're happy);
+- DLC and updates with no version stay;
+- play history, saves and settings carry over to the new copy, and the PC's install is linked
+  to it.
+
+A PC that's playing the game says so and does nothing; ask again once it's closed.
+
 Imports from the download tools keep "Update" or "DLC" in the name, so they land on the
 Updates page instead of replacing the game.
 

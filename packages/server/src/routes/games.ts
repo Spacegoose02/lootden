@@ -10,6 +10,9 @@ import type { GameQuery } from "../catalog/library.js";
 import { resolveGameFile } from "../catalog/scanner.js";
 import { HttpProblem, requireAdmin, requireUser, type AppContext } from "../context.js";
 
+/** Carries the one-time ticket of a library refresh a PC was asked for. */
+export const REFRESH_TICKET_HEADER = "x-lootden-ticket";
+
 /** Parses a single "bytes=start-end" range. Returns null for absent/unsupported headers, "invalid" when unsatisfiable. */
 export function parseRange(header: string | undefined, size: number): { start: number; end: number } | null | "invalid" {
   if (!header) return null;
@@ -243,21 +246,37 @@ export function gameRoutes(app: FastifyInstance, ctx: AppContext) {
     return path.join(ctx.config.gamesDir, `.lootden-upload-${upload}.part`);
   };
 
+  /**
+   * Who may send a zip: an admin, or a PC an admin asked to refresh the library copy of this
+   * game, with the one-time ticket that came with the request.
+   */
+  const uploader = (req: FastifyRequest, id: string) => {
+    const header = req.headers[REFRESH_TICKET_HEADER];
+    const job = ctx.libraryRefresh.open(typeof header === "string" ? header : undefined, id);
+    if (job) {
+      requireUser(req);
+      const game = ctx.library.get(id);
+      if (!game) throw new HttpProblem(404, "Game not found");
+      return { game, job };
+    }
+    requireAdmin(req);
+    return { game: visibleGame(req, id), job: null };
+  };
+
   /** How much of an upload in parts has arrived, so the app can carry on after a dropped connection. */
   app.get<{ Params: { id: string; upload: string } }>("/api/games/:id/prepared/parts/:upload", async (req) => {
-    requireAdmin(req);
-    visibleGame(req, req.params.id);
+    uploader(req, req.params.id);
     return { size: (await stat(partFile(req.params.upload)).catch(() => null))?.size ?? 0 };
   });
 
   /** One part of the zip, appended at ?offset= (0 starts the upload over). */
   app.put<{ Params: { id: string; upload: string }; Querystring: { offset?: string } }>("/api/games/:id/prepared/parts/:upload", async (req) => {
-    requireAdmin(req);
-    visibleGame(req, req.params.id);
+    const { job } = uploader(req, req.params.id);
     if (!req.body || typeof (req.body as Readable).pipe !== "function") throw new HttpProblem(400, "Send the part as application/octet-stream");
     const file = partFile(req.params.upload);
     const offset = Number(req.query.offset ?? 0);
     if (offset === 0) await removeStaleParts(ctx.config.gamesDir);
+    if (job) ctx.libraryRefresh.uploading(job.ticket);
     const size = (await stat(file).catch(() => null))?.size ?? 0;
     if (offset !== 0 && offset !== size) {
       (req.body as Readable).resume();
@@ -274,11 +293,47 @@ export function gameRoutes(app: FastifyInstance, ctx: AppContext) {
   });
 
   app.post<{ Params: { id: string; upload: string }; Querystring: { version?: string } }>("/api/games/:id/prepared/parts/:upload/finish", async (req) => {
-    requireAdmin(req);
-    const game = visibleGame(req, req.params.id);
+    const { game, job } = uploader(req, req.params.id);
     const file = partFile(req.params.upload);
     if (!(await stat(file).catch(() => null))) throw new HttpProblem(404, "Nothing was uploaded for this game");
-    return finishPrepared(game.id, game.title, file, req.query.version);
+    if (!job) return finishPrepared(game.id, game.title, file, req.query.version);
+    // A refresh: the PC's copy replaces the library's, and the updates and older full copies it
+    // makes unnecessary move out too (to .replaced/, like the original).
+    const plan = ctx.library.refreshPlan(game.id, job.version);
+    try {
+      const fresh = await finishPrepared(game.id, plan?.name ?? game.title, file, job.version);
+      const cleared = await ctx.library.retire([...(plan?.updates ?? []), ...(plan?.oldCopies ?? [])].map((g) => g.id)).catch(() => [] as string[]);
+      await ctx.libraryRefresh.finish(job.ticket, fresh, cleared);
+      return ctx.library.get(fresh.id) ?? fresh;
+    } catch (err) {
+      ctx.libraryRefresh.fail(job.ticket, (err as Error).message);
+      throw err;
+    }
+  });
+
+  // ---- Admin: refreshing library copies from PCs with newer ones ----------------------
+
+  /** Games a PC has a newer copy of, and refreshes under way. */
+  app.get("/api/library/refresh", async (req) => {
+    requireAdmin(req);
+    return { candidates: ctx.libraryRefresh.candidates(), jobs: ctx.libraryRefresh.list() };
+  });
+
+  /** Ask a PC to zip its copy of the game and upload it as the library copy. */
+  app.post<{ Params: { id: string }; Body: { device?: string } }>("/api/games/:id/refresh", async (req) => {
+    const p = requireAdmin(req);
+    try {
+      return ctx.libraryRefresh.start(req.params.id, String(req.body?.device ?? ""), p.user?.displayName ?? "An admin");
+    } catch (err) {
+      throw new HttpProblem(400, (err as Error).message);
+    }
+  });
+
+  /** The PC couldn't do it; the ticket itself says which refresh. */
+  app.post<{ Params: { ticket: string }; Body: { message?: string } }>("/api/library/refresh/:ticket/fail", async (req) => {
+    requireUser(req);
+    ctx.libraryRefresh.fail(req.params.ticket, String(req.body?.message ?? ""));
+    return { ok: true };
   });
 
   /** Puts an uploaded zip in the games folder and swaps it in for the disc or installer copy. */

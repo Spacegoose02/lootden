@@ -636,6 +636,10 @@ const MIGRATIONS: string[] = [
   -- LootDen games each PC streams with Sunshine.
   ALTER TABLE pcs ADD COLUMN stream_games TEXT NOT NULL DEFAULT '[]';
   `,
+  `
+  -- LootDen games installed on each PC with the version it knows they're at, to spot PCs with newer copies.
+  ALTER TABLE pcs ADD COLUMN copies TEXT NOT NULL DEFAULT '[]';
+  `,
 ];
 
 export function openDatabase(file: string): Db {
