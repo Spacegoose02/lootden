@@ -107,6 +107,19 @@ can be set once by an admin on the add-on's card (`PUT /api/addons/:id/shared`, 
 like accounts, never sent back); a person's own value wins. `Integrations` (IGDB and other admin keys in the settings table) aren't encrypted yet; the
 vault can do it.
 
+## Recomps, Roblox cover fixes (0.26.0)
+
+- **Recomps** (`shared/src/recomps.ts`, `client/src/recomps.ts`): a native PC recomp is a second
+  way to play a console game already in the library, next to its emulator. Curated list plus
+  admin-added ones (`/api/recomps`, kept in settings); reads `recomplauncher.json` (`start`,
+  `saves`, `config`, `mods`). The server caches each release once, SHA-256 checked against
+  GitHub (`emulation/recomp-cache.ts`, `/api/recomps/:id/release|file`); desktops fall back to
+  GitHub directly. Xbox 360 is a library system. Mods from Thunderstore and GameBanana
+  (`client/src/recompmods.ts`), looks (`client/src/looks.ts`) and verified dumps.
+- **Roblox** (#86): posters fetch with browser headers and detect image type from magic bytes;
+  without pictures the cover redirects to the icon briefly instead of caching a name-only SVG.
+  Play time counts only while in a game; admins can set their own covers.
+
 ## Launch options, Discord, splash and pause (0.25.0)
 
 - **Launch options** are per PC, in the desktop `settings.json` (`launchProfiles`, keyed by
