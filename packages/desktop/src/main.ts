@@ -47,6 +47,10 @@ import {
   removeWorkshopItem,
   prepareGame,
   restoreSaves,
+  restoreStoreSaves,
+  resolveLauncherLink,
+  backupStoreSaves,
+  findStoreSaves,
   uploadInstalledFolder,
   type PrepareStep,
   saveExecutable,
@@ -615,6 +619,18 @@ async function allowPrograms(what: string, steps: LaunchStep[]): Promise<void> {
   });
   if (response !== 0) throw new Error("Not saved: the programs weren't allowed");
   settings.update({ allowedPrograms: [...(settings.get().allowedPrograms ?? []), ...fresh].slice(-500) });
+}
+
+/**
+ * Opens a store launcher link. Rockstar and Riot have no links of their own, so their
+ * lootden-launcher:// links become the launcher's command, worked out on this PC.
+ */
+async function openStoreLink(url: string): Promise<void> {
+  const local = await resolveLauncherLink(url, async (addon, id) => (await storeGamesForPresence()).find((g) => g.addon === addon && g.externalId === id));
+  if (!local) return void (await shell.openExternal(url));
+  const child = spawn(local.cmd, local.args, { detached: true, stdio: "ignore", windowsHide: false });
+  child.on("error", () => {});
+  child.unref();
 }
 
 async function storeGamesForPresence(): Promise<LocalStoreGame[]> {
@@ -1424,7 +1440,10 @@ function registerIpc(): void {
     }
     if (!local?.installDir) throw new Error("That game isn't installed on this PC, so its launch options can't run");
     const profile = launchProfile(launchKey({ addon, externalId }));
-    const action = pickAction(profile, actionId) ?? { id: "store", name: local.title, steps: [{ type: "run", path: url }] };
+    const viaLauncher = await resolveLauncherLink(url, async () => local);
+    const quote = (a: string) => (/[\s"]/.test(a) ? `"${a.replace(/"/g, "")}"` : a);
+    const storeStep: LaunchStep = viaLauncher ? { type: "run", path: viaLauncher.cmd, args: viaLauncher.args.map(quote).join(" ") } : { type: "run", path: url };
+    const action = pickAction(profile, actionId) ?? { id: "store", name: local.title, steps: [storeStep] };
     await checkPlayTime(url);
     const live = await clientOrOffline();
     const today = await todaysAllowance(live);
@@ -1450,6 +1469,12 @@ function registerIpc(): void {
       async (total) => {
         unwatch();
         send({ gameId, type: "stopped", seconds: Math.max(0, total - takeSuspended(gameId)) });
+        if (settings.get().storeSaves !== false) {
+          void backupStoreGame(addon, externalId, local.title, home).then(
+            (r) => r && send({ gameId, type: "saves", backupId: r.id, size: r.size }),
+            (err: Error) => send({ gameId, type: "saves", error: err.message }),
+          );
+        }
         await runAfter(gameId, stepsAfter(profile), home);
       },
       (err: Error) => {
@@ -1460,6 +1485,63 @@ function registerIpc(): void {
       },
     );
   }
+
+  /** Where a store game is installed here, if it is. */
+  async function storeInstallDir(addon: string, externalId: string): Promise<string | null> {
+    const local = (await storeGamesForPresence()).find((g) => g.addon === addon && g.externalId === externalId);
+    return local?.installDir ?? null;
+  }
+
+  /** Backs up a store game's saves from the places Ludusavi's list names; null when it lists none. */
+  async function backupStoreGame(addon: string, externalId: string, title: string, installDir: string | null) {
+    const api = await client();
+    const { locations } = await api.storeSavePaths(addon, externalId, title);
+    if (!locations.length) return null;
+    return backupStoreSaves(api, await sevenZip(), `store:${addon}:${externalId}`, locations, installDir, os.hostname());
+  }
+
+  const storeArgs = (addon: unknown, externalId: unknown, title: unknown) => {
+    if (typeof addon !== "string" || typeof externalId !== "string" || !/^[a-z0-9-]{1,40}$/.test(addon) || !externalId || externalId.length > 200) throw new Error("Pick a game");
+    return { addon, externalId, title: typeof title === "string" ? title.slice(0, 200) : externalId };
+  };
+
+  /** What a store game's saves look like on this PC: where Ludusavi says they are, and how many exist. */
+  ipcMain.handle("gm:storeSaves", async (e, addon: unknown, externalId: unknown, title: unknown) => {
+    fromServer(e);
+    const a = storeArgs(addon, externalId, title);
+    const api = await client();
+    const { name, locations } = await api.storeSavePaths(a.addon, a.externalId, a.title);
+    const dir = await storeInstallDir(a.addon, a.externalId);
+    const found = locations.length ? await findStoreSaves(locations, dir) : [];
+    return { name, locations: locations.map((l) => l.template), found: found.length, installed: !!dir, auto: settings.get().storeSaves !== false };
+  });
+
+  ipcMain.handle("gm:backupStoreSaves", async (e, addon: unknown, externalId: unknown, title: unknown) => {
+    fromServer(e);
+    const a = storeArgs(addon, externalId, title);
+    const r = await backupStoreGame(a.addon, a.externalId, a.title, await storeInstallDir(a.addon, a.externalId));
+    if (!r) throw new Error("Ludusavi's list doesn't know where this game keeps its saves");
+    return { backupId: r.id, size: r.size, files: r.files };
+  });
+
+  ipcMain.handle("gm:restoreStoreSaves", async (e, addon: unknown, externalId: unknown, title: unknown, saveId: unknown) => {
+    fromServer(e);
+    const a = storeArgs(addon, externalId, title);
+    if (typeof saveId !== "number") throw new Error("Pick a backup");
+    const { response } = await dialog.showMessageBox(win!, {
+      type: "question",
+      buttons: ["Restore", "Cancel"],
+      defaultId: 0,
+      cancelId: 1,
+      message: `Put this backup of ${a.title}'s saves back?`,
+      detail: "The saves on this PC now are copied to LootDen's Save restores folder first. Close the game before restoring.",
+    });
+    if (response !== 0) return null;
+    const api = await client();
+    const { locations } = await api.storeSavePaths(a.addon, a.externalId, a.title);
+    const dir = await storeInstallDir(a.addon, a.externalId);
+    return restoreStoreSaves(api, await sevenZip(), `store:${a.addon}:${a.externalId}`, saveId, locations, dir, path.join(app.getPath("userData"), "Save restores"));
+  });
 
   ipcMain.handle("gm:playStore", async (e, addon: string, externalId: string, url: string, actionId?: string | null) => {
     fromServer(e);
@@ -2055,7 +2137,7 @@ function registerIpc(): void {
     const place = robloxPlaceOf(url);
     if (place) return playRoblox(url, place);
     await checkPlayTime(url);
-    await shell.openExternal(url);
+    await openStoreLink(url);
   });
 
   /**
@@ -2146,12 +2228,13 @@ function registerIpc(): void {
     await shell.openPath((await findInstalled(gameId)).dir);
   });
 
-  ipcMain.handle("gm:appSettings", (e, patch?: Partial<Pick<DesktopSettings, "closeToTray" | "autoUpdate" | "openAtLogin" | "handheld" | "fullscreen" | "browserLinks" | "splash" | "suspendKey">> & { discordEnabled?: boolean; discordClientId?: string }) => {
+  ipcMain.handle("gm:appSettings", (e, patch?: Partial<Pick<DesktopSettings, "closeToTray" | "autoUpdate" | "openAtLogin" | "handheld" | "fullscreen" | "browserLinks" | "splash" | "suspendKey" | "storeSaves">> & { discordEnabled?: boolean; discordClientId?: string }) => {
     fromServer(e);
     if (patch) {
       const clean: Partial<DesktopSettings> = {};
       if (patch.splash && ["off", "handheld", "on"].includes(patch.splash)) clean.splash = patch.splash;
       if (typeof patch.suspendKey === "boolean") clean.suspendKey = patch.suspendKey;
+      if (typeof patch.storeSaves === "boolean") clean.storeSaves = patch.storeSaves;
       if (typeof patch.discordEnabled === "boolean" || typeof patch.discordClientId === "string") {
         const was = settings.get().discord ?? { enabled: false, clientId: "" };
         clean.discord = {
@@ -2184,6 +2267,7 @@ function registerIpc(): void {
     return {
       splash: s.splash ?? "handheld",
       suspendKey: !!s.suspendKey,
+      storeSaves: s.storeSaves !== false,
       discordEnabled: !!s.discord?.enabled,
       discordClientId: s.discord?.clientId ?? "",
       closeToTray: s.closeToTray,
@@ -2267,7 +2351,7 @@ function registerIpc(): void {
     fromLocal(e);
     if (typeof url !== "string" || !isStoreLaunchUrl(url)) throw new Error("That isn't a store launcher link");
     await checkPlayTime(url);
-    await shell.openExternal(url);
+    await openStoreLink(url);
   });
   ipcMain.handle("gm:offline:openFolder", async (e, gameId: string) => {
     fromLocal(e);

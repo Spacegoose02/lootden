@@ -392,3 +392,4 @@ export function workshopModsPath(input: unknown): string {
   }
   return p.slice(0, 200);
 }
+export * from "./integrations.js";

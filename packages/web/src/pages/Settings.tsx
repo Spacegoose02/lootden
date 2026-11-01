@@ -1,4 +1,5 @@
 import { BackupsSection } from "../components/Backups";
+import { HomeAssistantSection } from "../components/Integrations";
 import { useEffect, useState, type ReactNode } from "react";
 import { Link, NavLink, Navigate, useParams } from "react-router-dom";
 import { KID_SITES, type BrowserPolicy, type GameSummary, type LibraryStats, type User } from "@lootden/shared";
@@ -30,6 +31,7 @@ const SECTIONS: Array<{ id: string; title: string; blurb: string }> = [
   { id: "helper", title: "Bandit (AI helper)", blurb: "AI key, model, budget and who can use him" },
   { id: "services", title: "Sign-in & services", blurb: "SSO, metadata keys, itch.io, Nexus" },
   { id: "content", title: "News & apps", blurb: "Feeds, videos and app builds" },
+  { id: "homeassistant", title: "Home Assistant", blurb: "Who's playing, as sensors over MQTT" },
   { id: "backups", title: "Backups", blurb: "Copies of the database, daily or now, and restoring one" },
   { id: "themes", title: "Themes", blurb: "Colours and look of LootDen" },
 ];
@@ -81,6 +83,7 @@ export function Settings() {
         {section === "services" && <ServicesSection say={say} />}
         {section === "content" && <ContentSection say={say} />}
         {section === "backups" && <BackupsSection say={say} />}
+        {section === "homeassistant" && <HomeAssistantSection say={say} />}
         {section === "themes" && <ThemePicker />}
       </div>
     </div>
@@ -676,6 +679,7 @@ const ALERT_KINDS: Array<[keyof Connectors["notify"] & string, string, string]> 
   ["flagged", "The virus scan flags something", "Held for review"],
   ["sources", "A wishlist game shows up in a release source", "From the sources under Release sources"],
   ["requests", "Someone asks for a game", "Approve or decline it under Requests"],
+  ["deals", "A wishlist game is on sale", "Prices from IsThereAnyDeal, set up on the Wishlist page"],
 ];
 
 function SafetySection({ say }: { say: Msg }) {

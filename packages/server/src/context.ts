@@ -46,6 +46,10 @@ import type { ScreenshotWall } from "./users/screenshots.js";
 import type { AchievementService } from "./users/achievements.js";
 import type { MarkStore } from "./users/marks.js";
 import type { BackupService } from "./settings/backups.js";
+import type { CompatService } from "./integrations/compat.js";
+import type { LudusaviManifest } from "./saves/ludusavi.js";
+import type { PriceService } from "./integrations/prices.js";
+import type { HomeAssistantBridge } from "./integrations/homeassistant.js";
 
 /** Everything route modules need, built once in buildApp. */
 export interface AppContext {
@@ -108,6 +112,14 @@ export interface AppContext {
   marks: MarkStore;
   /** Database backups and restores. */
   backups: BackupService;
+  /** ProtonDB and Steam Deck ratings. */
+  compat: CompatService;
+  /** Where games keep their saves, for other stores' games. */
+  ludusavi: LudusaviManifest;
+  /** Wishlist prices from IsThereAnyDeal. */
+  prices: PriceService;
+  /** Sensors for Home Assistant over MQTT. */
+  homeAssistant: HomeAssistantBridge;
   /** Bandit, the AI gaming helper. */
   helper: HelperService;
   timeToBeat: (providerId: string | null, title: string) => Promise<TimeToBeat | null>;

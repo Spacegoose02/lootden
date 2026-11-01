@@ -1,5 +1,7 @@
 import { epic } from "./epic.js";
 import { gog } from "./gog.js";
+import { humble } from "./humble.js";
+import { playstation } from "./playstation.js";
 import { itch } from "./itch.js";
 import { jsonList } from "./json-list.js";
 import { retroAchievements } from "./retroachievements.js";
@@ -8,4 +10,4 @@ import { xbox } from "./xbox.js";
 import type { LibraryAddon } from "./types.js";
 
 /** Every library add-on, in the order the profile page lists them. */
-export const ADDONS: LibraryAddon[] = [steam, gog, epic, xbox, itch, jsonList, retroAchievements];
+export const ADDONS: LibraryAddon[] = [steam, gog, epic, xbox, playstation, humble, itch, jsonList, retroAchievements];

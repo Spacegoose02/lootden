@@ -6,6 +6,7 @@ export { extractArchive, findSevenZip } from "./extractor.js";
 export { adoptFolder, detectSetup, exeStampOf, findCopies, listInstalled, saveManifest, uninstallGame, versionTag, type GameRef, type InstalledGame } from "./installed.js";
 export { installGame, isManifest, LEGACY_MANIFEST_NAME, MANIFEST_NAME, pickGame, type InstallEvent, type InstallOptions } from "./installer.js";
 export { findExecutable, launchAndTrack, listProcesses, processesIn, saveExecutable } from "./launcher.js";
+export { backupStoreSaves, findStoreSaves, restoreStoreSaves, type SaveLocation } from "./storesaves.js";
 export { commandFor, isLaunchUrl, launchActionAndTrack, runLaunchSteps, stepTarget, suspendProcesses, type Spawner } from "./launchactions.js";
 export { firstExisting, pcReport, runningStoreGames, streamingPaths } from "./presence.js";
 export { missingSunshineApps, moonlightCommand, streamWithMoonlight, sunshineAppFor, syncSunshine } from "./streaming.js";
@@ -19,6 +20,7 @@ export { findSetup, prepareGame, runLocalSetup, uploadInstalledFolder, type Prep
 export { applyUpdate, BACKUP_FOLDER, undoUpdate, UpdateMismatchError, updateProblem, type AppliedUpdate, type ApplyUpdateOptions } from "./updates.js";
 export { scanStoreGames, STORE_SCANNERS, type StoreScanner } from "./stores/index.js";
 export { steamLibraryCover } from "./stores/steam.js";
+export { LAUNCHER_SCHEME, resolveLauncherLink } from "./stores/launchers.js";
 export { findLocalScreenshots, type LocalScreenshot } from "./localshots.js";
 export { applyTruckLoadOrder, enableTruckTextSaves, oldModsFolder, readTruckProfile, retireTruckModFiles, steamWorkshopSubscriptions, truckProfiles } from "./truckmodlist.js";
 export { downloadWorkshopItem, ensureSteamCmd, installWorkshopItem, listWorkshopItems, removeWorkshopItem, steamCmdResult, type InstalledWorkshopItem } from "./workshop.js";

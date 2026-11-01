@@ -1,5 +1,8 @@
 import { desktop } from "./desktop";
 import type {
+  GameCompat,
+  PriceSettings,
+  WishPrice,
   GameMarks,
   MarksPatch,
   SmartRules,
@@ -185,7 +188,7 @@ export interface Connectors {
   itch: { apiKey: string };
   rules: ReleaseRules;
   wanted: { autoSearch: boolean; autoGrab: boolean; intervalHours: number; onlyReleased: boolean };
-  notify: { appriseUrl: string; appriseTargets: string } & Record<"released" | "found" | "grabbed" | "imported" | "updates" | "flagged" | "sources" | "requests", boolean>;
+  notify: { appriseUrl: string; appriseTargets: string } & Record<"released" | "found" | "grabbed" | "imported" | "updates" | "flagged" | "sources" | "requests" | "deals", boolean>;
   scan: { clamav: "off" | "clamd" | "clamscan"; clamdHost: string; clamdPort: number; virusTotalKey: string; hold: boolean };
   nexus: { apiKey: string };
   hltb: { enabled: boolean };
@@ -649,6 +652,17 @@ export const api = {
   saves: (id: string) => call<SaveBackup[]>("GET", `/api/games/${id}/saves`),
   uploadSave: (id: string, file: File) => upload<SaveBackup>("POST", `/api/games/${id}/saves?device=${encodeURIComponent("Web upload")}`, file, "application/octet-stream"),
   deleteSave: (id: string, saveId: number) => call("DELETE", `/api/games/${id}/saves/${saveId}`),
+  storeSaves: (addon: string, id: string) => call<SaveBackup[]>("GET", `${storeBase(addon, id)}/saves`),
+  uploadStoreSave: (addon: string, id: string, file: File) => upload<SaveBackup>("POST", `${storeBase(addon, id)}/saves?device=${encodeURIComponent("Web upload")}`, file, "application/octet-stream"),
+  deleteStoreSave: (addon: string, id: string, saveId: number) => call("DELETE", `${storeBase(addon, id)}/saves/${saveId}`),
+  compat: (steamAppId: string) => call<GameCompat>("GET", `/api/compat/steam/${encodeURIComponent(steamAppId)}`),
+  wishPrices: () => call<WishPrices>("GET", "/api/wishlist/prices"),
+  savePriceSettings: (patch: Partial<PriceSettings>) => call<WishPrices>("PUT", "/api/wishlist/prices/settings", patch),
+  checkPrices: () => call<WishPrices & { checked: number; onSale: number }>("POST", "/api/wishlist/prices/check"),
+  setWishTarget: (id: number, target: number | null) => call<WishPrices>("PUT", `/api/wishlist/${id}/target`, { target }),
+  homeAssistant: () => call<HomeAssistantState>("GET", "/api/homeassistant"),
+  saveHomeAssistant: (patch: Partial<HomeAssistantState>) => call<HomeAssistantState>("PUT", "/api/homeassistant", patch),
+  testHomeAssistant: () => call<HomeAssistantState>("POST", "/api/homeassistant/test"),
   setSavePath: (id: string, path: string | null) => call<GameDetail>("PUT", `/api/games/${id}/save-path`, { path }),
   suggestSavePath: (id: string) => call<{ paths: string[] }>("GET", `/api/games/${id}/save-path/suggest`),
 
@@ -1007,4 +1021,35 @@ export interface GameNightList {
   canPlan: boolean;
   /** The calendar feed's address (admins). */
   feed: string | null;
+}
+
+const storeBase = (addon: string, id: string) => `/api/store-games/${encodeURIComponent(addon)}/${encodeURIComponent(id)}`;
+
+export interface WishPrices {
+  enabled: boolean;
+  /** Admins only. */
+  settings: (PriceSettings & { hasKey: boolean }) | null;
+  country: string;
+  prices: WishPrice[];
+}
+
+export interface HomeAssistantState {
+  enabled: boolean;
+  url: string;
+  username: string;
+  password: string;
+  prefix: string;
+  discovery: string;
+  connected: boolean;
+  error: string | null;
+}
+
+/** "$12.49" in the shop's currency. */
+export function formatMoney(amount: number | null, currency: string | null): string {
+  if (amount == null) return "";
+  try {
+    return new Intl.NumberFormat(undefined, { style: "currency", currency: currency ?? "USD" }).format(amount);
+  } catch {
+    return amount.toFixed(2);
+  }
 }

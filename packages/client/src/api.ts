@@ -1,6 +1,12 @@
 import type { ActivityEvent, Allowance, PresenceAnswer, PresenceReport, GameDetail, PlayLimits, GameSummary, HealthResponse, LibraryStats, SaveBackup, TruckGame, TruckMod, User } from "@lootden/shared";
 import type { ClientConfig } from "./config.js";
 
+/** A library game's saves, or another store's game's (store:<addon>:<id>). */
+export function savesPath(gameId: string): string {
+  const m = /^store:([^:]+):(.+)$/.exec(gameId);
+  return m ? `/api/store-games/${encodeURIComponent(m[1]!)}/${encodeURIComponent(m[2]!)}/saves` : `/api/games/${encodeURIComponent(gameId)}/saves`;
+}
+
 export class ApiError extends Error {
   constructor(message: string, readonly status: number) {
     super(message);
@@ -100,16 +106,22 @@ export class GameServerClient {
     return this.json<Allowance & { limits: PlayLimits; separateSaves: boolean; userId: number }>("/api/me/allowance");
   }
   listSaves(gameId: string) {
-    return this.json<SaveBackup[]>(`/api/games/${encodeURIComponent(gameId)}/saves`);
+    return this.json<SaveBackup[]>(savesPath(gameId));
+  }
+  /** Where a store game (store:<addon>:<id>) keeps its saves, from Ludusavi's manifest. */
+  storeSavePaths(addon: string, id: string, title: string) {
+    return this.json<{ name: string | null; locations: Array<{ template: string; tags: string[] }> }>(
+      `/api/store-games/${encodeURIComponent(addon)}/${encodeURIComponent(id)}/save-paths?title=${encodeURIComponent(title)}`,
+    );
   }
   async uploadSave(gameId: string, zip: Uint8Array, device: string): Promise<SaveBackup> {
-    const pathname = `/api/games/${encodeURIComponent(gameId)}/saves?device=${encodeURIComponent(device)}`;
+    const pathname = `${savesPath(gameId)}?device=${encodeURIComponent(device)}`;
     const res = await fetch(this.base + pathname, { method: "POST", headers: this.headers({ "Content-Type": "application/octet-stream" }), body: new Blob([zip as Uint8Array<ArrayBuffer>]) });
     if (!res.ok) throw new ApiError(`Uploading saves failed with ${res.status}: ${await res.text().catch(() => "")}`, res.status);
     return (await res.json()) as SaveBackup;
   }
   async downloadSave(gameId: string, saveId: number): Promise<Uint8Array> {
-    const res = await fetch(`${this.base}/api/games/${encodeURIComponent(gameId)}/saves/${saveId}`, { headers: this.headers() });
+    const res = await fetch(`${this.base}${savesPath(gameId)}/${saveId}`, { headers: this.headers() });
     if (!res.ok) throw new ApiError(`Downloading saves failed with ${res.status}`, res.status);
     return new Uint8Array(await res.arrayBuffer());
   }

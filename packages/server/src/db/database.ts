@@ -702,6 +702,30 @@ export const MIGRATIONS: string[] = [
   );
   ALTER TABLE shelves ADD COLUMN rules TEXT;
   `,
+  `
+  -- ProtonDB and Steam Deck ratings per Steam app; wishlist prices from IsThereAnyDeal.
+  CREATE TABLE compat_cache (
+    app_id TEXT PRIMARY KEY,
+    data TEXT NOT NULL,
+    fetched_at TEXT NOT NULL
+  );
+  CREATE TABLE wish_prices (
+    wish_id INTEGER PRIMARY KEY REFERENCES wishlist(id) ON DELETE CASCADE,
+    itad_id TEXT,
+    itad_slug TEXT,
+    price REAL,
+    regular REAL,
+    cut INTEGER NOT NULL DEFAULT 0,
+    shop TEXT,
+    url TEXT,
+    currency TEXT,
+    low REAL,
+    target REAL,
+    alerted REAL,
+    checked_at TEXT,
+    error TEXT
+  );
+  `,
 ];
 
 export function openDatabase(file: string): Db {

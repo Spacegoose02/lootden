@@ -151,6 +151,37 @@ vault can do it.
   with the game's title. The app hands the page tokens and thumbnails, never paths
   (`gm:localScreenshots`, `gm:shareLocalScreenshot`).
 
+## Prices, store saves, more stores, compat badges, Home Assistant (unreleased)
+
+- **Prices** (`integrations/prices.ts`, `wish_prices`): IsThereAnyDeal `games/lookup/v1` (by
+  Steam app id, then title; the id is remembered) and `games/prices/v3?nondeals=true` in batches
+  of 100. Twice a day from `index.ts` when a key is set. `alerted` holds the price last alerted,
+  so a game alerts again only when it gets cheaper, and again after it stops being a deal.
+  Alerts are the new `deals` kind.
+- **Store saves** (`saves/ludusavi.ts`, `client/src/storesaves.ts`): the manifest
+  (~17 MB YAML) is downloaded weekly to `<data>/ludusavi/manifest.yaml` and indexed with a small
+  line scanner (no YAML dependency; about 0.4 s). Placeholders become LootDen's `%APPDATA%`,
+  `{game}`... (`<root>`, `<game>` and XDG paths are skipped). The app copies each match into
+  `<n>/<name>` beside `lootden-saves.json` (where each came from), zips and uploads it to
+  `/api/store-games/:addon/:id/saves`. Restoring checks every target still matches one of the
+  game's save patterns, and copies what was there to `userData/Save restores` first.
+- **Stores**: `client/src/stores/launchers.ts` reads Windows' Uninstall keys (Amazon, Battle.net,
+  Rockstar) and Riot's `ProgramData\Riot Games\Metadata`. Rockstar and Riot have no link scheme,
+  so their games carry `lootden-launcher://rockstar|riot/<id>`, which `resolveLauncherLink` turns
+  into the launcher's command on the PC (the id is a short slug; the program comes from the PC).
+  Server add-ons `humble.ts` (website session cookie) and `playstation.ts` (npsso, then a refresh
+  token; `gamelist/v2/users/me/titles`). The add-on fetch now hands back redirects when an add-on
+  asks for `redirect: "manual"`.
+- **Compat** (`integrations/compat.ts`, `compat_cache`): ProtonDB summaries and Steam's Deck
+  report, a week per app.
+- **Home Assistant** (`integrations/mqtt.ts`, `homeassistant.ts`): a publish-only MQTT 3.1.1
+  client (no dependency), last will `lootden/status offline`, discovery under
+  `homeassistant/sensor/<prefix>/...`. Republished a second after presence changes and every
+  five minutes.
+- Not done: EA, Ubisoft, Amazon and Battle.net account-level lists (no API that could be checked).
+  None of the outside services could be reached from where this was built, so they're tested with
+  recorded answers only.
+
 ## Organizing, export and backup (unreleased)
 
 - **Marks** (`users/marks.ts`, `game_marks` table, helpers in `shared/src/organize.ts`): per

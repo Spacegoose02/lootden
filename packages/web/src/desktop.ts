@@ -100,11 +100,24 @@ export interface AppSettings {
   /** Launch splash, the suspend key and Discord status (newer apps only). */
   splash?: "off" | "handheld" | "on";
   suspendKey?: boolean;
+  /** Back up other stores' games' saves after playing (newer apps only). */
+  storeSaves?: boolean;
   discordEnabled?: boolean;
   discordClientId?: string;
 }
 
-export type AppSettingsPatch = Partial<Pick<AppSettings, "closeToTray" | "autoUpdate" | "openAtLogin" | "handheld" | "fullscreen" | "browserLinks" | "splash" | "suspendKey" | "discordEnabled" | "discordClientId">>;
+export type AppSettingsPatch = Partial<Pick<AppSettings, "closeToTray" | "autoUpdate" | "openAtLogin" | "handheld" | "fullscreen" | "browserLinks" | "splash" | "suspendKey" | "storeSaves" | "discordEnabled" | "discordClientId">>;
+
+export interface StoreSavesState {
+  /** The game's name in Ludusavi's list, when found. */
+  name: string | null;
+  locations: string[];
+  /** How many of those places have files on this PC now. */
+  found: number;
+  installed: boolean;
+  /** Backed up after each session started from LootDen. */
+  auto: boolean;
+}
 
 /** A game's launch options on this PC, with every game's steps and the folder relative paths start in. */
 export interface LaunchOptionsState {
@@ -211,6 +224,10 @@ export interface DesktopBridge {
   undoUpdate?(updateId: string): Promise<AppliedUpdate | null>;
   /** Missing in desktop apps older than save sync. */
   backupSaves?(gameId: string): Promise<{ backupId: number; size: number } | { error: string }>;
+  /** Another store's game's saves on this PC, through Ludusavi's list (newer apps only). */
+  storeSaves?(addon: string, externalId: string, title: string): Promise<StoreSavesState>;
+  backupStoreSaves?(addon: string, externalId: string, title: string): Promise<{ backupId: number; size: number; files: number }>;
+  restoreStoreSaves?(addon: string, externalId: string, title: string, saveId: number): Promise<{ restored: number; previous: string } | null>;
   restoreSaves?(gameId: string, saveId: number): Promise<{ previous: string | null } | null>;
   /** Emulators: missing in apps older than emulation support. */
   emulators?(): Promise<{ toolsDir: string; emulators: EmulatorSetup[] }>;

@@ -7,7 +7,7 @@ import type { GameServerClient } from "./api.js";
 import { extractArchive, type SevenZip } from "./extractor.js";
 
 /** Environment-style placeholders the server's save paths use, with fallbacks off Windows. */
-function placeholder(name: string): string | undefined {
+export function placeholder(name: string): string | undefined {
   const home = os.homedir();
   const env = process.env;
   switch (name.toUpperCase()) {
@@ -59,7 +59,7 @@ export async function expandSavePath(template: string, installDir: string): Prom
   return path.normalize(current);
 }
 
-function run7z(sevenZip: SevenZip, args: string[], cwd: string): Promise<void> {
+export function run7z(sevenZip: SevenZip, args: string[], cwd: string): Promise<void> {
   return new Promise((resolve, reject) => {
     const child = spawn(sevenZip.path, args, { cwd, stdio: ["ignore", "ignore", "pipe"], windowsHide: true });
     let stderr = "";

@@ -59,6 +59,12 @@ ctx.denDuty.start();
 // Steam wishlist and list feeds: every six hours, and once shortly after startup.
 setTimeout(() => void ctx.wishlist.syncAll(true).catch(() => {}), 30_000).unref();
 setInterval(() => void ctx.wishlist.syncAll(true).catch(() => {}), 6 * 3600_000).unref();
+// Wishlist prices from IsThereAnyDeal, twice a day when there's a key.
+setTimeout(() => void ctx.prices.scheduled().catch((err) => app.log.warn({ err: (err as Error).message }, "Price check failed")), 2 * 60_000).unref();
+setInterval(() => void ctx.prices.scheduled().catch((err) => app.log.warn({ err: (err as Error).message }, "Price check failed")), 12 * 3600_000).unref();
+// Home Assistant sensors over MQTT: connect, then refresh every five minutes.
+void ctx.homeAssistant.restart();
+setInterval(() => ctx.homeAssistant.publishAll(), 5 * 60_000).unref();
 // The wanted list: "it's out" alerts and due Prowlarr searches every half hour.
 setTimeout(() => void ctx.wanted.run().catch((err) => app.log.warn(err, "Wanted search failed")), 90_000).unref();
 setInterval(() => void ctx.wanted.run().catch((err) => app.log.warn(err, "Wanted search failed")), 30 * 60_000).unref();

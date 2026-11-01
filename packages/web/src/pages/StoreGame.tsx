@@ -7,6 +7,7 @@ import { ArtworkPicker } from "../components/ArtworkEditor";
 import { JournalPanel, WorkshopPanel } from "../components/GameExtras";
 import { GameAchievementsPanel } from "../components/Achievements";
 import { MarkButtons, TagsPanel } from "../components/Marks";
+import { CompatBadges, StoreSavesPanel } from "../components/Integrations";
 import { LocalScreenshots } from "../components/LocalScreenshots";
 import { TruckModsPanel } from "../components/TruckMods";
 import { TruckModListPanel } from "../components/TruckModList";
@@ -87,6 +88,7 @@ export function StoreGame() {
             {game.playtimeSeconds ? <span className="badge">{formatPlaytime(game.playtimeSeconds)} played</span> : null}
             {info?.rating != null && <span className="badge">★ {info.rating}/100</span>}
           </div>
+          {addon === "steam" && /^\d+$/.test(id) && <CompatBadges steamAppId={id} />}
           {game.lastPlayedAt && <p className="muted small">Last played {new Date(game.lastPlayedAt).toLocaleDateString()}</p>}
           {info && info.developers.length > 0 && <p className="muted small">By {info.developers.join(", ")}</p>}
           {info?.summary && <p className="summary">{info.summary}</p>}
@@ -136,6 +138,7 @@ export function StoreGame() {
       {me?.user && <TagsPanel gameKey={`store:${addon}:${id}`} />}
       {me?.user && (addon === "steam" || addon === "xbox") && <GameAchievementsPanel store={{ addon, id }} journalId={`store:${addon}:${id}`} />}
       {info && <GameMedia game={info} />}
+      {me?.user && addon !== ROBLOX_ADDON && <StoreSavesPanel addon={addon} id={id} title={game.title} />}
       {addon !== ROBLOX_ADDON && <LocalScreenshots title={game.title} steamAppId={addon === "steam" ? id : null} />}
       {addon === "steam" && /^\d+$/.test(id) && !me?.user?.kidMode && <WorkshopPanel steamAppId={id} isAdmin={me?.role === "admin"} installedHere={!!local} />}
       {addon === "steam" && truckGameForSteamApp(id) && !me?.user?.kidMode && <TruckModsPanel game={truckGameForSteamApp(id)!} />}
