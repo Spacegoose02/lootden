@@ -739,6 +739,11 @@ export const MIGRATIONS: string[] = [
   UPDATE wishlist_feeds SET name = 'Watchmask' WHERE lower(trim(name)) = 'yamtrack';
   UPDATE wishlist_feeds SET name = replace(name, ' - Yamtrack', ' - Watchmask') WHERE name LIKE '% - Yamtrack';
   `,
+  `
+  -- Wishlist covers move from Steam's old fixed header URL (wide, and missing for newer games) to
+  -- the tall library cover; clearing them lets the next sync fill them in again.
+  UPDATE wishlist SET image = NULL WHERE image LIKE 'https://cdn.cloudflare.steamstatic.com/steam/apps/%/header.jpg';
+  `,
 ];
 
 export function openDatabase(file: string): Db {

@@ -132,6 +132,14 @@ describe("wishlist, list feeds and the calendar", () => {
     const fetchImpl = (async (input: string | URL | Request) => {
       const url = new URL(String(input));
       if (url.hostname === "wm.example") return new Response(feed);
+      if (url.pathname.includes("GetItems")) {
+        const input = JSON.parse(url.searchParams.get("input_json")!);
+        assert.equal(input.data_request.include_assets, true);
+        const art: Record<number, object> = {
+          2300230: { appid: 2300230, assets: { asset_url_format: "steam/apps/2300230/abc123/${FILENAME}?t=1", library_capsule: "library_600x900.jpg", header: "header.jpg" } },
+        };
+        return Response.json({ response: { store_items: input.ids.map((i: { appid: number }) => art[i.appid]).filter(Boolean) } });
+      }
       if (url.pathname === "/api/storesearch/") {
         const term = url.searchParams.get("term")!;
         searches.push(term);
@@ -149,7 +157,8 @@ describe("wishlist, list feeds and the calendar", () => {
 
     let state = (await app.inject({ method: "POST", url: "/api/wishlist/feeds", headers, payload: { url: "https://wm.example/rss/t/game/upcoming.xml", name: "Yamtrack" } })).json();
     const byTitle = (t: string) => state.items.find((i: { title: string }) => i.title === t);
-    assert.equal(byTitle("Rooted (2027)").image, "https://cdn.cloudflare.steamstatic.com/steam/apps/2300230/header.jpg");
+    // The tall library cover from the app's hashed asset path (the old fixed URLs 404 for newer games).
+    assert.equal(byTitle("Rooted (2027)").image, "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/2300230/abc123/library_600x900.jpg?t=1");
     assert.equal(byTitle("Rooted (2027)").steamAppId, 2300230);
     assert.equal(byTitle("Police Officer (2026)").image, null);
     assert.equal(byTitle("Ski-E-O! Ski Resort Tycoon (2026)").image, "https://images.igdb.com/igdb/image/upload/t_cover_big/ski.jpg");
