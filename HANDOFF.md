@@ -107,6 +107,13 @@ can be set once by an admin on the add-on's card (`PUT /api/addons/:id/shared`, 
 like accounts, never sent back); a person's own value wins. `Integrations` (IGDB and other admin keys in the settings table) aren't encrypted yet; the
 vault can do it.
 
+## Recomp badge and filter (0.26.5)
+
+Games a recomp plays (built-in or admin-added) get a ⚡ badge on cards, list rows, the game
+page and Home; hovering names the recomp. All games has a "⚡ Has a recomp" filter, which
+switches a PC-only view to all systems. Admin-added recomps load once per page through the
+shared hook in `web/src/recomps.ts`.
+
 ## Docker 7-Zip download fallback (0.26.4)
 
 The v0.26.3 image failed to build on a one-off DNS failure for `www.7-zip.org`. The Dockerfile
