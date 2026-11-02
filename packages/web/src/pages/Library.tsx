@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { platformFor, type GameSummary, type UserGameState } from "@lootden/shared";
+import { platformFor, recompsFor, type GameSummary, type UserGameState } from "@lootden/shared";
+import { useAddedRecomps } from "../recomps";
 import { api } from "../api";
 import { useLive } from "../live";
 import { desktop } from "../desktop";
@@ -99,6 +100,8 @@ function AllGames() {
   const tag = params.get("tag") ?? "";
   const favourites = params.get("fav") === "1";
   const showHidden = params.get("hidden") === "1";
+  const onlyRecomps = params.get("recomp") === "1";
+  const addedRecomps = useAddedRecomps();
   /** Bulk edit: picking games in a list instead of opening them. */
   const [selecting, setSelecting] = useState(false);
   const [picked, setPicked] = useState<Set<string>>(new Set());
@@ -158,6 +161,7 @@ function AllGames() {
     if (together) out = out.filter((g) => (together === "any" ? !!g.together?.length : g.together?.includes(together as never)));
     if (!showHidden) out = out.filter((g) => !marks.get(g.id).hidden);
     if (favourites) out = out.filter((g) => marks.get(g.id).favourite);
+    if (onlyRecomps) out = out.filter((g) => recompsFor(g, addedRecomps).length > 0);
     if (tag) out = out.filter((g) => marks.get(g.id).tags.some((t) => t.toLowerCase() === tag.toLowerCase()));
     if (sort === "played") {
       const last = new Map<string, string>();
@@ -166,7 +170,7 @@ function AllGames() {
     }
     return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [games, onlyInstalled, installedIds, sort, states, format, together, showHidden, favourites, tag, marks.all]);
+  }, [games, onlyInstalled, installedIds, sort, states, format, together, showHidden, favourites, onlyRecomps, addedRecomps, tag, marks.all]);
   const shelf = system !== "all" && system !== "pc" ? platformFor(system).coverAspect : undefined;
 
   return (
@@ -250,6 +254,21 @@ function AllGames() {
         </label>
         <label className="check">
           <input type="checkbox" checked={favourites} onChange={(e) => set("fav", e.target.checked ? "1" : "")} />♥ Favourites
+        </label>
+        <label className="check" title="Console games that also play as a native PC version (a recomp) in the desktop app">
+          <input
+            type="checkbox"
+            checked={onlyRecomps}
+            onChange={(e) => {
+              const next = new URLSearchParams(params);
+              if (e.target.checked) {
+                next.set("recomp", "1");
+                // Recomps play console games, which the PC view hides.
+                if (system === "pc") next.set("system", "all");
+              } else next.delete("recomp");
+              setParams(next, { replace: true });
+            }}
+          />⚡ Has a recomp
         </label>
         <label className="check">
           <input type="checkbox" checked={showHidden} onChange={(e) => set("hidden", e.target.checked ? "1" : "")} />
