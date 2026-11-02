@@ -42,15 +42,24 @@ COPY --from=build /app/packages/web/dist packages/web/dist
 COPY docker-entrypoint.sh /usr/local/bin/
 # 7-Zip unpacks and re-zips finished downloads during import. Alpine's 7zip package is built
 # without RAR, so releases shipped as .rar were never unpacked; the official static build from
-# 7-zip.org has it, and the build fails if it ever doesn't. The entrypoint is made executable
-# with Unix line endings here, because a Windows checkout can lose both.
+# 7-zip.org has it, and the build fails if it ever doesn't. The download falls back to 7-Zip's
+# GitHub releases and is tried three times, because one failed lookup of 7-zip.org once sank a
+# release. The entrypoint is made executable with Unix line endings here, because a Windows
+# checkout can lose both.
 ARG SEVENZIP_VERSION=2602
 ARG TARGETARCH
 RUN case "${TARGETARCH:-$(uname -m)}" in \
       amd64|x86_64) arch=x64 ;; arm64|aarch64) arch=arm64 ;; arm|armv7l) arch=arm ;; 386|i686) arch=x86 ;; \
       *) echo "No 7-Zip build for ${TARGETARCH:-$(uname -m)}" >&2; exit 1 ;; \
     esac \
-    && wget -qO /tmp/7z.tar.xz "https://www.7-zip.org/a/7z${SEVENZIP_VERSION}-linux-${arch}.tar.xz" \
+    && file="7z${SEVENZIP_VERSION}-linux-${arch}.tar.xz" \
+    && tag="${SEVENZIP_VERSION%??}.${SEVENZIP_VERSION#??}" \
+    && for try in 1 2 3; do \
+         wget -qO /tmp/7z.tar.xz "https://www.7-zip.org/a/${file}" \
+           || wget -qO /tmp/7z.tar.xz "https://github.com/ip7z/7zip/releases/download/${tag}/${file}" \
+           && break; \
+         [ "$try" = 3 ] && { echo "Couldn't download ${file}" >&2; exit 1; }; sleep 5; \
+       done \
     && apk add --no-cache --virtual .fetch-7z xz \
     && xz -dc /tmp/7z.tar.xz | tar -x -C /tmp 7zzs \
     && apk del .fetch-7z \
