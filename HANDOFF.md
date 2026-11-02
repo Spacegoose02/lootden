@@ -107,6 +107,12 @@ can be set once by an admin on the add-on's card (`PUT /api/addons/:id/shared`, 
 like accounts, never sent back); a person's own value wins. `Integrations` (IGDB and other admin keys in the settings table) aren't encrypted yet; the
 vault can do it.
 
+## Docker 7-Zip download fallback (0.26.4)
+
+The v0.26.3 image failed to build on a one-off DNS failure for `www.7-zip.org`. The Dockerfile
+now tries the 7-Zip download up to three times, 5 s apart, and falls back to the same file on
+7-Zip's GitHub releases (`ip7z/7zip`, tag derived from `SEVENZIP_VERSION`).
+
 ## Centred wishlist cards (0.26.3)
 
 The "wish granted" celebration's `.wish-art` rules in `fun.css` are scoped to
