@@ -90,8 +90,22 @@ export interface GameSummary {
    * packages. Higher than version means an update is waiting. Null when nothing says.
    */
   latestVersion: string | null;
+  /**
+   * Games: what the daily update check found at GOG, itch.io or Steam; null when it hasn't
+   * checked this game or had no store to compare with. Missing from older servers.
+   */
+  storeVersion?: StoreVersion | null;
   /** Ways to play it together (couch co-op, split screen...), from metadata or an admin. Missing from older servers. */
   together?: TogetherTag[];
+}
+
+/** The store's side of a game's version, from the daily update check. */
+export interface StoreVersion {
+  /** The store's current version, when it says one. */
+  latest: string | null;
+  source: "gog" | "steam" | "itch";
+  /** True when the store has something newer than this copy. */
+  behind: boolean;
 }
 
 export interface GameMetadata {

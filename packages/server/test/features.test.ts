@@ -236,6 +236,8 @@ describe("wanted list, rules, alerts, scans, updates, journal and stats", () => 
     assert.equal(compareVersions("Build 120", "Build 99"), 1);
     assert.equal(versionIn("Patch 1.2.3 is live"), "1.2.3");
     assert.equal(versionIn("Halloween event!"), null);
+    assert.equal(versionIn("Update 1.1.0.21 notes"), "1.1.0.21");
+    assert.equal(compareVersions("1.1.0.21", "1.1.0.19"), 1);
 
     await writeFile(path.join(root, "Dredge v1.2.zip"), "zip");
     const fetchImpl = (async (input: string | URL | Request) => {
@@ -249,6 +251,8 @@ describe("wanted list, rules, alerts, scans, updates, journal and stats", () => 
     const game = ctx.library.list({ search: "dredge" })[0]!;
     const check = (await app.inject({ method: "POST", url: `/api/games/${game.id}/version`, headers })).json();
     assert.deepEqual([check.current, check.latest, check.source, check.behind], ["1.2", "1.5.3", "gog", true]);
+    // The cover's version pill hears about it straight away.
+    assert.deepEqual(ctx.library.list({ search: "dredge" })[0]!.storeVersion, { latest: "1.5.3", source: "gog", behind: true });
     assert.equal((await app.inject({ url: "/api/updates", headers })).json()[0].title, game.title);
     assert.equal(ctx.notifier.list().alerts[0]!.kind, "updates");
     const home = (await app.inject({ url: "/api/home", headers })).json();
