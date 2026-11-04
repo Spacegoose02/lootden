@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { mkdir, rename, rm, statfs } from "node:fs/promises";
 import path from "node:path";
-import { cleanTogether, compareVersion, contentHint, togetherFromMetadata, type TogetherTag, FULL_GAME_SIZE_RATIO, PC_PLATFORM, setupKindOf, type KindReason, PLATFORMS, type ControllerSupport, type GameDetail, type GameMetadata, type GameSummary, type LibraryStats, type PackageKind, versionLabel } from "@lootden/shared";
+import { cleanTogether, compareVersion, contentHint, togetherFromMetadata, type TogetherTag, FULL_GAME_SIZE_RATIO, PC_PLATFORM, setupKindOf, type KindReason, PLATFORMS, type ControllerSupport, type GameDetail, type GameMetadata, type GameSummary, type LibraryStats, type PackageKind, type StoreVersion, versionLabel } from "@lootden/shared";
 import { json, now, type Db } from "../db/database.js";
 import { kidSafeFromRatings } from "../metadata/ratings.js";
 import { cleanTitle, titleSimilarity } from "../metadata/titles.js";
@@ -119,6 +119,8 @@ export class Library {
   private latestCache: { from: Map<string, PackageVerdict>; map: Map<string, string> } | null = null;
   /** Versions an admin typed in for games whose names don't say, by game id. */
   private versionOverrides: Map<string, string> | null = null;
+  /** The daily update check's answers by game id; cleared each time it stores one. */
+  private storeVersions: Map<string, StoreVersion> | null = null;
 
   constructor(
     private readonly db: Db,
@@ -368,6 +370,22 @@ export class Library {
     return map;
   }
 
+  /** What GOG, itch.io or Steam said about each game, for the version on its cover. */
+  private storeVersionOf(id: string): StoreVersion | null {
+    this.storeVersions ??= new Map(
+      (this.db.prepare("SELECT game_id, latest, source, behind FROM game_updates WHERE source IS NOT NULL").all() as Array<{ game_id: string; latest: string | null; source: StoreVersion["source"]; behind: number }>).map((r) => [
+        r.game_id,
+        { latest: r.latest, source: r.source, behind: r.behind === 1 },
+      ]),
+    );
+    return this.storeVersions.get(id) ?? null;
+  }
+
+  /** The update check stored a new answer. */
+  storeVersionChanged(): void {
+    this.storeVersions = null;
+  }
+
   private verdict(g: ScannedGame): PackageVerdict {
     return this.packages().get(g.id) ?? { kind: g.kind, baseGameId: null, lookalike: null, reason: null };
   }
@@ -401,6 +419,7 @@ export class Library {
       baseGameId,
       kindReason: reason,
       latestVersion: kind === "game" ? (this.latestVersions().get(g.id) ?? null) : null,
+      storeVersion: kind === "game" ? this.storeVersionOf(g.id) : null,
       together: row?.together_override != null ? cleanTogether(json(row.together_override, [])) : togetherFromMetadata(metadata?.gameModes ?? [], metadata?.genres ?? []),
       // A full game named as an update was skipped by the scanner's setup check.
       needsSetup: kind !== "game" ? null : (g.needsSetup ?? (g.kind !== "game" && g.platform === PC_PLATFORM ? setupKindOf(files) : null)),

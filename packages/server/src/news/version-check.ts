@@ -106,6 +106,7 @@ export class VersionChecker {
         "INSERT INTO game_updates (game_id, current, latest, source, detail, url, behind, checked_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(game_id) DO UPDATE SET current = excluded.current, latest = excluded.latest, source = excluded.source, detail = excluded.detail, url = excluded.url, behind = excluded.behind, checked_at = excluded.checked_at",
       )
       .run(gameId, check.current, check.latest, check.source, check.detail, check.url, check.behind ? 1 : 0, check.checkedAt);
+    this.library.storeVersionChanged();
     if (check.behind && (!before?.behind || before.latest !== check.latest)) {
       await this.notifier.send("updates", `${game.title} has an update`, check.detail, `/games/${gameId}`);
     }

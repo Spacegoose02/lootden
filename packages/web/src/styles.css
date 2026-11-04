@@ -2882,7 +2882,7 @@ label.field {
 :root[data-nav="pad"] .cover-tile:focus .cover-tile-name {
   opacity: 1;
 }
-/* The game's version on its cover: green when it's the newest on the server, amber when an update is waiting. */
+/* The game's version on its cover: green when a store check found it current, amber when behind, grey when nothing has been compared. */
 .card {
   position: relative;
 }
@@ -2912,6 +2912,12 @@ label.field {
 }
 .version-outdated {
   --version-color: var(--warn, #ffd166);
+}
+.version-unknown {
+  --version-color: #9aa3b2;
+}
+.version-unknown .version-dot {
+  box-shadow: none;
 }
 .version-dot {
   flex: none;
