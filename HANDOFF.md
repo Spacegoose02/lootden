@@ -107,6 +107,13 @@ can be set once by an admin on the add-on's card (`PUT /api/addons/:id/shared`, 
 like accounts, never sent back); a person's own value wins. `Integrations` (IGDB and other admin keys in the settings table) aren't encrypted yet; the
 vault can do it.
 
+## Version pill checks the stores (0.26.6)
+
+The cover's version pill now uses the daily update check (GOG, itch.io, Steam patch notes) as
+well as the server's own copies: amber when the server has an update or a store is ahead
+(`v1.1.0.19 → v1.1.0.21`), green only when a store check found nothing newer, grey when
+nothing has been compared yet. `GameSummary.storeVersion` carries the check's answer.
+
 ## Recomp badge and filter (0.26.5)
 
 Games a recomp plays (built-in or admin-added) get a ⚡ badge on cards, list rows, the game
