@@ -1,7 +1,7 @@
 import { BackupsSection } from "../components/Backups";
 import { HomeAssistantSection } from "../components/Integrations";
 import { useEffect, useState, type ReactNode } from "react";
-import { Link, NavLink, Navigate, useParams } from "react-router-dom";
+import { Link, NavLink, Navigate, useNavigate, useParams } from "react-router-dom";
 import { KID_SITES, type BrowserPolicy, type GameSummary, type LibraryStats, type User } from "@lootden/shared";
 import { api, avatarUrl, formatBytes, type Connectors, type ReleaseSourceView, type SourceConfig, type WishlistState } from "../api";
 import { AdminApps } from "../components/AdminApps";
@@ -12,79 +12,117 @@ import { PcsSection } from "../components/AdminPcs";
 import { DenDutySection } from "../components/AdminDenDuty";
 import { AdminVideos } from "../components/AdminVideos";
 import { Card, Field, Pill, Toggle, useConnectors } from "../components/SettingsUi";
-import { ThemePicker } from "../components/ThemePicker";
+import { AppearanceSettings, ControllerSettings } from "../components/ControllerSettings";
+import { ThisComputer } from "./Profile";
+import { desktop } from "../desktop";
 import { FamilySettingsCard, PlayLimitsEditor } from "../components/PlayTime";
 import { useAuth } from "../auth";
 
 type Msg = (m: string, error?: boolean) => void;
 
 const SECTIONS: Array<{ id: string; title: string; blurb: string }> = [
+  { id: "themes", title: "Appearance", blurb: "Theme, colours and banner size" },
+  { id: "controller", title: "Controller & handheld", blurb: "Keyboard, rumble, sounds and buttons" },
+  { id: "computer", title: "This PC", blurb: "Install folder, full screen and start-up" },
   { id: "library", title: "Library", blurb: "Scanning, metadata and profiles" },
   { id: "steam", title: "Steam & wishlist", blurb: "Your Steam ID and list feeds" },
+  { id: "roblox", title: "Roblox", blurb: "Roblox games for the library and who sees them" },
   { id: "downloads", title: "Downloads", blurb: "Prowlarr, clients and importing" },
   { id: "wanted", title: "Wanted & rules", blurb: "Auto-search and what to grab" },
   { id: "sources", title: "Release sources", blurb: "Feeds and APIs that list new games" },
   { id: "safety", title: "Scanning & alerts", blurb: "Virus scan and notifications" },
   { id: "denduty", title: "Den Duty", blurb: "Chores first, time-outs and game time from the chore app" },
   { id: "pcs", title: "PCs", blurb: "Which PCs are on, free space and Wake-on-LAN" },
-  { id: "roblox", title: "Roblox", blurb: "Roblox games for the library and who sees them" },
   { id: "helper", title: "Bandit (AI helper)", blurb: "AI key, model, budget and who can use him" },
   { id: "services", title: "Sign-in & services", blurb: "SSO, metadata keys, itch.io, Nexus" },
   { id: "content", title: "News & apps", blurb: "Feeds, videos and app builds" },
   { id: "homeassistant", title: "Home Assistant", blurb: "Who's playing, as sensors over MQTT" },
   { id: "backups", title: "Backups", blurb: "Copies of the database, daily or now, and restoring one" },
-  { id: "themes", title: "Themes", blurb: "Colours and look of LootDen" },
 ];
-/** Sections everyone can open; the rest are admin settings. */
-const PERSONAL = new Set(["themes"]);
 
-/** Every admin setting in one place, grouped into a few sections. */
+/**
+ * The tabs along the top (LT and RT on a controller). "You" is this person's own settings on this
+ * device and is all a non-admin sees; the rest change the server for everyone, so only admins get
+ * them, and the server refuses their changes from anyone else anyway.
+ */
+const GROUPS: Array<{ id: string; title: string; admin: boolean; sections: string[] }> = [
+  { id: "you", title: "You", admin: false, sections: ["themes", "controller", "computer"] },
+  { id: "library", title: "Library", admin: true, sections: ["library", "steam", "roblox"] },
+  { id: "downloads", title: "Downloads", admin: true, sections: ["downloads", "wanted", "sources", "safety"] },
+  { id: "family", title: "Family", admin: true, sections: ["denduty", "pcs", "helper"] },
+  { id: "server", title: "Server", admin: true, sections: ["services", "content", "homeassistant", "backups"] },
+];
+
+/** This PC only makes sense inside the desktop app. */
+const available = (id: string) => id !== "computer" || !!desktop;
+
+/** Your own settings, and (for admins) the server's, in tabs of a few sections each. */
 export function Settings() {
   const { me } = useAuth();
   const admin = me?.role === "admin";
-  const sections = admin ? SECTIONS : SECTIONS.filter((s) => PERSONAL.has(s.id));
-  const { section = sections[0]!.id } = useParams();
+  const groups = GROUPS.filter((g) => admin || !g.admin).map((g) => ({ ...g, sections: g.sections.filter(available) }));
+  const { section = admin ? "library" : "themes" } = useParams();
+  const navigate = useNavigate();
   const [msg, setMsg] = useState<{ text: string; error?: boolean } | null>(null);
   const say: Msg = (text, error) => setMsg(text ? { text, error } : null);
   useEffect(() => setMsg(null), [section]);
-  if (!sections.some((s) => s.id === section)) return <Navigate to="/settings" replace />;
+  const group = groups.find((g) => g.sections.includes(section));
+  if (!group) return <Navigate to="/settings" replace />;
+  const sections = group.sections.map((id) => SECTIONS.find((s) => s.id === id)!);
   const current = sections.find((s) => s.id === section)!;
 
   return (
-    <div className="settings">
-      <aside className="settings-nav" aria-label="Settings sections">
+    <div className="settings-page">
+      <div className="settings-head">
         <h1>Settings</h1>
-        <nav>
-          {sections.map((s) => (
-            <NavLink key={s.id} to={`/settings/${s.id}`} className={() => (s.id === section ? "active" : "")}>
-              <strong>{s.title}</strong>
-              <small>{s.blurb}</small>
-            </NavLink>
-          ))}
-        </nav>
-      </aside>
-      <div className="settings-content">
-        <h2 className="settings-title">{current.title}</h2>
-        {msg && (
-          <p className={msg.error ? "error settings-msg" : "notice settings-msg"} role="status">
-            {msg.text}
-          </p>
+        {groups.length > 1 && (
+          <div className="segmented settings-tabs" role="tablist" aria-label="Settings">
+            {groups.map((g) => (
+              <button key={g.id} role="tab" aria-selected={g.id === group.id} className={g.id === group.id ? "active" : ""} onClick={() => navigate(`/settings/${g.sections[0]}`)}>
+                {g.title}
+                {g.admin && <small className="settings-admin-tag">Admin</small>}
+              </button>
+            ))}
+          </div>
         )}
-        {section === "library" && <LibrarySection say={say} />}
-        {section === "steam" && <SteamSection say={say} />}
-        {section === "downloads" && <DownloadsSection say={say} />}
-        {section === "wanted" && <WantedSection say={say} />}
-        {section === "sources" && <SourcesSection say={say} />}
-        {section === "safety" && <SafetySection say={say} />}
-        {section === "pcs" && <PcsSection say={say} />}
-        {section === "denduty" && <DenDutySection say={say} />}
-        {section === "roblox" && <RobloxSection say={say} />}
-        {section === "helper" && <HelperSection say={say} />}
-        {section === "services" && <ServicesSection say={say} />}
-        {section === "content" && <ContentSection say={say} />}
-        {section === "backups" && <BackupsSection say={say} />}
-        {section === "homeassistant" && <HomeAssistantSection say={say} />}
-        {section === "themes" && <ThemePicker />}
+      </div>
+      <div className="settings">
+        <aside className="settings-nav" aria-label="Settings sections">
+          {group.admin ? <p className="muted small settings-scope">Server settings: these change LootDen for everyone.</p> : <p className="muted small settings-scope">Just for you, on this device.</p>}
+          <nav>
+            {sections.map((s) => (
+              <NavLink key={s.id} to={`/settings/${s.id}`} className={() => (s.id === section ? "active" : "")}>
+                <strong>{s.title}</strong>
+                <small>{s.blurb}</small>
+              </NavLink>
+            ))}
+          </nav>
+        </aside>
+        <div className="settings-content">
+          <h2 className="settings-title">{current.title}</h2>
+          {msg && (
+            <p className={msg.error ? "error settings-msg" : "notice settings-msg"} role="status">
+              {msg.text}
+            </p>
+          )}
+          {section === "themes" && <AppearanceSettings />}
+          {section === "controller" && <ControllerSettings />}
+          {section === "computer" && <ThisComputer />}
+          {section === "library" && <LibrarySection say={say} />}
+          {section === "steam" && <SteamSection say={say} />}
+          {section === "downloads" && <DownloadsSection say={say} />}
+          {section === "wanted" && <WantedSection say={say} />}
+          {section === "sources" && <SourcesSection say={say} />}
+          {section === "safety" && <SafetySection say={say} />}
+          {section === "pcs" && <PcsSection say={say} />}
+          {section === "denduty" && <DenDutySection say={say} />}
+          {section === "roblox" && <RobloxSection say={say} />}
+          {section === "helper" && <HelperSection say={say} />}
+          {section === "services" && <ServicesSection say={say} />}
+          {section === "content" && <ContentSection say={say} />}
+          {section === "backups" && <BackupsSection say={say} />}
+          {section === "homeassistant" && <HomeAssistantSection say={say} />}
+        </div>
       </div>
     </div>
   );

@@ -4096,7 +4096,8 @@ html[data-lootden-frame] .lightbox {
   gap: 0.5rem;
   white-space: nowrap;
 }
-.pad-hints kbd {
+.pad-hints kbd,
+.pad-glyph {
   display: inline-grid;
   place-items: center;
   min-width: 1.6rem;
@@ -4105,15 +4106,19 @@ html[data-lootden-frame] .lightbox {
   font: 800 0.8rem var(--font);
   color: #0b0718;
 }
+.pad-glyph.pad-a,
 .pad-hints .pad-a {
   background: #59ff9a;
 }
+.pad-glyph.pad-b,
 .pad-hints .pad-b {
   background: #ff5c7a;
 }
+.pad-glyph.pad-y,
 .pad-hints .pad-y {
   background: #ffcf5c;
 }
+.pad-glyph.pad-shoulder,
 .pad-hints .pad-shoulder {
   padding: 0 0.5rem;
   border-radius: 6px;
@@ -4363,6 +4368,7 @@ html[data-lootden-frame] .lightbox {
   }
 }
 /* The X hint along the bottom shows only when Bandit is there. */
+.pad-glyph.pad-x,
 .pad-hints .pad-x {
   background: #5cb8ff;
 }
@@ -4981,3 +4987,211 @@ html[data-lootden-frame] .lightbox {
 .wish-price .price.on-sale { color: var(--good); }
 .badge.sale { margin-left: 0.3rem; background: var(--good); color: #111; }
 .price-settings summary { cursor: pointer; }
+
+/* ---- Controller extras: button glyphs, the on-screen keyboard, quick menus ---------------- */
+
+.pad-glyph {
+  min-width: 1.6rem;
+  height: 1.6rem;
+  border-radius: 999px;
+  font: 800 0.8rem var(--font);
+  color: #0b0718;
+}
+/* PlayStation's face buttons by shape and colour; Nintendo's are plain. */
+.pad-glyph.pad-style-playstation.pad-a {
+  background: #7ab8ff;
+}
+.pad-glyph.pad-style-playstation.pad-b {
+  background: #ff6b7d;
+}
+.pad-glyph.pad-style-playstation.pad-x {
+  background: #f39ad8;
+}
+.pad-glyph.pad-style-playstation.pad-y {
+  background: #4fe0b0;
+}
+.pad-glyph.pad-style-nintendo:is(.pad-a, .pad-b, .pad-x, .pad-y) {
+  background: var(--text);
+  color: var(--bg);
+}
+.pad-hints span .pad-glyph + .pad-glyph {
+  margin-left: -0.25rem;
+}
+
+.osk-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  background: color-mix(in srgb, var(--bg) 45%, transparent);
+}
+.osk {
+  width: min(980px, 100%);
+  margin: 0 0 4.2rem;
+  padding: 1rem;
+  border-radius: 18px 18px 12px 12px;
+  box-shadow: 0 -20px 60px rgb(0 0 0 / 0.45);
+  background: var(--panel-solid);
+}
+.osk-preview {
+  margin-bottom: 0.75rem;
+  padding: 0.6rem 0.9rem;
+  border-radius: 10px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+}
+.osk-text {
+  min-height: 1.8rem;
+  font-size: 1.25rem;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+.osk-caret {
+  display: inline-block;
+  width: 2px;
+  height: 1.3rem;
+  margin: 0 1px;
+  vertical-align: -0.2rem;
+  background: var(--accent);
+  animation: osk-blink 1s steps(1) infinite;
+}
+@keyframes osk-blink {
+  50% {
+    opacity: 0;
+  }
+}
+.osk-keys {
+  display: grid;
+  gap: 0.4rem;
+}
+.osk-row {
+  display: grid;
+  grid-template-columns: repeat(10, 1fr);
+  gap: 0.4rem;
+}
+.osk-row button {
+  min-height: 3rem;
+  padding: 0.3rem;
+  font-size: 1.15rem;
+  border-radius: 10px;
+}
+.osk-actions {
+  grid-template-columns: 1.2fr 1.2fr 3fr 1.2fr 1fr 1fr 1.6fr;
+}
+.osk-actions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  font-size: 0.95rem;
+}
+.osk-actions .active {
+  outline: 2px solid var(--accent);
+}
+.osk-done {
+  background: var(--accent);
+  color: var(--accent-text, #0b0b10);
+}
+
+.quick-sheet {
+  position: fixed;
+  z-index: 60;
+  top: 50%;
+  left: 50%;
+  translate: -50% -50%;
+  display: grid;
+  gap: 0.3rem;
+  min-width: 260px;
+  max-width: min(420px, calc(100vw - 32px));
+  max-height: calc(100vh - 6rem);
+  overflow: auto;
+  padding: 0.8rem;
+  border-radius: 16px;
+  background: var(--panel-solid);
+  box-shadow: 0 24px 70px rgb(0 0 0 / 0.5);
+}
+.quick-sheet.at-pointer {
+  translate: none;
+  min-width: 230px;
+}
+.quick-sheet-title {
+  padding: 0.2rem 0.5rem 0.4rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.quick-item {
+  justify-content: flex-start;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  color: var(--text);
+  border: 0;
+  padding: 0.6rem 0.75rem;
+  border-radius: 10px;
+}
+.quick-item:hover,
+.quick-item:focus {
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+}
+.quick-item.danger {
+  color: #ff7b8f;
+}
+.letter-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 0.35rem;
+}
+.letter-grid button {
+  min-height: 2.6rem;
+  font-weight: 700;
+}
+.letter-grid button:disabled {
+  opacity: 0.3;
+}
+:root[data-touch="on"] .quick-item {
+  padding: 0.85rem 1rem;
+  font-size: 1.05rem;
+}
+
+/* Settings: You and the admin groups as tabs along the top, each with a few sections. */
+.settings-page {
+  max-width: 1180px;
+  margin: 0 auto;
+}
+.settings-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.8rem 1.5rem;
+  margin-bottom: 1.2rem;
+}
+.settings-head h1 {
+  margin: 0;
+}
+.settings-tabs button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+.settings-admin-tag {
+  padding: 0.05rem 0.4rem;
+  border-radius: 999px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+  color: var(--text);
+}
+.settings-scope {
+  margin: 0 0 0.6rem 0.8rem;
+}
+@media (max-width: 640px) {
+  .settings-tabs {
+    width: 100%;
+    overflow-x: auto;
+  }
+}

@@ -3,6 +3,9 @@
  * any XInput pad) move focus between on-screen items by position, A activates,
  * B goes back. Mouse and touch keep working as normal.
  */
+import { feel, seePad } from "./feedback";
+import { padPrefs } from "./prefs";
+
 const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), summary, [tabindex="0"]';
 
 type Dir = "up" | "down" | "left" | "right";
@@ -163,7 +166,7 @@ function restingRect(el: HTMLElement): DOMRect {
 /** A pop-up the d-pad stays inside: one with something to pick, or a modal one even while its buttons are off (the roulette mid-spin). */
 const trapping = (popup: Element | null): popup is Element => !!popup && (popup.getAttribute("aria-modal") === "true" || !!popup.querySelector(FOCUSABLE));
 
-export function moveFocus(dir: Dir, repeating = false): void {
+export function moveFocus(dir: Dir, repeating = false): boolean {
   setNavMode("pad");
   setEditing(null);
   // An open menu, alerts panel or picture keeps the d-pad inside it until B closes it.
@@ -180,7 +183,7 @@ export function moveFocus(dir: Dir, repeating = false): void {
       reveal(first, repeating);
       remember(first);
     }
-    return;
+    return !!first;
   }
   const from = restingRect(current);
   const here = zoneOf(current);
@@ -221,7 +224,9 @@ export function moveFocus(dir: Dir, repeating = false): void {
     // Smooth scrolling lags behind a held d-pad, so a held direction jumps.
     reveal(best, repeating);
     remember(best);
+    return true;
   }
+  return false;
 }
 
 /** Y: between the filters (or the top of the page) and the games, wherever focus is. */
@@ -271,6 +276,32 @@ export function switchSection(by: number): void {
 
 /** X: opens and closes Bandit, the AI helper (components/Bandit.tsx listens). */
 export const HELPER_EVENT = "lootden:helper";
+
+/**
+ * Every button press (not the d-pad) goes out first as this event, so something open on top (the
+ * on-screen keyboard, a quick menu) can take the button: calling preventDefault skips its usual job.
+ */
+export const PAD_EVENT = "lootden:pad";
+export type PadPress = "a" | "b" | "x" | "y" | "lb" | "rb" | "lt" | "rt" | "view" | "menu" | "l3" | "r3" | "guide";
+const offer = (button: PadPress, repeating: boolean) => !window.dispatchEvent(new CustomEvent(PAD_EVENT, { detail: { button, repeating }, cancelable: true }));
+
+/** A on a text box: the on-screen keyboard (components/Keyboard.tsx) opens for it unless it's switched off. */
+export const TYPE_EVENT = "lootden:type";
+/** Menu (Start) on a game: its options (components/QuickMenus.tsx). */
+export const GAME_MENU_EVENT = "lootden:game-menu";
+/** View (Select): the quick menu. */
+export const QUICK_MENU_EVENT = "lootden:quick-menu";
+/** L3 in a list of games: jump to a letter. */
+export const LETTER_EVENT = "lootden:letter";
+/** The Xbox (guide) button, when Windows lets it through: back to Home. */
+export const HOME_EVENT = "lootden:home";
+
+/** R3: back to the top of the page and its first item. */
+function toTop(): void {
+  (document.scrollingElement ?? document.documentElement).scrollTo({ top: 0, behavior: "smooth" });
+  const first = [...document.querySelectorAll<HTMLElement>(`main ${FOCUSABLE.split(", ").join(", main ")}`)].find(visible);
+  first?.focus({ preventScroll: true });
+}
 
 /** A or Enter on a select: change it with the d-pad until A, B or Enter again. */
 export function toggleEditing(el: HTMLSelectElement): void {
@@ -394,11 +425,15 @@ export function installSpatialNavigation(onBack: () => void): () => void {
   };
   const activate = () => {
     const el = document.activeElement as HTMLElement | null;
-    if (!el || el === document.body) return moveFocus("down");
+    if (!el || el === document.body) return void moveFocus("down");
+    feel("select");
     if (el instanceof HTMLInputElement && (el.type === "checkbox" || el.type === "radio")) return el.click();
     if (el instanceof HTMLSelectElement) return toggleEditing(el);
-    // Text boxes take focus for typing (the on-screen keyboard on handhelds); everything else is clicked.
-    if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement || el instanceof HTMLSelectElement) return el.focus();
+    // Text boxes open LootDen's keyboard, or take focus for Windows' own touch keyboard; everything else is clicked.
+    if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) {
+      if (!window.dispatchEvent(new CustomEvent(TYPE_EVENT, { detail: el, cancelable: true }))) return;
+      return el.focus();
+    }
     el.click();
   };
   const scrollBy = (dy: number) => (document.scrollingElement ?? document.documentElement).scrollBy({ top: dy });
@@ -420,9 +455,22 @@ export function installSpatialNavigation(onBack: () => void): () => void {
         const b = (i: number) => !!pad.buttons[i]?.pressed;
         const hat = padHat(pad);
         const any = pad.buttons.some((x) => x.pressed) || Math.abs(ax) > 0.6 || Math.abs(ay) > 0.6;
-        if (any) setNavMode("pad");
+        if (any) {
+          setNavMode("pad");
+          seePad(pad);
+        }
         // While a select is being changed the d-pad picks its options instead of moving.
-        const move = (dir: Dir, by: number) => (repeating: boolean) => (editing && document.activeElement === editing ? stepSelect(editing, by) : moveFocus(dir, repeating));
+        const move = (dir: Dir, by: number) => (repeating: boolean) => {
+          if (editing && document.activeElement === editing) return stepSelect(editing, by);
+          // A held direction rumbles only on the first step and at the edge, not on every repeat.
+          if (moveFocus(dir, repeating)) {
+            if (!repeating) feel("move");
+          } else if (!repeating) feel("edge");
+        };
+        // A button's usual job, unless something on top takes it first.
+        const press = (button: PadPress, action: (repeating: boolean) => void) => (repeating: boolean) => {
+          if (!offer(button, repeating)) action(repeating);
+        };
         // The left stick moves along whichever way it's pushed most, so a slightly diagonal push
         // doesn't move down and sideways at once and skip past the item it was aimed at.
         const sx = Math.abs(ax) >= Math.abs(ay) ? ax : 0;
@@ -431,20 +479,33 @@ export function installSpatialNavigation(onBack: () => void): () => void {
         repeat(`${pad.index}down`, b(13) || hat === "down" || sy > 0.55, move("down", 1));
         repeat(`${pad.index}left`, b(14) || hat === "left" || sx < -0.55, move("left", -1));
         repeat(`${pad.index}right`, b(15) || hat === "right" || sx > 0.55, move("right", 1));
-        repeat(`${pad.index}a`, b(0), activate);
-        repeat(`${pad.index}b`, b(1), () => {
-          // B first stops changing a select or leaves a text box, then closes a menu or video, then goes back a page.
-          const el = document.activeElement;
-          if (editing && el === editing) setEditing(null);
-          else if (isTextField(el) && !(el instanceof HTMLSelectElement)) (el as HTMLElement).blur();
-          else back();
-        });
-        repeat(`${pad.index}y`, b(3), switchZone);
-        repeat(`${pad.index}x`, b(2), () => window.dispatchEvent(new Event(HELPER_EVENT)));
-        repeat(`${pad.index}lt`, b(6), () => switchTab(-1));
-        repeat(`${pad.index}rt`, b(7), () => switchTab(1));
-        repeat(`${pad.index}lb`, b(4), () => switchSection(-1));
-        repeat(`${pad.index}rb`, b(5), () => switchSection(1));
+        repeat(`${pad.index}a`, b(0), press("a", activate));
+        repeat(
+          `${pad.index}b`,
+          b(1),
+          press("b", () => {
+            // B first stops changing a select or leaves a text box, then closes a menu or video, then goes back a page.
+            const el = document.activeElement;
+            feel("back");
+            if (editing && el === editing) setEditing(null);
+            else if (isTextField(el) && !(el instanceof HTMLSelectElement)) (el as HTMLElement).blur();
+            else back();
+          }),
+        );
+        repeat(`${pad.index}y`, b(3), press("y", switchZone));
+        repeat(`${pad.index}x`, b(2), press("x", () => window.dispatchEvent(new Event(HELPER_EVENT))));
+        repeat(`${pad.index}lt`, b(6), press("lt", () => switchTab(-1)));
+        repeat(`${pad.index}rt`, b(7), press("rt", () => switchTab(1)));
+        repeat(`${pad.index}lb`, b(4), press("lb", () => switchSection(-1)));
+        repeat(`${pad.index}rb`, b(5), press("rb", () => switchSection(1)));
+        // View, Menu, the stick clicks and the Xbox button. Held ones don't repeat.
+        const once = (id: string, pressed: boolean, button: PadPress, action: () => void) => repeat(id, pressed, (r) => !r && press(button, action)(false));
+        const quick = padPrefs().quickMenus;
+        once(`${pad.index}view`, b(8), "view", () => quick && window.dispatchEvent(new Event(QUICK_MENU_EVENT)));
+        once(`${pad.index}menu`, b(9), "menu", () => quick && window.dispatchEvent(new CustomEvent(GAME_MENU_EVENT, { detail: document.activeElement })));
+        once(`${pad.index}l3`, b(10), "l3", () => padPrefs().stickJumps && window.dispatchEvent(new Event(LETTER_EVENT)));
+        once(`${pad.index}r3`, b(11), "r3", () => padPrefs().stickJumps && toTop());
+        once(`${pad.index}guide`, b(16), "guide", () => window.dispatchEvent(new Event(HOME_EVENT)));
         if (pad.mapping === "standard" && Math.abs(ry) > 0.25) scrollBy(ry * 18);
       }
     frame = requestAnimationFrame(poll);

@@ -5,7 +5,7 @@ import type { ApiTokenInfo, GameSummary, UserGameState } from "@lootden/shared";
 import { api, avatarUrl, formatPlaytime } from "../api";
 import { useAuth } from "../auth";
 import { bridgeError, desktop, type InstalledGame } from "../desktop";
-import { POSTER_SIZES, THEMES, usePosterSize, useTheme } from "../theme";
+import { THEMES, useTheme } from "../theme";
 import { GameLibraries } from "../components/GameLibraries";
 import { StoreScan } from "../components/StoreScan";
 import { StreamingSetup } from "../components/Streaming";
@@ -16,8 +16,7 @@ import { AchievementSummaryPanel } from "../components/Achievements";
 
 export function Profile() {
   const { me, refresh } = useAuth();
-  const { theme, touch, setTouch } = useTheme();
-  const [poster, setPoster] = usePosterSize();
+  const { theme } = useTheme();
   const current = THEMES.find((t) => t.id === theme) ?? THEMES[0]!;
   const user = me?.user;
   const [name, setName] = useState(user?.displayName ?? "");
@@ -53,39 +52,26 @@ export function Profile() {
       {msg && <p className="notice">{msg}</p>}
 
       <section className="panel">
-        <h2>Appearance</h2>
+        <h2>Settings</h2>
+        <p className="muted">
+          Theme <strong>{current.name}</strong>. Your theme, controller, keyboard and this PC's options are under Settings, You.
+        </p>
         <div className="inline">
-          <span className="theme-dots static" aria-hidden="true">
-            {current.swatch.map((c, i) => (
-              <i key={i} style={{ background: c }} />
-            ))}
-          </span>
-          <span>
-            Theme: <strong>{current.name}</strong>
-          </span>
           <Link className="button secondary" to="/settings/themes">
-            Change theme
+            Appearance
           </Link>
-        </div>
-        <label className="check">
-          <input type="checkbox" checked={touch === "on"} onChange={(e) => setTouch(e.target.checked ? "on" : "off")} />
-          Touch and handheld mode (bigger targets for ROG Ally and tablets)
-        </label>
-        <div className="inline">
-          <span>Poster and cover size</span>
-          <div className="segmented" role="tablist" aria-label="Poster size">
-            {POSTER_SIZES.map(([id, label]) => (
-              <button key={id} role="tab" aria-selected={poster === id} className={poster === id ? "active" : ""} onClick={() => setPoster(id)}>
-                {label}
-              </button>
-            ))}
-          </div>
+          <Link className="button secondary" to="/settings/controller">
+            Controller &amp; handheld
+          </Link>
+          {desktop && (
+            <Link className="button secondary" to="/settings/computer">
+              This PC
+            </Link>
+          )}
         </div>
       </section>
 
       {user && <BanditProfileCard />}
-
-      {desktop && <ThisComputer />}
 
       {user && (
         <>
@@ -244,7 +230,7 @@ export function Profile() {
   );
 }
 
-function ThisComputer() {
+export function ThisComputer() {
   const [info, setInfo] = useState<Awaited<ReturnType<NonNullable<typeof desktop>["info"]>> | null>(null);
   const [installed, setInstalled] = useState<InstalledGame[]>([]);
   const [error, setError] = useState("");

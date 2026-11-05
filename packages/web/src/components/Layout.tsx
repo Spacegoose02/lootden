@@ -9,6 +9,9 @@ import { desktop } from "../desktop";
 import { SECTION_EVENT } from "../gamepad";
 import { FunLayer } from "./FunLayer";
 import { Bandit } from "./Bandit";
+import { PadHints } from "./PadHints";
+import { Keyboard } from "./Keyboard";
+import { QuickMenus } from "./QuickMenus";
 import { useScrollMemory } from "../scrollMemory";
 
 interface NavItem {
@@ -192,6 +195,8 @@ export function Layout() {
       </main>
       <PadHints />
       <Bandit />
+      <QuickMenus />
+      <Keyboard />
       <FunLayer />
     </div>
   );
@@ -208,31 +213,5 @@ function Clock() {
     <time className="topbar-clock" dateTime={now.toISOString()}>
       {now.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
     </time>
-  );
-}
-
-/** What the controller buttons do, along the bottom while a controller is in use (shown by CSS). */
-function PadHints() {
-  return (
-    <footer className="pad-hints" aria-hidden="true">
-      <span>
-        <kbd className="pad-a">A</kbd>Select
-      </span>
-      <span>
-        <kbd className="pad-b">B</kbd>Back
-      </span>
-      <span className="pad-hint-helper">
-        <kbd className="pad-x">X</kbd>Bandit
-      </span>
-      <span>
-        <kbd className="pad-y">Y</kbd>Filters and games
-      </span>
-      <span>
-        <kbd className="pad-shoulder">LT RT</kbd>Tabs
-      </span>
-      <span>
-        <kbd className="pad-shoulder">LB RB</kbd>Sections
-      </span>
-    </footer>
   );
 }
