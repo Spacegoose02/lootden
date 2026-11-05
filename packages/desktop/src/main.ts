@@ -1005,8 +1005,30 @@ function relTo(dir: string, file: string): string {
   return rel.startsWith("..") || path.isAbsolute(rel) ? path.resolve(file) : rel;
 }
 
+/** How far each download or install has got (0 to 1), for the taskbar button's progress bar. */
+const taskbar = new Map<string, number>();
+function showTaskbarProgress(p: { gameId?: string; type?: string; index?: number; count?: number; received?: number; total?: number }): void {
+  if (!p.gameId || p.gameId === "lootden-app") return;
+  const before = taskbar.size;
+  if (p.type === "start") taskbar.set(p.gameId, 0);
+  else if (p.type === "download" && p.count && p.total) taskbar.set(p.gameId, Math.min(1, ((p.index ?? 0) + (p.received ?? 0) / p.total) / p.count));
+  else if (p.type === "extract" && taskbar.has(p.gameId)) taskbar.set(p.gameId, 1);
+  else if (p.type === "done" || p.type === "error" || p.type === "cancelled") taskbar.delete(p.gameId);
+  else return;
+  if (!win || win.isDestroyed()) return;
+  if (!taskbar.size) {
+    if (before) win.setProgressBar(-1);
+    return;
+  }
+  // Unpacking has no percentage: the bar pulses while every game is at that step.
+  const values = [...taskbar.values()];
+  const unpacking = values.every((v) => v >= 1);
+  win.setProgressBar(unpacking ? 2 : values.reduce((a, b) => a + b, 0) / values.length, { mode: unpacking ? "indeterminate" : "normal" });
+}
+
 function send(payload: object): void {
   const p = payload as { gameId?: string; type?: string };
+  showTaskbarProgress(payload as Parameters<typeof showTaskbarProgress>[0]);
   if (p.gameId && p.type === "playing") playing.add(p.gameId);
   if (p.gameId && (p.type === "stopped" || p.type === "error")) {
     playing.delete(p.gameId);

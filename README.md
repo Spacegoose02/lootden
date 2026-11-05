@@ -233,6 +233,16 @@ d-pad and A or B finishes; on the
 ROG Ally set Armoury Crate's Control Mode to Gamepad, as Auto treats LootDen as a desktop app
 and turns the controller into a mouse.
 
+With a controller, A on a text box opens LootDen's own on-screen keyboard (X deletes, Y adds a
+space, LT and RT move the cursor, Menu finishes). Menu (Start) on a game opens its options (play,
+install, favourite, hide), View (Select) opens a quick menu from anywhere, L3 jumps to a letter in
+a list of games and R3 goes back to the top. The hints along the bottom follow what's selected
+and show PlayStation or Nintendo buttons when that's the controller in use. Right-clicking a game
+opens the same options with a mouse, and downloads show their progress on the taskbar button.
+Each of these, plus rumble and menu sounds, is switched under Settings, You, Controller &
+handheld. Settings' You tab (theme, controller, this PC) is the only one people who aren't admins
+see; the Library, Downloads, Family and Server tabs are admin only.
+
 ## Command-line client
 
 Download `lootden-cli-win-x64.zip` or `lootden-cli-linux-x64.tar.gz` from Get the app.
