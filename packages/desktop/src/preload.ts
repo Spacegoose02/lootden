@@ -91,6 +91,12 @@ const bridge = {
   quit: () => ipcRenderer.invoke("gm:quit"),
   titleBarColors: (color: string, symbolColor: string) => ipcRenderer.invoke("gm:titleBarColors", color, symbolColor),
   offlineTheme: (colors: Record<string, string>) => ipcRenderer.invoke("gm:offlineTheme", colors),
+  overlay: (action: string, gameId?: string) => ipcRenderer.invoke("gm:overlay", action, gameId),
+  onOverlay: (cb: (s: unknown) => void) => {
+    const listener = (_e: unknown, s: unknown) => cb(s);
+    ipcRenderer.on("gm:overlay", listener);
+    return () => ipcRenderer.removeListener("gm:overlay", listener);
+  },
   onProgress: (cb: (p: unknown) => void) => {
     const listener = (_e: unknown, p: unknown) => cb(p);
     ipcRenderer.on("gm:progress", listener);

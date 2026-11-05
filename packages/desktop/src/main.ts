@@ -116,6 +116,7 @@ import { cleanDiscordId, DiscordPresence, showSplash } from "./playextras.js";
 import { isExternalLink, isFile, onOrigin, permissionAllowed } from "./links.js";
 import { SettingsStore, type DesktopSettings } from "./settings.js";
 import { WebBrowser } from "./browser.js";
+import { PadWatcher } from "./padwatch.js";
 import { TruckMods } from "./truckmods.js";
 import { TruckModList } from "./truckmodlist.js";
 import { downloadUpdate, installKind, launchUpdate, pickUpdate, verifyUpdate, type AvailableUpdate } from "./updater.js";
@@ -742,6 +743,7 @@ async function heartbeat(): Promise<void> {
     const procs = stores.length ? await listProcesses().catch(() => []) : [];
     const playingNow = [...[...nowRunning.values()].map((r) => r.game), ...runningStoreGames(procs, stores, storeSince, mine)];
     lastPlayingNow = playingNow;
+    updatePadWatch();
     updateScreenshotKey(playingNow.length > 0);
     const api = clientFor(currentPlayer()) ?? (await client());
     const answer = await api.presence({
@@ -815,6 +817,63 @@ async function shareScreenshot(): Promise<void> {
   } finally {
     shooting = false;
   }
+}
+
+// ---- In-game menu ------------------------------------------------------------------
+
+/**
+ * Holding View + Menu (or the Xbox button) while a game runs brings LootDen up over it with the
+ * in-game menu: resume, pause, a screenshot for the family wall, Bandit, the browser and
+ * closing the game. Works over borderless and windowed games; exclusive full screen games
+ * may need Alt+Tab first, as Windows won't put a window over them.
+ */
+let overlayOpen = false;
+const padWatch = new PadWatcher(
+  () => settings.get().overlay ?? "view-menu",
+  () => toggleOverlay(),
+  (msg) => console.warn(msg),
+);
+
+/** The watcher only runs while something is being played, so it costs nothing the rest of the time. */
+function updatePadWatch(): void {
+  const busy = playing.size > 0 || nowRunning.size > 0 || lastPlayingNow.length > 0;
+  if (busy && (settings.get().overlay ?? "view-menu") !== "off") padWatch.start();
+  else padWatch.stop();
+}
+
+function overlayState(open: boolean) {
+  return { open, games: lastPlayingNow, paused: [...suspended.entries()].filter(([, v]) => v.since !== null).map(([id]) => id) };
+}
+
+function toggleOverlay(): void {
+  if (!win || win.isDestroyed()) return;
+  if (overlayOpen && win.isFocused()) return closeOverlay(true);
+  overlayOpen = true;
+  if (win.isMinimized()) win.restore();
+  win.setAlwaysOnTop(true, "screen-saver");
+  win.show();
+  win.moveTop();
+  win.focus();
+  win.webContents.focus();
+  win.webContents.send("gm:overlay", overlayState(true));
+}
+
+/** Back to the game: LootDen steps out of the way so the game has the screen and the controller again. */
+function closeOverlay(backToGame: boolean): void {
+  overlayOpen = false;
+  if (!win || win.isDestroyed()) return;
+  win.setAlwaysOnTop(false);
+  win.webContents.send("gm:overlay", overlayState(false));
+  if (backToGame) win.minimize();
+}
+
+/** Closes a running game straight away (the in-game menu's Close game, which asks first). */
+function closeRunning(gameId: string): void {
+  const mine = nowRunning.get(gameId);
+  if (mine?.stop) return mine.stop.abort();
+  const m = /^store:([^:]+):(.+)$/.exec(gameId);
+  const store = m && storeGamesCache?.games.find((g) => g.addon === m[1] && g.externalId === m[2]);
+  if (store) void closeFolders([store.installDir]).catch(() => {});
 }
 
 // ---- Game streaming (Sunshine and Moonlight) ------------------------------------
@@ -1038,7 +1097,10 @@ function send(payload: object): void {
     if (runningDirs.delete(p.gameId)) updateSuspendKey();
     updateDiscord();
   }
-  if (p.type === "playing" || p.type === "stopped") refreshTray();
+  if (p.type === "playing" || p.type === "stopped") {
+    refreshTray();
+    updatePadWatch();
+  }
   win?.webContents.send("gm:progress", payload);
 }
 
@@ -2430,6 +2492,31 @@ function registerIpc(): void {
     if (file) await shell.openPath(file);
   });
 
+  /** The in-game menu's buttons. */
+  ipcMain.handle("gm:overlay", async (e, action: string, gameId?: string) => {
+    fromServer(e);
+    if (action === "state") return overlayState(overlayOpen);
+    if (action === "resume") return closeOverlay(true);
+    if (action === "dismiss") return closeOverlay(false);
+    if (action === "pause") return toggleSuspend(typeof gameId === "string" ? gameId : undefined);
+    if (action === "screenshot") {
+      // Out of the way first, so the picture is of the game and not the menu.
+      closeOverlay(true);
+      await new Promise((r) => setTimeout(r, 600));
+      return shareScreenshot();
+    }
+    if (action === "close" && typeof gameId === "string") {
+      closeRunning(gameId);
+      return closeOverlay(false);
+    }
+    if (action === "browser") {
+      // The browser opens in its own window, over LootDen.
+      win?.setAlwaysOnTop(false);
+      return browser.open();
+    }
+    throw new Error("Unknown in-game menu action");
+  });
+
   /** The built-in web browser, on its start page or a web page. */
   ipcMain.handle("gm:openBrowser", (e, url?: string) => {
     fromServer(e);
@@ -2441,12 +2528,13 @@ function registerIpc(): void {
     await shell.openPath((await findInstalled(gameId)).dir);
   });
 
-  ipcMain.handle("gm:appSettings", (e, patch?: Partial<Pick<DesktopSettings, "closeToTray" | "autoUpdate" | "openAtLogin" | "handheld" | "fullscreen" | "browserLinks" | "splash" | "suspendKey" | "storeSaves">> & { discordEnabled?: boolean; discordClientId?: string }) => {
+  ipcMain.handle("gm:appSettings", (e, patch?: Partial<Pick<DesktopSettings, "closeToTray" | "autoUpdate" | "openAtLogin" | "handheld" | "fullscreen" | "browserLinks" | "splash" | "suspendKey" | "storeSaves" | "overlay">> & { discordEnabled?: boolean; discordClientId?: string }) => {
     fromServer(e);
     if (patch) {
       const clean: Partial<DesktopSettings> = {};
       if (patch.splash && ["off", "handheld", "on"].includes(patch.splash)) clean.splash = patch.splash;
       if (typeof patch.suspendKey === "boolean") clean.suspendKey = patch.suspendKey;
+      if (patch.overlay && ["view-menu", "guide", "off"].includes(patch.overlay)) clean.overlay = patch.overlay;
       if (typeof patch.storeSaves === "boolean") clean.storeSaves = patch.storeSaves;
       if (typeof patch.discordEnabled === "boolean" || typeof patch.discordClientId === "string") {
         const was = settings.get().discord ?? { enabled: false, clientId: "" };
@@ -2475,11 +2563,16 @@ function registerIpc(): void {
         else updateDiscord();
       }
       if ("suspendKey" in clean) updateSuspendKey();
+      if (clean.overlay) {
+        padWatch.stop();
+        updatePadWatch();
+      }
     }
     const s = settings.get();
     return {
       splash: s.splash ?? "handheld",
       suspendKey: !!s.suspendKey,
+      overlay: s.overlay ?? "view-menu",
       storeSaves: s.storeSaves !== false,
       discordEnabled: !!s.discord?.enabled,
       discordClientId: s.discord?.clientId ?? "",
@@ -2759,7 +2852,10 @@ app.on("second-instance", (_e, argv) => {
   if (argv.includes("--browser")) void browser.open();
 });
 app.on("before-quit", () => (quitting = true));
-app.on("will-quit", () => globalShortcut.unregisterAll());
+app.on("will-quit", () => {
+  globalShortcut.unregisterAll();
+  padWatch.stop();
+});
 app.on("open-url", (e, url) => {
   e.preventDefault();
   void openDeepLink(url);

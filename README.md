@@ -243,6 +243,21 @@ Each of these, plus rumble and menu sounds, is switched under Settings, You, Con
 handheld. Settings' You tab (theme, controller, this PC) is the only one people who aren't admins
 see; the Library, Downloads, Family and Server tabs are admin only.
 
+The top menu has six sections (Home, Library, Discover, Family, Downloads for admins, Settings),
+so LB and RB go round them quickly and come back to the page you last had open in each. A
+section's pages (Library: Games, Emulation, Updates) are a row of links under the top bar. A
+game's page opens with Play or Install selected when you're using a controller, and its panels
+are in tabs (Overview, Updates & mods, Saves & files, Admin) that LT and RT switch.
+
+**In-game menu** (desktop app): hold View + Menu while a game runs (or press the Xbox button, if
+you pick that under Settings, You, Controller & handheld) and LootDen comes up over the game. From
+there you can go back to the game, pause it, ask Bandit about it, open the built-in browser for a
+guide, put a screenshot on the family wall or close the game. The app reads the controller
+through XInput on Windows and `/dev/input/js*` on Linux, and only while something is being
+played. It works over borderless and windowed games. Windows won't put a window over a game in
+exclusive full screen, so switch that game to borderless. On a handheld or laptop the top bar
+shows the battery beside the clock.
+
 ## Command-line client
 
 Download `lootden-cli-win-x64.zip` or `lootden-cli-linux-x64.tar.gz` from Get the app.

@@ -65,6 +65,8 @@ export interface DesktopSettings {
   splash?: "off" | "handheld" | "on";
   /** Ctrl+Shift+P (or the game page) pauses and resumes the running game. */
   suspendKey?: boolean;
+  /** The controller combo that brings up the in-game menu over a running game. Missing means View + Menu. */
+  overlay?: "view-menu" | "guide" | "off";
   /** Back up other stores' games' saves (found through Ludusavi's list) after playing them. Off only when false. */
   storeSaves?: boolean;
 }

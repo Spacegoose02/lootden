@@ -130,6 +130,13 @@ export interface AppUpdate {
   checkedAt?: string;
 }
 
+/** What the in-game menu shows: whether it's open, the games running and which are paused. */
+export interface OverlayState {
+  open: boolean;
+  games: Array<{ gameId: string; title: string; source: string; store?: string; startedAt: string }>;
+  paused: string[];
+}
+
 export interface AppSettings {
   closeToTray: boolean;
   autoUpdate: boolean;
@@ -149,13 +156,15 @@ export interface AppSettings {
   /** Launch splash, the suspend key and Discord status (newer apps only). */
   splash?: "off" | "handheld" | "on";
   suspendKey?: boolean;
+  /** The controller combo for the in-game menu (newer apps only). */
+  overlay?: "view-menu" | "guide" | "off";
   /** Back up other stores' games' saves after playing (newer apps only). */
   storeSaves?: boolean;
   discordEnabled?: boolean;
   discordClientId?: string;
 }
 
-export type AppSettingsPatch = Partial<Pick<AppSettings, "closeToTray" | "autoUpdate" | "openAtLogin" | "handheld" | "fullscreen" | "browserLinks" | "splash" | "suspendKey" | "storeSaves" | "discordEnabled" | "discordClientId">>;
+export type AppSettingsPatch = Partial<Pick<AppSettings, "closeToTray" | "autoUpdate" | "openAtLogin" | "handheld" | "fullscreen" | "browserLinks" | "splash" | "suspendKey" | "storeSaves" | "overlay" | "discordEnabled" | "discordClientId">>;
 
 export interface StoreSavesState {
   /** The game's name in Ludusavi's list, when found. */
@@ -304,6 +313,9 @@ export interface DesktopBridge {
   toggleFullscreen(): Promise<boolean>;
   /** Tray, start-up and update options (missing in apps before 0.9.1). */
   appSettings?(patch?: AppSettingsPatch): Promise<AppSettings>;
+  /** The in-game menu over a running game (apps from 0.29): its buttons, and being told when it opens or closes. */
+  overlay?(action: "state" | "resume" | "dismiss" | "pause" | "screenshot" | "close" | "browser", gameId?: string): Promise<OverlayState | { gameId: string; suspended: boolean } | null | void>;
+  onOverlay?(cb: (s: OverlayState) => void): () => void;
   appUpdate?(action?: "status" | "check" | "install"): Promise<AppUpdate>;
   /** Quits the app for real (closing the window only hides it to the tray). */
   quit?(): Promise<void>;

@@ -5195,3 +5195,137 @@ html[data-lootden-frame] .lightbox {
     overflow-x: auto;
   }
 }
+
+/* The pages of the section you're in, under the top bar (Library: Games, Emulation, Updates). */
+.subnav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  margin: -0.4rem 0 1.2rem;
+}
+.subnav a {
+  padding: 0.4rem 0.9rem;
+  border-radius: 999px;
+  color: var(--muted);
+  font-weight: 600;
+  text-decoration: none;
+}
+.subnav a:hover {
+  color: var(--text);
+  background: var(--panel);
+}
+.subnav a.active {
+  color: var(--text);
+  background: var(--panel-solid);
+  box-shadow: inset 0 -2px 0 var(--accent);
+}
+:root[data-touch="on"] .subnav a {
+  padding: 0.6rem 1.1rem;
+  font-size: 1.05rem;
+}
+
+/* A game's page: Overview, Updates & mods, Saves & files and Admin under its header. */
+.detail-tabs {
+  position: relative;
+  margin: 1.5rem 0 1rem;
+}
+
+/* A game with no art already wears its name on the generated cover: don't print it twice under it. */
+.card:has(.cover-placeholder) .card-title {
+  display: none;
+}
+
+/* The in-game menu over a running game (desktop app). Bandit (z-index 40) opens over it. */
+.overlay-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 38;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: color-mix(in srgb, var(--bg) 70%, transparent);
+  backdrop-filter: blur(18px);
+}
+.game-overlay {
+  display: grid;
+  gap: 1rem;
+  width: min(560px, 100%);
+  max-height: calc(100vh - 32px);
+  overflow: auto;
+  padding: 1.4rem;
+  border-radius: 20px;
+  background: var(--panel-solid);
+  box-shadow: 0 30px 90px rgb(0 0 0 / 0.55);
+}
+.overlay-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+}
+.overlay-head h2 {
+  margin: 0.1rem 0;
+  font-size: 1.6rem;
+}
+.overlay-clock {
+  font-size: 1.1rem;
+  font-weight: 700;
+}
+.overlay-actions {
+  display: grid;
+  gap: 0.5rem;
+}
+.overlay-actions button {
+  justify-content: flex-start;
+  min-height: 3rem;
+  padding: 0.7rem 1rem;
+  font-size: 1.05rem;
+  text-align: left;
+}
+.overlay-actions .danger {
+  background: #c0334d;
+  color: #fff;
+}
+.overlay-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+/* Battery beside the clock on a handheld or laptop. */
+.topbar-battery {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+.battery-shell {
+  position: relative;
+  width: 1.6rem;
+  height: 0.8rem;
+  border: 2px solid currentColor;
+  border-radius: 3px;
+}
+.battery-shell::after {
+  content: "";
+  position: absolute;
+  right: -5px;
+  top: 2px;
+  width: 3px;
+  height: 0.3rem;
+  border-radius: 0 2px 2px 0;
+  background: currentColor;
+}
+.battery-fill {
+  position: absolute;
+  inset: 1px auto 1px 1px;
+  max-width: calc(100% - 2px);
+  border-radius: 1px;
+  background: currentColor;
+}
+.topbar-battery.low {
+  color: #ff6b7d;
+}
