@@ -66,7 +66,20 @@
       .muted { color: var(--muted); }
       .error { color: #ff5c7a; min-height: 1.4em; }
       .hints { margin-top: 2rem; font-size: 0.85rem; }
-      .hints kbd { font: inherit; font-weight: 800; padding: 0.05em 0.45em; border-radius: 6px; color: var(--accentText); background: var(--accent2); margin-right: 0.25em; }
+      .hints kbd, .dl kbd { font: inherit; font-weight: 800; padding: 0.05em 0.45em; border-radius: 6px; color: var(--accentText); background: var(--accent2); margin-right: 0.25em; }
+      /* Sending magnet and download links to LootDen's downloads, without leaving the browser. */
+      #dl.on { color: var(--accent2); }
+      .dl { display: flex; flex-direction: column; gap: 6px; padding: 8px 10px 10px; background: var(--bg2); border-top: 1px solid var(--border); }
+      .dl[hidden], .dl [hidden] { display: none; }
+      .dl .offer { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 12px; border: 1px solid var(--accent2); background: color-mix(in srgb, var(--accent2) 10%, var(--bg)); }
+      .dl .offer span { flex: 1 1 16rem; min-width: 0; overflow-wrap: anywhere; }
+      .dl form { flex: none; display: flex; flex-wrap: wrap; gap: 6px; min-width: 0; }
+      .dl input { flex: 1 1 18rem; min-width: 0; padding: 0.45em 1em; border-radius: 999px; border: 1px solid var(--border); background: var(--bg); }
+      .dl .primary { padding: 0.45em 1.1em; }
+      .dl ul { list-style: none; margin: 0; padding: 0; font-size: 0.9rem; }
+      .dl li { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .dl li.ok::before { content: "✓ "; color: #4be39a; }
+      .dl li.bad::before { content: "✕ "; color: #ff5c7a; }
       html[data-handheld="on"] body { font-size: 17px; }
       @media (max-width: 720px) { .toolbar .exit span { display: none; } }
     </style>
@@ -82,9 +95,26 @@
         <button id="home" title="Start page" aria-label="Start page">⌂</button>
         <form id="form"><input id="address" type="text" spellcheck="false" autocomplete="off" placeholder="Search or type a web address" aria-label="Address" /></form>
         <button id="star" title="Add to the start page" aria-label="Bookmark">☆</button>
+        <button id="dl" title="Send a magnet or download link to LootDen downloads" aria-label="Send to LootDen downloads" hidden>⇩</button>
         <span class="mode" id="mode" aria-live="polite"></span>
         <button id="full" title="Full screen (F11)" aria-label="Full screen">⛶</button>
       </div>
+      <section class="dl" id="dlPanel" hidden aria-label="Send to LootDen downloads">
+        <div class="offer" id="offer" hidden>
+          <span id="offerText"></span>
+          <button class="primary" id="offerSend" type="button">Send to downloads</button>
+          <button class="ghost" id="offerSkip" type="button">Not now</button>
+        </div>
+        <form id="dlForm">
+          <input id="dlUrl" type="text" spellcheck="false" autocomplete="off" placeholder="Paste a magnet or download link" aria-label="Magnet or download link" />
+          <button class="primary" type="submit">Send</button>
+          <button class="ghost" id="dlPage" type="button" title="Send this page's address, for file hosts like MediaFire or Pixeldrain">Send this page</button>
+          <button class="ghost" id="dlOpen" type="button">Open Downloads in LootDen</button>
+          <button class="ghost" id="dlClose" type="button" aria-label="Close">✕</button>
+        </form>
+        <p class="muted" style="margin: 0; font-size: 0.85rem">Magnet links you click come here by themselves. On a page, right click a link (<kbd>X</kbd> on a controller) to send it.</p>
+        <ul id="dlSent"></ul>
+      </section>
     </header>
     <main id="start">
       <form class="search" id="searchForm">
@@ -108,7 +138,7 @@
       <h2>Search with</h2>
       <div class="row" id="engines" role="radiogroup" aria-label="Search engine"></div>
       <p class="muted hints">
-        Controller: <kbd>A</kbd>select <kbd>B</kbd>back <kbd>Y</kbd>address bar <kbd>LB</kbd><kbd>RB</kbd>tabs <kbd>View</kbd>toolbar or page. On a page the left stick moves a pointer, <kbd>A</kbd>clicks and the right stick scrolls;
+        Controller: <kbd>A</kbd>select <kbd>B</kbd>back <kbd>Y</kbd>address bar <kbd>LB</kbd><kbd>RB</kbd>tabs <kbd>View</kbd>toolbar or page. On a page the left stick moves a pointer, <kbd>A</kbd>clicks, <kbd>X</kbd> on a link sends it to LootDen downloads and the right stick scrolls;
         <kbd>Menu</kbd>hands the controller to the page for cloud gaming, and <kbd>View</kbd>+<kbd>Menu</kbd> takes it back.
       </p>
     </main>
@@ -117,6 +147,8 @@
       const $ = (id) => document.getElementById(id);
       let state = null;
       let editing = false;
+      /** The downloads panel under the toolbar, opened with its button (it also opens by itself for a link to send). */
+      let dlOpen = false;
       /** Who the controller drives: the toolbar ("bar"), a pointer on the page ("page"), or the page itself ("pass"). */
       let mode = "bar";
       const cleanError = (x) => String(x?.message || x).replace(/^Error invoking remote method '[^']+': (Error: )?/, "");
@@ -194,6 +226,7 @@
         $("star").classList.toggle("on", marked);
         $("star").title = marked ? "Take off the start page" : "Add to the start page";
         if (document.activeElement !== $("address")) $("address").value = tab?.url ?? "";
+        renderDownloads();
         renderStart();
         renderMode();
       }
@@ -247,6 +280,27 @@
         }
       }
 
+      function renderDownloads() {
+        const d = state.downloads ?? { available: false, offer: null, sent: [], page: false };
+        $("dl").hidden = !d.available;
+        $("dl").classList.toggle("on", dlOpen);
+        $("dlPanel").hidden = !d.available || !(dlOpen || d.offer);
+        $("offer").hidden = !d.offer;
+        if (d.offer) $("offerText").textContent = `Send “${d.offer.title}” to ${d.offer.kind === "torrent" ? "the torrent client" : d.offer.kind === "usenet" ? "SABnzbd" : "the Download Manager"}?`;
+        $("dlForm").hidden = !dlOpen;
+        $("dlPage").disabled = !d.page;
+        const list = $("dlSent");
+        list.replaceChildren(...d.sent.map((r) => Object.assign(document.createElement("li"), { className: r.ok ? "ok" : "bad", textContent: `${r.title}: ${r.message}` })));
+      }
+      async function send(fn) {
+        try {
+          await fn();
+        } catch (e) {
+          state.downloads.sent.unshift({ title: "Not sent", ok: false, message: cleanError(e) });
+          renderDownloads();
+        }
+      }
+
       function renderMode() {
         const m = $("mode");
         if (!onPage()) return void (m.textContent = "");
@@ -282,6 +336,27 @@
       $("home").addEventListener("click", () => br.home());
       $("star").addEventListener("click", () => br.toggleBookmark());
       $("full").addEventListener("click", () => br.fullscreen());
+      $("dl").addEventListener("click", () => {
+        dlOpen = !dlOpen;
+        renderDownloads();
+        if (dlOpen) $("dlUrl").focus();
+      });
+      $("dlClose").addEventListener("click", () => {
+        dlOpen = false;
+        renderDownloads();
+        $("dl").focus();
+      });
+      $("dlForm").addEventListener("submit", (e) => {
+        e.preventDefault();
+        const url = $("dlUrl").value.trim();
+        if (!url) return;
+        $("dlUrl").value = "";
+        void send(() => br.sendDownload(url));
+      });
+      $("dlPage").addEventListener("click", () => void send(() => br.sendPage()));
+      $("dlOpen").addEventListener("click", () => br.openDownloads());
+      $("offerSend").addEventListener("click", () => void send(() => br.sendDownload()).then(() => onPage() && setMode("page")));
+      $("offerSkip").addEventListener("click", () => void br.dismissOffer().then(() => onPage() && setMode("page")));
       $("form").addEventListener("submit", (e) => {
         e.preventDefault();
         const text = $("address").value;
@@ -336,6 +411,12 @@
         state = s;
         render();
         if (first && !onPage()) $("q").focus();
+      });
+      // A magnet or .torrent link on the page: the toolbar takes the controller, so A sends it.
+      br.onOffer(() => {
+        mode = "bar";
+        renderMode();
+        setTimeout(() => $("offerSend").focus(), 0);
       });
       br.onFocusAddress(() => {
         mode = "bar";

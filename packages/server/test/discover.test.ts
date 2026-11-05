@@ -163,3 +163,27 @@ describe("youtube videos", () => {
     await app.close();
   });
 });
+
+describe("discover search", () => {
+  it("doesn't wait on a source that hangs, and says so when no source answers", async () => {
+    const { app, ctx } = await makeApp(root, { apiToken: "svc" });
+    const headers = { authorization: "Bearer svc" };
+    const quick = { name: "quick", search: async () => [{ provider: "quick", providerId: "1", name: "Grand Theft Auto V", year: 2013, coverUrl: null }] };
+    const hung = { name: "hung", search: () => new Promise<never>(() => {}) };
+    const broken = { name: "broken", search: async () => Promise.reject(new Error("answered 500")) };
+    let sources: object[] = [hung, quick, broken];
+    (ctx.metadata as unknown as { ordered: () => object[] }).ordered = () => sources;
+
+    const started = Date.now();
+    const found = await ctx.metadata.searchAll("grand theft auto", null, undefined, 50);
+    assert.ok(Date.now() - started < 2000, "the hung source is left behind");
+    assert.deepEqual(found.results.map((r) => r.name), ["Grand Theft Auto V"]);
+    assert.deepEqual(found.failed.map((f) => f.provider).sort(), ["broken", "hung"]);
+
+    sources = [broken];
+    const res = await app.inject({ url: "/api/discover/search?q=grand%20theft%20auto", headers });
+    assert.equal(res.statusCode, 502);
+    assert.match(res.json().error, /No game source answered: broken \(answered 500\)/);
+    await app.close();
+  });
+});

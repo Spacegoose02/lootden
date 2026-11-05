@@ -311,12 +311,18 @@ async function client(): Promise<GameServerClient> {
  * The web browser's rules for whoever is signed in to LootDen's window (else this computer's
  * token). The last answer is kept, so a kid profile stays kid-safe while the server is away.
  */
+/** The signed-in person's sign-in for calls the app makes to the server itself: the window's session, else this computer's token. */
+async function serverAuth(): Promise<Record<string, string>> {
+  const s = settings.get();
+  const [cookie] = await session.defaultSession.cookies.get({ url: s.serverUrl, name: "gm_session" }).catch(() => []);
+  return cookie ? { Cookie: `gm_session=${cookie.value}` } : s.apiToken ? { Authorization: `Bearer ${s.apiToken}` } : {};
+}
+
 async function browserPolicy(): Promise<BrowserPolicy | null> {
   const s = settings.get();
   const kept = s.browserPolicy ? cleanPolicy(s.browserPolicy) : null;
   if (!origin()) return kept;
-  const [cookie] = await session.defaultSession.cookies.get({ url: s.serverUrl, name: "gm_session" }).catch(() => []);
-  const headers: Record<string, string> = cookie ? { Cookie: `gm_session=${cookie.value}` } : s.apiToken ? { Authorization: `Bearer ${s.apiToken}` } : {};
+  const headers = await serverAuth();
   if (!Object.keys(headers).length) return kept;
   const res = await net.fetch(`${origin()}/api/me/browser`, { headers, signal: AbortSignal.timeout(4000) }).catch(() => null);
   // A server from before browser rules has none to give.
@@ -328,6 +334,27 @@ async function browserPolicy(): Promise<BrowserPolicy | null> {
   const policy = cleanPolicy(await res.json().catch(() => null));
   if (JSON.stringify(policy) !== JSON.stringify(s.browserPolicy)) settings.update({ browserPolicy: policy });
   return policy;
+}
+
+/** A magnet or download link from the built-in browser, to the server's torrent client, SABnzbd or Download Manager. */
+async function sendToDownloads(url: string, title?: string, kind?: string): Promise<{ title: string; to: string }> {
+  if (!origin()) throw new Error("Connect to a LootDen server first");
+  const headers = await serverAuth();
+  if (!Object.keys(headers).length) throw new Error("Sign in to LootDen first");
+  const res = await net
+    .fetch(`${origin()}/api/downloads/link`, {
+      method: "POST",
+      headers: { ...headers, "Content-Type": "application/json" },
+      body: JSON.stringify({ url, title, kind }),
+      signal: AbortSignal.timeout(60_000),
+    })
+    .catch(() => null);
+  if (!res) throw new Error("Can't reach the LootDen server");
+  const data = (await res.json().catch(() => ({}))) as { title?: string; to?: string; error?: string };
+  if (res.status === 404) throw new Error("The server is too old for this; update it to send links from the browser");
+  if (res.status === 403) throw new Error("Only admins can send downloads");
+  if (!res.ok) throw new Error(data.error ?? `The server answered ${res.status}`);
+  return { title: data.title ?? title ?? url, to: data.to ?? "downloads" };
 }
 
 /**
@@ -2745,6 +2772,14 @@ void app.whenReady().then(async () => {
     preload: path.join(__dirname, "browser-preload.cjs"),
     icon: path.join(__dirname, "..", "build", "icon.png"),
     onDownload: (item, wc, owner) => truckMods.handleDownload(item, wc, owner),
+    sendToDownloads,
+    openDownloads: () => {
+      browser.close();
+      if (!win || !origin()) return;
+      win.show();
+      win.focus();
+      void win.loadURL(`${origin()}/downloads`);
+    },
   });
   browser.registerIpc();
   createTray();

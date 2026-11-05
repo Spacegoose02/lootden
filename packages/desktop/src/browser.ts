@@ -16,6 +16,7 @@ import {
   type BrowserPolicy,
   type SearchEngine,
 } from "@lootden/client";
+import { downloadLinkKind, downloadLinkTitle, type DownloadLinkKind } from "@lootden/shared";
 import type { SettingsStore } from "./settings.js";
 
 /**
@@ -59,7 +60,29 @@ export interface BrowserDeps {
   icon: string;
   /** Takes a download for itself (truck mods into the game's mod folder); false lets it go on as usual. */
   onDownload?: (item: DownloadItem, wc: WebContents | undefined, owner: BaseWindow | null) => boolean;
+  /** Sends a magnet or download link to the server's downloads; resolves to where it went, or throws why not. */
+  sendToDownloads?: (url: string, title?: string, kind?: DownloadLinkKind) => Promise<{ title: string; to: string }>;
+  /** Closes the browser and shows LootDen's Downloads page. */
+  openDownloads?: () => void;
 }
+
+/** A link the page offered (a magnet, a .torrent, a link picked with right click) waiting for a yes in the toolbar. */
+interface DownloadOffer {
+  url: string;
+  title: string;
+  kind: DownloadLinkKind;
+}
+
+/** What happened to a link sent from the browser, newest first in the toolbar's downloads panel. */
+interface SentLink {
+  title: string;
+  ok: boolean;
+  message: string;
+}
+
+/** Files the torrent client or SABnzbd should get instead of the browser's own downloads. */
+const HANDOFF_FILE = /\.(torrent|nzb)$/i;
+const HANDOFF_MIME = /application\/(x-bittorrent|x-nzb)/i;
 
 /** Permissions sites may have without asking; camera and microphone are asked for, the rest refused. */
 const SITE_PERMISSIONS = new Set(["fullscreen", "pointerLock", "keyboardLock", "clipboard-sanitized-write"]);
@@ -97,6 +120,9 @@ export class WebBrowser {
   private configured = new Set<string>();
   /** The signed-in person's browser rules; null lets everything through (an older server). */
   private policy: BrowserPolicy | null = null;
+  /** A link waiting to be sent to LootDen's downloads, and the links sent so far this time the browser is open. */
+  private offered: DownloadOffer | null = null;
+  private sent: SentLink[] = [];
 
   constructor(private readonly deps: BrowserDeps) {}
 
@@ -174,6 +200,8 @@ export class WebBrowser {
       this.win = null;
       this.shell = null;
       this.htmlFullscreen = false;
+      this.offered = null;
+      this.sent = [];
       const m = this.deps.mainWindow();
       if (m && !m.isDestroyed()) {
         m.show();
@@ -314,6 +342,10 @@ export class WebBrowser {
     wc.on("will-navigate", guard);
     wc.on("will-redirect", guard);
     wc.on("before-input-event", (e, input) => this.shortcut(e, input));
+    // Right click (X on the controller) on a link offers to send it to LootDen's downloads.
+    wc.on("context-menu", (_e, params) => {
+      if (params.linkURL) this.offer(params.linkURL, params.linkText);
+    });
     wc.on("enter-html-full-screen", () => {
       this.htmlFullscreen = true;
       this.wasFullscreen = !!this.win?.isFullScreen();
@@ -336,6 +368,8 @@ export class WebBrowser {
   private async external(url: string): Promise<void> {
     // Kid-safe browsing stays inside the browser.
     if (this.kids) return;
+    // Magnet links go to the torrent client the server uses, after a yes in the toolbar.
+    if (/^magnet:/i.test(url)) return void this.offer(url);
     if (/^mailto:/i.test(url)) return void shell.openExternal(url);
     if (!isStoreLaunchUrl(url) || !this.win) return;
     const scheme = url.split(":")[0];
@@ -372,6 +406,61 @@ export class WebBrowser {
   private focusAddress(): void {
     this.shell?.webContents.focus();
     this.shell?.webContents.send("gm:browser:focusAddress");
+  }
+
+  // ---- Sending links to LootDen's downloads ----------------------------------------
+
+  private get canSend(): boolean {
+    return !this.kids && !!this.deps.sendToDownloads;
+  }
+
+  /** Asks in the toolbar whether to send a link to LootDen's downloads; false when it isn't a link LootDen can download. */
+  offer(url: string, text?: string): boolean {
+    const kind = downloadLinkKind(url);
+    if (!this.canSend || !kind) return false;
+    const named = text?.trim() && !/^https?:|^magnet:/i.test(text.trim()) ? text.trim().slice(0, 200) : "";
+    this.offered = { url, kind, title: kind === "torrent" && /^magnet:/i.test(url) ? downloadLinkTitle(url) : named || downloadLinkTitle(url) };
+    // The toolbar takes the controller so A sends it straight away.
+    this.win?.show();
+    this.shell?.webContents.focus();
+    this.push();
+    this.shell?.webContents.send("gm:browser:offer");
+    return true;
+  }
+
+  /** Sends a link (the one offered, when none is given) and remembers how it went. */
+  async sendDownload(url?: string): Promise<SentLink> {
+    const offer = url ? null : this.offered;
+    const link = (url ?? offer?.url ?? "").trim();
+    if (!this.canSend) throw new Error("Sending links to downloads isn't available here");
+    if (!downloadLinkKind(link)) throw new Error("That isn't a magnet link or a web address");
+    if (offer) this.offered = null;
+    let result: SentLink;
+    try {
+      const r = await this.deps.sendToDownloads!(link, offer?.title, offer?.kind);
+      result = { title: r.title, ok: true, message: `Sent to ${r.to}` };
+    } catch (err) {
+      result = { title: offer?.title ?? downloadLinkTitle(link), ok: false, message: (err as Error).message };
+    }
+    this.sent = [result, ...this.sent].slice(0, 5);
+    this.push();
+    return result;
+  }
+
+  /** Lets a .torrent or .nzb the page starts downloading go to the server instead. */
+  private handoff(item: DownloadItem): boolean {
+    if (!this.canSend) return false;
+    const url = item.getURL();
+    // A file the page made itself (blob:, data:) has no address the server could fetch.
+    if (!/^https?:/i.test(url)) return false;
+    if (!HANDOFF_FILE.test(item.getFilename()) && !HANDOFF_MIME.test(item.getMimeType()) && !HANDOFF_FILE.test(new URL(url).pathname)) return false;
+    const kind = /\.nzb$/i.test(item.getFilename()) || /x-nzb/i.test(item.getMimeType()) ? "usenet" : "torrent";
+    item.cancel();
+    this.offered = { url, kind, title: item.getFilename().replace(HANDOFF_FILE, "") || downloadLinkTitle(url) };
+    this.shell?.webContents.focus();
+    this.push();
+    this.shell?.webContents.send("gm:browser:offer");
+    return true;
   }
 
   // ---- Layout and state --------------------------------------------------------------
@@ -414,6 +503,7 @@ export class WebBrowser {
       engines: this.kids ? [{ id: "kiddle", name: "Kiddle" }] : Object.entries(SEARCH_ENGINES).map(([id, e]) => ({ id, name: e.name })),
       kids: this.kids,
       theme: this.settings().offlineTheme ?? null,
+      downloads: { available: this.canSend, offer: this.offered, sent: this.sent, page: !!this.tab?.view && !this.tab.blocked && /^https?:/i.test(this.tab.url) },
       frame: { custom: this.deps.customFrame, fullscreen: !!this.win?.isFullScreen(), height: this.deps.titlebarHeight, handheld: this.deps.handheld() },
     };
   }
@@ -508,6 +598,7 @@ export class WebBrowser {
     ses.on("will-download", (_e, item, wc) => {
       if (this.kids) return;
       try {
+        if (this.handoff(item)) return;
         this.deps.onDownload?.(item, wc, this.win);
       } catch {
         /* a normal download, then */
@@ -574,6 +665,13 @@ export class WebBrowser {
       const l = launcherShortcuts(process.platform).find((x) => x.id === id);
       if (l) await shell.openExternal(l.url);
     });
+    on("sendDownload", (url: unknown) => this.sendDownload(typeof url === "string" && url.trim() ? url.slice(0, 8192) : undefined));
+    on("sendPage", () => (this.tab?.view && /^https?:/i.test(this.tab.url) ? this.sendDownload(this.tab.url) : undefined));
+    on("dismissOffer", () => {
+      this.offered = null;
+      this.push();
+    });
+    on("openDownloads", () => this.deps.openDownloads?.());
     on("close", () => this.close());
     on("fullscreen", () => this.win?.setFullScreen(!this.win.isFullScreen()));
     on("focusPage", () => this.tab?.view?.webContents.focus());

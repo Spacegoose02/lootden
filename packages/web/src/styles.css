@@ -459,9 +459,6 @@ main {
 .badge-muted {
   color: var(--muted);
 }
-.badge-recomp {
-  border-color: var(--accent);
-}
 
 /* ---------- Home hero ------------------------------------------------------ */
 

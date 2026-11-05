@@ -85,8 +85,15 @@ async function call<T>(method: string, path: string, body?: unknown): Promise<T>
     throw serverUnreachable();
   });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new ApiError((data as { error?: string }).error ?? `Request failed (${res.status})`, res.status);
+  if (!res.ok) throw new ApiError((data as { error?: string }).error ?? failedMessage(res.status), res.status);
   return data as T;
+}
+
+/** What to say when the answer has no error of its own, usually because a proxy in front of the server answered. */
+function failedMessage(status: number): string {
+  if (status === 504) return "The server took too long to answer (504). Try again in a moment.";
+  if (status === 502 || status === 503) return `The server isn't answering right now (${status}). Try again in a moment.`;
+  return `Request failed (${status})`;
 }
 
 export interface Me {
