@@ -124,7 +124,11 @@ function reveal(el: HTMLElement, instant: boolean): void {
 }
 
 /** An open menu, the alerts panel or a video: B and Esc close it before going back a page. */
-const openPopup = () => document.querySelector('[role="dialog"], [role="menu"]');
+const openPopup = (): Element | null => {
+  // The newest one is on top (the keyboard over Bandit, Bandit over the in-game menu).
+  const all = document.querySelectorAll('[role="dialog"], [role="menu"]');
+  return all[all.length - 1] ?? null;
+};
 
 /**
  * Where focus last was, so a press after the focused item went away (a filter changed, a list

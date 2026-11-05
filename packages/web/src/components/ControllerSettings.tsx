@@ -1,8 +1,9 @@
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { feel } from "../feedback";
 import { PAD_DEFAULTS, usePadPrefs, type PadPrefs } from "../prefs";
 import { POSTER_SIZES, THEMES, usePosterSize, useTheme } from "../theme";
-import { desktop } from "../desktop";
+import { bridgeError, desktop, type AppSettings } from "../desktop";
 import { PadGlyph } from "./PadHints";
 import { Card, Field, Toggle } from "./SettingsUi";
 import { ThemePicker } from "./ThemePicker";
@@ -91,6 +92,8 @@ export function ControllerSettings() {
         </div>
       </Card>
 
+      <InGameMenuCard />
+
       <Card title="Handheld" description="For the ROG Ally, Steam Deck, Legion Go and tablets.">
         <Toggle checked={touch === "on"} onChange={(v) => setTouch(v ? "on" : "off")} label="Bigger buttons and text" hint="Larger targets for fingers and a small screen." />
         {desktop ? (
@@ -122,5 +125,31 @@ export function AppearanceSettings() {
       </Card>
       <ThemePicker />
     </>
+  );
+}
+
+/** The in-game menu's combo, a setting of the desktop app on this PC. */
+function InGameMenuCard() {
+  const [opts, setOpts] = useState<AppSettings | null>(null);
+  const [error, setError] = useState("");
+  useEffect(() => {
+    void desktop?.appSettings?.().then(setOpts, (e) => setError(bridgeError(e)));
+  }, []);
+  if (!desktop?.appSettings || !desktop.overlay) return null;
+  return (
+    <Card title="In-game menu" description="Bring LootDen up over a running game to pause it, ask Bandit, open the browser, take a screenshot or close the game.">
+      <Field label="Open it with" hint="Works over borderless and windowed games. In exclusive full screen, switch the game to borderless if the menu stays behind it.">
+        <select
+          value={opts?.overlay ?? "view-menu"}
+          disabled={!opts}
+          onChange={(e) => desktop!.appSettings!({ overlay: e.target.value as NonNullable<AppSettings["overlay"]> }).then(setOpts, (err) => setError(bridgeError(err)))}
+        >
+          <option value="view-menu">Hold View + Menu</option>
+          <option value="guide">The Xbox button (if Armoury Crate or Game Bar don't take it)</option>
+          <option value="off">Off</option>
+        </select>
+      </Field>
+      {error && <p className="error small">{error}</p>}
+    </Card>
   );
 }

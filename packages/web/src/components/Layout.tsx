@@ -12,6 +12,7 @@ import { Bandit } from "./Bandit";
 import { PadHints } from "./PadHints";
 import { Keyboard } from "./Keyboard";
 import { QuickMenus } from "./QuickMenus";
+import { GameOverlay } from "./GameOverlay";
 import { useScrollMemory } from "../scrollMemory";
 
 interface NavItem {
@@ -204,6 +205,7 @@ export function Layout() {
         <MainNav items={links} onSignOut={signOut} />
         <div className="topbar-right">
           {me?.role === "admin" && <AlertsBell />}
+          {desktop && <Battery />}
           {desktop && <Clock />}
           {user ? (
             <NavLink to="/profile" className="me" aria-label="Profile">
@@ -224,6 +226,8 @@ export function Layout() {
         <Outlet />
       </main>
       <PadHints />
+      {/* Before Bandit, so Bandit opens over the in-game menu. */}
+      <GameOverlay />
       <Bandit />
       <QuickMenus />
       <Keyboard />
@@ -248,6 +252,47 @@ function SubNav({ items }: { items: NavItem[] }) {
         </NavLink>
       ))}
     </nav>
+  );
+}
+
+interface BatteryInfo {
+  level: number;
+  charging: boolean;
+}
+type BatteryManager = BatteryInfo & EventTarget;
+
+/** Battery left on a handheld or laptop, beside the clock. Nothing on a desktop PC without one. */
+function Battery() {
+  const [b, setB] = useState<BatteryInfo | null>(null);
+  useEffect(() => {
+    const nav = navigator as Navigator & { getBattery?: () => Promise<BatteryManager> };
+    if (!nav.getBattery) return;
+    let mgr: BatteryManager | null = null;
+    const read = () => mgr && setB({ level: mgr.level, charging: mgr.charging });
+    void nav.getBattery().then((m) => {
+      mgr = m;
+      // Desktops report a full battery that's always charging: no battery at all.
+      if (m.level === 1 && m.charging && (m as unknown as { chargingTime: number }).chargingTime === 0) return;
+      read();
+      m.addEventListener("levelchange", read);
+      m.addEventListener("chargingchange", read);
+    }, () => {});
+    return () => {
+      mgr?.removeEventListener("levelchange", read);
+      mgr?.removeEventListener("chargingchange", read);
+    };
+  }, []);
+  if (!b) return null;
+  const pct = Math.round(b.level * 100);
+  const low = !b.charging && pct <= 15;
+  return (
+    <span className={`topbar-battery${low ? " low" : ""}`} title={`${pct}%${b.charging ? ", charging" : ""}`} aria-label={`Battery ${pct}%${b.charging ? ", charging" : ""}`}>
+      <span className="battery-shell" aria-hidden="true">
+        <span className="battery-fill" style={{ width: `${pct}%` }} />
+      </span>
+      {b.charging ? "⚡" : ""}
+      {pct}%
+    </span>
   );
 }
 
