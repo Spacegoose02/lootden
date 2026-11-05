@@ -40,6 +40,8 @@ export function GameDetail() {
   const [error, setError] = useState("");
   const [copied, setCopied] = useState(false);
   const [params] = useSearchParams();
+  /** Which tab under the game's header is open; LT and RT switch them on a controller. */
+  const [tab, setTab] = useState(() => params.get("tab") ?? "overview");
   const [installed, refreshInstalled] = useInstalled();
   const preview = (useLocation().state as { preview?: Preview } | null)?.preview;
   const shown = game ?? (preview?.id === id ? preview : null);
@@ -132,7 +134,7 @@ export function GameDetail() {
               <UpdateActions update={game} baseTitle={game.baseGame?.title ?? null} installed={installed} onChange={refreshInstalled} />
             </div>
           ) : desktop ? (
-            <DesktopInstall game={game} autoFocus={params.get("install") === "1"} />
+            <DesktopInstall game={game} autoFocus={params.get("install") === "1" || document.documentElement.dataset.nav === "pad"} />
           ) : (
           <div className="install panel">
             <a className="button primary" href={`lootden://install/${game.id}`}>
@@ -158,78 +160,110 @@ export function GameDetail() {
         </div>
       </div>
 
-      {me?.user && !isAddon && <JournalPanel gameId={game.id} />}
-      {me?.user && !isAddon && <GameAchievementsPanel gameId={game.id} journalId={game.id} />}
-      {me?.user && !isAddon && <GameSessionsPanel gameId={game.id} />}
-      {me?.user && !isAddon && <TagsPanel gameKey={game.id} />}
-      {!isAddon && <LocalScreenshots title={m?.name ?? game.title} steamAppId={m?.steamAppId ?? null} gameId={game.id} />}
+      {(() => {
+        // The rest of the page in tabs, so the d-pad isn't a long scroll past every panel.
+        const tabs: Array<[string, string]> = [
+          ["overview", "Overview"],
+          ["updates", game.platform === "pc" && !isAddon ? "Updates & mods" : "Updates"],
+          ["files", "Saves & files"],
+          ...(me?.role === "admin" ? ([["admin", "Admin"]] as Array<[string, string]>) : []),
+        ];
+        const open = tabs.some(([id]) => id === tab) ? tab : "overview";
+        return (
+          <>
+            <div className="segmented detail-tabs" role="tablist" aria-label="Game sections">
+              {tabs.map(([id, label]) => (
+                <button key={id} role="tab" aria-selected={open === id} className={open === id ? "active" : ""} onClick={() => setTab(id)}>
+                  {label}
+                </button>
+              ))}
+            </div>
+            {open === "overview" && (
+              <>
+              {me?.user && !isAddon && <JournalPanel gameId={game.id} />}
+              {me?.user && !isAddon && <GameAchievementsPanel gameId={game.id} journalId={game.id} />}
+              {me?.user && !isAddon && <GameSessionsPanel gameId={game.id} />}
+              {me?.user && !isAddon && <TagsPanel gameKey={game.id} />}
+              {!isAddon && <LocalScreenshots title={m?.name ?? game.title} steamAppId={m?.steamAppId ?? null} gameId={game.id} />}
 
-      {m?.screenshots.length ? (
-        <section className="row">
-          <h2>Screenshots</h2>
-          <div className="row-track shots">
-            {m.screenshots.map((s) => (
-              <a key={s} href={s} target="_blank" rel="noreferrer">
-                <img src={s} alt="" loading="lazy" />
-              </a>
-            ))}
-          </div>
-        </section>
-      ) : null}
+              {m?.screenshots.length ? (
+                <section className="row">
+                  <h2>Screenshots</h2>
+                  <div className="row-track shots">
+                    {m.screenshots.map((s) => (
+                      <a key={s} href={s} target="_blank" rel="noreferrer">
+                        <img src={s} alt="" loading="lazy" />
+                      </a>
+                    ))}
+                  </div>
+                </section>
+              ) : null}
+              </>
+            )}
+            {open === "updates" && (
+              <>
+              {game.addons.length > 0 && (
+                <section className="panel">
+                  <h2>Updates and DLC</h2>
+                  <ul className="pkg-list">
+                    {game.addons.map((u) => (
+                      <li key={u.id}>
+                        <div className="pkg-title">
+                          <Link to={`/games/${u.id}`}>{u.title}</Link>
+                          <KindBadge game={u} />
+                          {versionLabel(u) && <span className="muted small">{versionLabel(u)}</span>}
+                          <span className="muted small">{formatBytes(u.sizeBytes)}</span>
+                        </div>
+                        <UpdateActions update={u} baseTitle={game.title} installed={installed} onChange={refreshInstalled} />
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              )}
 
-      <section className="panel">
-        <h2>Files</h2>
-        <table className="table">
-          <tbody>
-            {game.files.map((f) => (
-              <tr key={f.index}>
-                <td>
-                  <a href={`/api/games/${game.id}/files/${f.index}`} download>
-                    {f.path}
-                  </a>
-                </td>
-                <td className="muted">{f.archive ? f.archive.toUpperCase() : ""}</td>
-                <td className="num">{formatBytes(f.size)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </section>
+              {!isAddon && <UpdatesPanel gameId={game.id} />}
+              {game.platform === "pc" && !isAddon && <ModsPanel gameId={game.id} title={game.title} />}
 
-      {game.addons.length > 0 && (
-        <section className="panel">
-          <h2>Updates and DLC</h2>
-          <ul className="pkg-list">
-            {game.addons.map((u) => (
-              <li key={u.id}>
-                <div className="pkg-title">
-                  <Link to={`/games/${u.id}`}>{u.title}</Link>
-                  <KindBadge game={u} />
-                  {versionLabel(u) && <span className="muted small">{versionLabel(u)}</span>}
-                  <span className="muted small">{formatBytes(u.sizeBytes)}</span>
-                </div>
-                <UpdateActions update={u} baseTitle={game.title} installed={installed} onChange={refreshInstalled} />
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
+              {game.platform === "pc" && !isAddon && !me?.user?.kidMode && <WorkshopPanel gameId={game.id} isAdmin={me?.role === "admin"} installedHere={!!installed?.some((g) => g.gameId === game.id)} />}
+              {game.platform === "pc" && !me?.user?.kidMode && truckGameFor(game.metadata?.steamAppId, game.title) && <TruckModsPanel game={truckGameFor(game.metadata?.steamAppId, game.title)!} />}
+              {game.platform === "pc" && !me?.user?.kidMode && truckGameFor(game.metadata?.steamAppId, game.title) && <TruckModListPanel game={truckGameFor(game.metadata?.steamAppId, game.title)!} />}
+              </>
+            )}
+            {open === "files" && (
+              <>
+              {!isAddon && <PreparePanel game={game} />}
 
-      {!isAddon && <UpdatesPanel gameId={game.id} />}
+              {!isAddon && <SavesPanel game={game} onChange={setGame} />}
+              <section className="panel">
+                <h2>Files</h2>
+                <table className="table">
+                  <tbody>
+                    {game.files.map((f) => (
+                      <tr key={f.index}>
+                        <td>
+                          <a href={`/api/games/${game.id}/files/${f.index}`} download>
+                            {f.path}
+                          </a>
+                        </td>
+                        <td className="muted">{f.archive ? f.archive.toUpperCase() : ""}</td>
+                        <td className="num">{formatBytes(f.size)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </section>
+              </>
+            )}
+            {open === "admin" && (
+              <>
+              {me?.role === "admin" && game.platform === "pc" && <PackageAdmin game={game} onChange={setGame} />}
 
-      {game.platform === "pc" && !isAddon && <ModsPanel gameId={game.id} title={game.title} />}
-
-      {game.platform === "pc" && !isAddon && !me?.user?.kidMode && <WorkshopPanel gameId={game.id} isAdmin={me?.role === "admin"} installedHere={!!installed?.some((g) => g.gameId === game.id)} />}
-      {game.platform === "pc" && !me?.user?.kidMode && truckGameFor(game.metadata?.steamAppId, game.title) && <TruckModsPanel game={truckGameFor(game.metadata?.steamAppId, game.title)!} />}
-      {game.platform === "pc" && !me?.user?.kidMode && truckGameFor(game.metadata?.steamAppId, game.title) && <TruckModListPanel game={truckGameFor(game.metadata?.steamAppId, game.title)!} />}
-
-      {!isAddon && <PreparePanel game={game} />}
-
-      {!isAddon && <SavesPanel game={game} onChange={setGame} />}
-
-      {me?.role === "admin" && game.platform === "pc" && <PackageAdmin game={game} onChange={setGame} />}
-
-      {me?.role === "admin" && <AdminTools game={game} onChange={setGame} />}
+              {me?.role === "admin" && <AdminTools game={game} onChange={setGame} />}
+              </>
+            )}
+          </>
+        );
+      })()}
     </article>
   );
 }
