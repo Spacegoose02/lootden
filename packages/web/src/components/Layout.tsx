@@ -20,7 +20,16 @@ interface NavItem {
   end?: boolean;
   /** Passed to the page when the link itself is picked (not when LB/RB pass through it). */
   state?: unknown;
+  /** The pages inside this section, shown as a second row of links under the top bar. */
+  pages?: NavItem[];
 }
+
+/** Whether a path is this item's page, or one of its section's pages. */
+const isOn = (i: NavItem, path: string): boolean =>
+  (i.end ? path === i.to : path === i.to || path.startsWith(`${i.to}/`) || (i.to === "/library" && (path.startsWith("/games/") || path.startsWith("/store/") || path.startsWith("/play/")))) || !!i.pages?.some((p) => p.to !== i.to && isOn(p, path));
+
+/** The last page opened in each section this session, so LB/RB come back to it. */
+const lastPage = new Map<string, string>();
 
 /**
  * The main links. As many as fit sit in the bar; the rest go in a More menu, so every page
@@ -65,9 +74,9 @@ function MainNav({ items, onSignOut }: { items: NavItem[]; onSignOut: () => void
   useEffect(() => {
     const onSection = (e: Event) => {
       const by = (e as CustomEvent<number>).detail;
-      const at = items.findIndex((i) => (i.end ? location.pathname === i.to : location.pathname.startsWith(i.to)));
+      const at = items.findIndex((i) => isOn(i, location.pathname));
       const next = items[at < 0 ? (by > 0 ? 0 : items.length - 1) : (at + by + items.length) % items.length];
-      if (next) navigate(next.to);
+      if (next) navigate(lastPage.get(next.to) ?? next.to);
     };
     window.addEventListener(SECTION_EVENT, onSection);
     return () => window.removeEventListener(SECTION_EVENT, onSection);
@@ -86,12 +95,12 @@ function MainNav({ items, onSignOut }: { items: NavItem[]; onSignOut: () => void
   }, [open]);
 
   const hidden = items.slice(fit);
-  const activeHidden = hidden.some((i) => (i.end ? location.pathname === i.to : location.pathname.startsWith(i.to)));
+  const activeHidden = hidden.some((i) => isOn(i, location.pathname));
   return (
     <>
       <nav className="nav" ref={bar} aria-label="Main">
         {items.slice(0, fit).map((i) => (
-          <NavLink key={i.to} to={i.to} end={i.end} state={i.state}>
+          <NavLink key={i.to} to={i.to} end={i.end} state={i.state} className={() => (isOn(i, location.pathname) ? "active" : "")}>
             {i.label}
           </NavLink>
         ))}
@@ -114,7 +123,7 @@ function MainNav({ items, onSignOut }: { items: NavItem[]; onSignOut: () => void
         <div className="nav-menu" role="menu">
           {/* On phones every link is here; on wider screens only the ones that didn't fit. */}
           {items.map((i, n) => (
-            <NavLink key={i.to} to={i.to} end={i.end} state={i.state} role="menuitem" className={n < fit ? "nav-menu-fits" : ""}>
+            <NavLink key={i.to} to={i.to} end={i.end} state={i.state} role="menuitem" className={() => `${n < fit ? "nav-menu-fits" : ""}${isOn(i, location.pathname) ? " active" : ""}`}>
               {i.label}
             </NavLink>
           ))}
@@ -134,25 +143,45 @@ export function Layout() {
   const navigate = useNavigate();
   const user = me?.user;
   const admin = me?.role === "admin";
+  // A few sections, like a console's home menu (LB and RB go round them); each section's pages
+  // are a second row of links under the top bar.
   const links: NavItem[] = [
     { to: "/", label: "Home", end: true },
-    { to: "/library", label: "Library" },
-    { to: "/updates", label: "Updates" },
-    { to: "/emulation", label: "Emulation" },
-    // Kids too: they ask for games from these, and an admin approves.
-    { to: "/discover", label: "Discover" },
-    { to: "/wishlist", label: "Wishlist" },
-    { to: "/calendar", label: "Calendar" },
-    { to: "/requests", label: "Requests" },
-    { to: "/game-night", label: "Game night" },
-    { to: "/screenshots", label: "Family wall" },
-    { to: "/news", label: "News" },
-    // The desktop app's built-in web browser, for handhelds and the Xbox full screen experience. Kid-safe on kid profiles.
-    ...(desktop?.openBrowser ? [{ to: "/browser", label: "Browser", state: { open: true } }] : []),
-    // Inside the desktop app the page is still there (Profile links to it for the Playnite extension), just not in the menu.
-    ...(desktop ? [] : [{ to: "/apps", label: "Get the app" }]),
+    {
+      to: "/library",
+      label: "Library",
+      pages: [
+        { to: "/library", label: "Games" },
+        { to: "/emulation", label: "Emulation" },
+        { to: "/updates", label: "Updates" },
+        // Inside the desktop app the page is still there (Profile links to it for the Playnite extension), just not in the menu.
+        ...(desktop ? [] : [{ to: "/apps", label: "Get the app" }]),
+      ],
+    },
+    {
+      // Kids too: they ask for games from these, and an admin approves.
+      to: "/discover",
+      label: "Discover",
+      pages: [
+        { to: "/discover", label: "Discover" },
+        { to: "/wishlist", label: "Wishlist" },
+        { to: "/calendar", label: "Calendar" },
+        { to: "/requests", label: "Requests" },
+        { to: "/news", label: "News" },
+        // The desktop app's built-in web browser, for handhelds and the Xbox full screen experience. Kid-safe on kid profiles.
+        ...(desktop?.openBrowser ? [{ to: "/browser", label: "Browser", state: { open: true } }] : []),
+      ],
+    },
+    {
+      to: "/game-night",
+      label: "Family",
+      pages: [
+        { to: "/game-night", label: "Game night" },
+        { to: "/screenshots", label: "Family wall" },
+      ],
+    },
     ...(admin ? [{ to: "/downloads", label: "Downloads" }] : []),
-    // Everyone gets Settings for the Themes tab; the other sections are admin only.
+    // Everyone gets Settings for their own tab; the other tabs are admin only.
     { to: "/settings", label: "Settings" },
   ];
   const signOut = async () => {
@@ -190,6 +219,7 @@ export function Layout() {
         </div>
       </header>
       <main>
+        <SubNav items={links} />
         <AppUpdateBanner />
         <Outlet />
       </main>
@@ -199,6 +229,25 @@ export function Layout() {
       <Keyboard />
       <FunLayer />
     </div>
+  );
+}
+
+/** The pages of the section you're in (Library: Games, Emulation, Updates), remembered for LB/RB. */
+function SubNav({ items }: { items: NavItem[] }) {
+  const location = useLocation();
+  const hub = items.find((i) => isOn(i, location.pathname));
+  useEffect(() => {
+    if (hub) lastPage.set(hub.to, location.pathname + location.search);
+  }, [hub, location.pathname, location.search]);
+  if (!hub?.pages || hub.pages.length < 2) return null;
+  return (
+    <nav className="subnav" aria-label={hub.label}>
+      {hub.pages.map((p) => (
+        <NavLink key={p.to} to={p.to} state={p.state} className={() => (isOn(p, location.pathname) ? "active" : "")}>
+          {p.label}
+        </NavLink>
+      ))}
+    </nav>
   );
 }
 

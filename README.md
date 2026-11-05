@@ -243,6 +243,12 @@ Each of these, plus rumble and menu sounds, is switched under Settings, You, Con
 handheld. Settings' You tab (theme, controller, this PC) is the only one people who aren't admins
 see; the Library, Downloads, Family and Server tabs are admin only.
 
+The top menu has six sections (Home, Library, Discover, Family, Downloads for admins, Settings),
+so LB and RB go round them quickly and come back to the page you last had open in each. A
+section's pages (Library: Games, Emulation, Updates) are a row of links under the top bar. A
+game's page opens with Play or Install selected when you're using a controller, and its panels
+are in tabs (Overview, Updates & mods, Saves & files, Admin) that LT and RT switch.
+
 ## Command-line client
 
 Download `lootden-cli-win-x64.zip` or `lootden-cli-linux-x64.tar.gz` from Get the app.
