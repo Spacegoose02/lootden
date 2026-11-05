@@ -1,4 +1,5 @@
 import type { FastifyInstance } from "fastify";
+import { downloadLinkKind, downloadLinkTitle } from "@lootden/shared";
 import { maskedConnectorSettings, saveConnectorSettings, type ConnectorSettings } from "../connectors/settings.js";
 import { HttpProblem, requireAdmin, type AppContext } from "../context.js";
 
@@ -42,6 +43,30 @@ export function downloadRoutes(app: FastifyInstance, ctx: AppContext) {
     if (!b.url || !b.title || !["torrent", "usenet"].includes(b.protocol)) throw new HttpProblem(400, "url, title and protocol (torrent or usenet) are required");
     if (!/^(magnet:|https?:\/\/)/i.test(b.url)) throw new HttpProblem(400, "Only magnet links and http(s) URLs can be sent");
     return wrap(() => dm.grab(b, p.user?.id ?? null));
+  });
+
+  /**
+   * One link from anywhere (the desktop app's built-in browser, mostly): magnets and .torrent
+   * links go to the torrent client, .nzb links to SABnzbd, everything else to the Download Manager.
+   */
+  app.post<{ Body: { url?: string; title?: string; kind?: string; platform?: string | null } }>("/api/downloads/link", async (req) => {
+    const p = requireAdmin(req);
+    const url = String(req.body?.url ?? "").trim();
+    const guessed = downloadLinkKind(url);
+    // The browser knows a file was a .torrent or .nzb even when its address doesn't say (download.php?id=...).
+    const kind = guessed && /^https?:/i.test(url) && (req.body?.kind === "torrent" || req.body?.kind === "usenet") ? req.body.kind : guessed;
+    if (!kind) throw new HttpProblem(400, "Only magnet links and http(s) links can be sent to downloads");
+    const title = String(req.body?.title ?? "").trim().slice(0, 200) || downloadLinkTitle(url);
+    if (kind === "direct") {
+      return wrap(async () => {
+        const pkg = ctx.direct.add({ links: url, name: req.body?.title?.trim() || null, platform: req.body?.platform }, p.user?.id ?? null);
+        return { kind, title: pkg.name, to: "the Download Manager" };
+      });
+    }
+    return wrap(async () => {
+      const r = await dm.grab({ url, title, protocol: kind, platform: req.body?.platform }, p.user?.id ?? null);
+      return { kind, title: r.name, to: kind === "usenet" ? "SABnzbd" : "the torrent client" };
+    });
   });
 
   // Games already in the downloads folder: list, import with clean-up, or skip.

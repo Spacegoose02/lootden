@@ -1,18 +1,11 @@
 import { platformFor, togetherLabel, type GameSummary } from "@lootden/shared";
-import { useRecompsFor } from "../recomps";
 
 export function Badges({ game, compact = false }: { game: GameSummary; compact?: boolean }) {
-  const recomps = useRecompsFor(game);
   return (
     <div className={`badges${compact ? " badges-compact" : ""}`}>
       {game.platform && game.platform !== "pc" && (
         <span className="badge badge-platform" style={{ borderColor: platformFor(game.platform).color }} title={platformFor(game.platform).name}>
           {platformFor(game.platform).short}
-        </span>
-      )}
-      {recomps.length > 0 && (
-        <span className="badge badge-recomp" title={`Plays as a native PC version with ${recomps.map((r) => r.name).join(" or ")} (set up from the game's page in the desktop app)`}>
-          ⚡{compact ? "" : " Recomp"}
         </span>
       )}
       {game.controllerSupport === "full" && <span className="badge badge-pad" title="Full controller support">🎮 {compact ? "" : "Controller"}</span>}

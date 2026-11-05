@@ -19,6 +19,9 @@ import { steamCover, steamHeader, SteamProvider } from "./steam.js";
 import { cleanTitle, matchScore, type CleanTitle } from "./titles.js";
 import type { Candidate, MetadataProvider, ProviderResult, RomHints } from "./types.js";
 
+/** How long one source gets to answer a search before it is left out of the results. */
+export const SEARCH_BUDGET_MS = 12_000;
+
 /** Below this score a match is left for an admin to pick by hand. */
 export const AUTO_MATCH_THRESHOLD = 0.6;
 const RETRY_UNMATCHED_DAYS = 7;
@@ -206,17 +209,44 @@ export class MetadataService {
 
   /** Searches every enabled provider for a game, best matches first. */
   async search(query: string, year: number | null = null, platform?: string): Promise<Array<Candidate & { score: number }>> {
+    return (await this.searchAll(query, year, platform)).results;
+  }
+
+  /**
+   * Asks every enabled provider at once and gives each `budgetMs` to answer, so one slow or
+   * hung source (or a backed-up rate limiter) can't hold the whole search past a reverse
+   * proxy's timeout. Sources that failed or ran out of time are listed in `failed`.
+   */
+  async searchAll(
+    query: string,
+    year: number | null = null,
+    platform?: string,
+    budgetMs = SEARCH_BUDGET_MS,
+  ): Promise<{ results: Array<Candidate & { score: number }>; failed: Array<{ provider: string; error: string }> }> {
     const clean = { query, year };
     const system = platform && platform !== PC_PLATFORM ? platformFor(platform) : undefined;
-    const results: Array<Candidate & { score: number }> = [];
-    for (const p of this.ordered(!!system)) {
-      try {
-        for (const c of await p.search(query, system)) results.push({ ...c, score: matchScore(clean, c) });
-      } catch (err) {
-        this.log.warn({ provider: p.name, err: (err as Error).message }, "Metadata search failed");
-      }
-    }
-    return results.sort((a, b) => b.score - a.score);
+    const failed: Array<{ provider: string; error: string }> = [];
+    const answers = await Promise.all(
+      this.ordered(!!system).map(async (p) => {
+        let timer: NodeJS.Timeout | undefined;
+        try {
+          return await Promise.race([
+            p.search(query, system),
+            new Promise<never>((_, reject) => {
+              timer = setTimeout(() => reject(new Error(`no answer within ${Math.round(budgetMs / 1000)}s`)), budgetMs);
+            }),
+          ]);
+        } catch (err) {
+          failed.push({ provider: p.name, error: (err as Error).message });
+          this.log.warn({ provider: p.name, err: (err as Error).message }, "Metadata search failed");
+          return [];
+        } finally {
+          clearTimeout(timer);
+        }
+      }),
+    );
+    const results = answers.flat().map((c) => ({ ...c, score: matchScore(clean, c) }));
+    return { results: results.sort((a, b) => b.score - a.score), failed };
   }
 
   async autoMatch(gameId: string): Promise<GameMetadata | null> {

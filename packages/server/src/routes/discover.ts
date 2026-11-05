@@ -108,7 +108,11 @@ export function discoverRoutes(app: FastifyInstance, ctx: AppContext) {
   app.get<{ Querystring: { q?: string } }>("/api/discover/search", async (req) => {
     const q = req.query.q?.trim();
     if (!q) return [];
-    const candidates = await upstream(() => ctx.metadata.search(q));
+    const { results: candidates, failed } = await ctx.metadata.searchAll(q);
+    // Only an error when no source answered at all; a slow source just drops out.
+    if (!candidates.length && failed.length && failed.length === ctx.metadata.ordered(false).length) {
+      throw new HttpProblem(502, `No game source answered: ${failed.map((f) => `${f.provider} (${f.error})`).join(", ")}`);
+    }
     const listings: GameListing[] = candidates.map((c) => ({
       provider: c.provider,
       providerId: c.providerId,

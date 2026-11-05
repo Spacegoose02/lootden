@@ -298,6 +298,37 @@ describe("download connectors", () => {
   });
 });
 
+describe("links sent from the desktop app's browser", () => {
+  it("sends magnets to the torrent client and file links to the Download Manager", async () => {
+    const fake = fakeServices();
+    const { app, ctx } = await makeApp(root, { apiToken: "svc" }, { fetchImpl: fake.impl });
+    const headers = { authorization: "Bearer svc" };
+    await app.inject({ method: "PUT", url: "/api/connectors", headers, payload: SETTINGS });
+    const send = (payload: object, h: Record<string, string> = headers) => app.inject({ method: "POST", url: "/api/downloads/link", headers: h, payload });
+
+    const magnet = await send({ url: MAGNET_B });
+    assert.equal(magnet.statusCode, 200);
+    assert.deepEqual(magnet.json(), { kind: "torrent", title: "Cool Game", to: "the torrent client" });
+    assert.ok(fake.added.some((a) => a.startsWith(`qbit:${MAGNET_B}|`)), "the magnet went to qBittorrent");
+
+    const nzb = await send({ url: "https://indexer.example/get/123.nzb?apikey=x" });
+    assert.equal(nzb.json().to, "SABnzbd");
+
+    const file = await send({ url: "https://pixeldrain.com/u/abc123" });
+    assert.equal(file.statusCode, 200);
+    assert.equal(file.json().to, "the Download Manager");
+    assert.equal(ctx.direct.list()[0]!.files[0]!.url, "https://pixeldrain.com/u/abc123");
+
+    assert.equal((await send({ url: "ftp://example.com/game.zip" })).statusCode, 400);
+    assert.equal((await send({ url: "magnet:?dn=no-hash" })).statusCode, 400);
+
+    const kid = await ctx.users.create({ username: "linkkid", password: "password1", kidMode: true });
+    const asKid = { authorization: `Bearer ${ctx.auth.createApiToken(kid.id, "t").token}` };
+    assert.equal((await send({ url: MAGNET_B }, asKid)).statusCode, 403, "only admins send downloads");
+    await app.close();
+  });
+});
+
 describe("download tidy rules", () => {
   it("spots release junk but keeps game files", async () => {
     const { isJunk, tidyName, releaseVersion } = await import("../src/connectors/tidy.js");

@@ -9,6 +9,9 @@ import { ListingCard } from "../components/Listing";
 import { SourceReleases } from "../components/SourceReleases";
 import { RequestButton } from "./Requests";
 
+/** How long Find games waits before saying the search failed (the server gives each source 12 seconds). */
+const SEARCH_TIMEOUT_MS = 30_000;
+
 /** Find games that aren't in the library yet; admins send them straight to the downloaders, everyone else (kids too) requests them. */
 export function Discover() {
   const { me } = useAuth();
@@ -20,6 +23,8 @@ export function Discover() {
   const [results, setResults] = useState<GameListing[] | null>(null);
   const [recent, setRecent] = useState<ListingResult | null>(null);
   const [error, setError] = useState("");
+  const [searchError, setSearchError] = useState("");
+  const [attempt, setAttempt] = useState(0);
   const [finding, setFinding] = useState<GameListing | null>(null);
 
   useEffect(() => {
@@ -27,13 +32,26 @@ export function Discover() {
   }, []);
   useEffect(() => {
     setResults(null);
+    setSearchError("");
     if (!q) return;
-    api.discoverSearch(q).then(setResults, (e: Error) => setError(e.message));
-  }, [q]);
+    // A search that outlives the server's own per-source limits has gone wrong somewhere in between.
+    let live = true;
+    const timer = setTimeout(() => live && setSearchError("The search took too long. Try again in a moment."), SEARCH_TIMEOUT_MS);
+    api.discoverSearch(q).then(
+      (r) => live && setResults(r),
+      (e: Error) => live && setSearchError(e.message),
+    ).finally(() => clearTimeout(timer));
+    return () => {
+      live = false;
+      clearTimeout(timer);
+    };
+  }, [q, attempt]);
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
-    setParams(query.trim() ? { q: query.trim() } : {});
+    // Searching the same words again (after a failure, say) runs the search again.
+    if (query.trim() === q) setAttempt((n) => n + 1);
+    else setParams(query.trim() ? { q: query.trim() } : {});
   };
 
   return (
@@ -59,7 +77,14 @@ export function Discover() {
       {q && (
         <section className="row">
           <h2>Results for “{q}”</h2>
-          {!results ? (
+          {searchError && !results ? (
+            <div className="inline">
+              <p className="error">Search failed: {searchError}</p>
+              <button className="small" onClick={() => setAttempt((n) => n + 1)}>
+                Try again
+              </button>
+            </div>
+          ) : !results ? (
             <p className="muted">Searching…</p>
           ) : results.length === 0 ? (
             <p className="muted">Nothing found.</p>

@@ -4,6 +4,7 @@
 export * from "./achievements.js";
 export * from "./addons.js";
 export * from "./browser.js";
+export * from "./downloadlinks.js";
 export * from "./emulators.js";
 export * from "./family.js";
 export * from "./helper.js";
