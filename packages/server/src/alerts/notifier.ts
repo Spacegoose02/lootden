@@ -58,6 +58,27 @@ export class Notifier {
     if (!res.ok) throw new Error(`Apprise answered ${res.status}: ${(await res.text()).slice(0, 200)}`);
   }
 
+  /** A chat webhook is set, so things can be shared into the family chat. */
+  canChat(): boolean {
+    return !!this.settings().chatWebhook;
+  }
+
+  /**
+   * Posts a message into a family chat through its incoming webhook (a Dendrop or Discord
+   * webhook). The body is Discord's shape, which Dendrop reads too.
+   */
+  async chat(text: string): Promise<void> {
+    const url = this.settings().chatWebhook;
+    if (!url) throw new Error("Add a chat webhook first (Settings, Scanning & alerts)");
+    const res = await this.fetchImpl(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content: text, username: "LootDen" }),
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!res.ok) throw new Error(`The chat webhook answered ${res.status}`);
+  }
+
   list(limit = 50): { alerts: Alert[]; unread: number } {
     const rows = this.db.prepare("SELECT * FROM notifications ORDER BY id DESC LIMIT ?").all(limit) as Array<Record<string, unknown>>;
     const unread = (this.db.prepare("SELECT COUNT(*) AS n FROM notifications WHERE read_at IS NULL").get() as { n: number }).n;

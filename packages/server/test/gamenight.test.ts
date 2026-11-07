@@ -72,4 +72,41 @@ describe("game night", () => {
     assert.equal((await app.inject({ url: reset.feed })).statusCode, 200);
     assert.equal((await app.inject({ method: "DELETE", url: `/api/game-nights/${night.id}`, headers: mom.headers })).statusCode, 200);
   });
+
+  it("shares a Surprise us pick through the chat webhook", async () => {
+    const posts: Array<{ url: string; body: unknown }> = [];
+    let answer = 204;
+    const fetchImpl = (async (input: string | URL | Request, init?: RequestInit) => {
+      posts.push({ url: String(input), body: JSON.parse(String(init?.body)) });
+      return new Response(null, { status: answer });
+    }) as typeof fetch;
+    const { app, ctx } = await makeApp(root, { publicUrl: "https://games.example.net" }, { fetchImpl });
+    const mom = await person(app, ctx, "mother", { role: "admin" });
+    const kid = await person(app, ctx, "theo", { kidMode: true });
+    const game = ctx.library.list({})[0]!;
+    const share = (who: { headers: Record<string, string> }, payload: object) => app.inject({ method: "POST", url: "/api/game-nights/share-pick", headers: who.headers, payload });
+    const list = async () => (await app.inject({ url: "/api/game-nights", headers: mom.headers })).json() as { canShare: boolean };
+
+    assert.equal((await list()).canShare, false);
+    assert.equal((await share(mom, { gameId: game.id, players: [mom.id] })).statusCode, 502, "no webhook yet");
+    assert.equal((await app.inject({ method: "PUT", url: "/api/connectors", headers: mom.headers, payload: { notify: { chatWebhook: "chat.example.net/hook" } } })).statusCode, 400);
+    assert.equal((await app.inject({ method: "PUT", url: "/api/connectors", headers: mom.headers, payload: { notify: { chatWebhook: "https://chat.example.net/api/hooks/3/abc" } } })).statusCode, 200);
+    const masked = (await app.inject({ url: "/api/connectors", headers: mom.headers })).json() as { notify: { chatWebhook: string } };
+    assert.notEqual(masked.notify.chatWebhook, "https://chat.example.net/api/hooks/3/abc", "the address is a secret");
+    assert.equal((await list()).canShare, true);
+
+    assert.equal((await share(kid, { gameId: game.id, players: [kid.id] })).statusCode, 403);
+    assert.equal((await share(mom, { gameId: "nope", players: [] })).statusCode, 404);
+    assert.equal((await share(mom, { gameId: game.id, players: [mom.id, kid.id] })).statusCode, 200);
+    assert.deepEqual(posts, [
+      {
+        url: "https://chat.example.net/api/hooks/3/abc",
+        body: { content: `🎰 Surprise us picked ${game.title} for Mother and Theo!\nhttps://games.example.net/games/${encodeURIComponent(game.id)}`, username: "LootDen" },
+      },
+    ]);
+    answer = 404;
+    const failed = await share(mom, { gameId: game.id, players: [] });
+    assert.equal(failed.statusCode, 502);
+    assert.match(failed.body, /answered 404/);
+  });
 });
