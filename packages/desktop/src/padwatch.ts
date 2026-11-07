@@ -6,6 +6,12 @@ import { open, type FileHandle } from "node:fs/promises";
  * menu. The web page's Gamepad API stops the moment LootDen loses focus, so this runs in the
  * main process: XInput through a small PowerShell helper on Windows (no native module to
  * build), and the joystick devices (/dev/input/js*) on Linux.
+ *
+ * On Windows the helper also says which window was in front when the buttons changed (the game,
+ * when the combo is pressed) and can bring a window to the front on request. That matters in the
+ * Xbox full screen experience: it shows one app at a time and ignores always-on-top and minimize,
+ * so the menu has to become the app in front, and going back to the game means putting the game
+ * in front again, not just minimizing LootDen.
  */
 
 /** Which combo opens the menu. "view-menu": hold View (Back) and Menu (Start); "guide": the Xbox button. */
@@ -22,9 +28,10 @@ export function comboHeld(combo: OverlayCombo, buttons: number): boolean {
 }
 
 /**
- * Polls XInput's four pads 30 times a second and prints the buttons held (all pads together)
- * whenever they change. XInputGetStateEx (ordinal 100) also reports the Xbox button; older
- * Windows without it falls back to XInputGetState.
+ * Polls XInput's four pads 30 times a second and prints the buttons held (all pads together) and
+ * the window in front whenever the buttons change. XInputGetStateEx (ordinal 100) also reports
+ * the Xbox button; older Windows without it falls back to XInputGetState. Lines on stdin of the
+ * form "focus <hwnd>" bring that window to the front.
  */
 const XINPUT_SCRIPT = String.raw`
 $ErrorActionPreference = 'Stop'
@@ -35,7 +42,42 @@ public static class LootDenPad {
   [StructLayout(LayoutKind.Sequential)] public struct State { public uint Packet; public ushort Buttons; public byte LT; public byte RT; public short LX; public short LY; public short RX; public short RY; }
   [DllImport("xinput1_4.dll", EntryPoint = "#100")] static extern int GetEx(int i, out State s);
   [DllImport("xinput1_4.dll", EntryPoint = "XInputGetState")] static extern int Get(int i, out State s);
+  [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+  [DllImport("user32.dll")] static extern bool SetForegroundWindow(IntPtr h);
+  [DllImport("user32.dll")] static extern bool BringWindowToTop(IntPtr h);
+  [DllImport("user32.dll")] static extern bool ShowWindow(IntPtr h, int cmd);
+  [DllImport("user32.dll")] static extern bool IsWindow(IntPtr h);
+  [DllImport("user32.dll")] static extern bool IsIconic(IntPtr h);
+  [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr h, IntPtr pid);
+  [DllImport("user32.dll")] static extern bool AttachThreadInput(uint from, uint to, bool attach);
+  [DllImport("kernel32.dll")] static extern uint GetCurrentThreadId();
   static bool ex = true;
+  // Windows only lets the app in front hand the front to another window, so this joins the
+  // input of the window in front for a moment, which lets SetForegroundWindow through.
+  public static void Focus(IntPtr h) {
+    if (h == IntPtr.Zero || !IsWindow(h)) return;
+    if (IsIconic(h)) ShowWindow(h, 9);
+    uint me = GetCurrentThreadId();
+    uint fg = GetWindowThreadProcessId(GetForegroundWindow(), IntPtr.Zero);
+    bool joined = fg != 0 && fg != me && AttachThreadInput(me, fg, true);
+    try { BringWindowToTop(h); SetForegroundWindow(h); }
+    finally { if (joined) AttachThreadInput(me, fg, false); }
+  }
+  public static void Listen() {
+    var t = new System.Threading.Thread(() => {
+      string line;
+      while ((line = Console.In.ReadLine()) != null) {
+        var parts = line.Trim().Split(' ');
+        long h;
+        if (parts.Length == 2 && parts[0] == "focus" && long.TryParse(parts[1], out h)) {
+          try { Focus(new IntPtr(h)); } catch (Exception) { }
+        }
+      }
+      Environment.Exit(0);
+    });
+    t.IsBackground = true;
+    t.Start();
+  }
   public static int Held() {
     int all = 0;
     for (int i = 0; i < 4; i++) {
@@ -48,13 +90,22 @@ public static class LootDenPad {
   }
 }
 '@
+[LootDenPad]::Listen()
 $last = -1
 while ($true) {
   $b = [LootDenPad]::Held()
-  if ($b -ne $last) { [Console]::Out.WriteLine($b); [Console]::Out.Flush(); $last = $b }
+  if ($b -ne $last) { [Console]::Out.WriteLine("$b " + [LootDenPad]::GetForegroundWindow().ToInt64()); [Console]::Out.Flush(); $last = $b }
   Start-Sleep -Milliseconds 33
 }
 `;
+
+/** One line from the Windows helper: the buttons held and, from newer helpers, the window in front. */
+export function parseHelperLine(line: string): [buttons: number | null, foreground: number | null] {
+  const [b, w] = line.trim().split(/\s+/);
+  const buttons = b ? Number(b) : NaN;
+  const fg = w ? Number(w) : NaN;
+  return [Number.isInteger(buttons) ? buttons : null, Number.isSafeInteger(fg) ? fg : null];
+}
 
 /** Linux joystick events (struct js_event): button numbers on the xpad driver. */
 const JS_BUTTONS: Record<number, number> = { 6: BTN.back, 7: BTN.start, 8: BTN.guide };
@@ -67,12 +118,29 @@ export class PadWatcher {
   private heldSince = 0;
   private fired = false;
   private timer: NodeJS.Timeout | null = null;
+  /** The window in front when the buttons last changed (Windows), as a number. */
+  private foreground = 0;
+  /** The window that was in front when the combo fired: the game, usually. */
+  private comboWindow = 0;
 
   constructor(
     private readonly combo: () => OverlayCombo,
     private readonly onCombo: () => void,
     private readonly log: (msg: string) => void = () => {},
   ) {}
+
+  /** The window that was in front when the combo last fired (0 when unknown). */
+  get windowAtCombo(): number {
+    return this.comboWindow;
+  }
+
+  /** Brings a window to the front (Windows, while the watcher runs). False when it couldn't ask. */
+  focusWindow(hwnd: number): boolean {
+    const stdin = this.child?.stdin;
+    if (!hwnd || !stdin || stdin.destroyed) return false;
+    stdin.write(`focus ${hwnd}\n`);
+    return true;
+  }
 
   get running(): boolean {
     return !!this.child || this.files.length > 0;
@@ -107,6 +175,7 @@ export class PadWatcher {
     if (!this.heldSince) this.heldSince = now;
     if (!this.fired && now - this.heldSince >= 350) {
       this.fired = true;
+      this.comboWindow = this.foreground;
       this.onCombo();
     }
   }
@@ -114,7 +183,8 @@ export class PadWatcher {
   private startWindows(): void {
     // -EncodedCommand: a script read from stdin runs line by line, which breaks the here-string.
     const encoded = Buffer.from(XINPUT_SCRIPT, "utf16le").toString("base64");
-    const child = spawn("powershell.exe", ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-EncodedCommand", encoded], { windowsHide: true, stdio: ["ignore", "pipe", "pipe"] });
+    const child = spawn("powershell.exe", ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-EncodedCommand", encoded], { windowsHide: true, stdio: ["pipe", "pipe", "pipe"] });
+    child.stdin?.on("error", () => {});
     this.child = child;
     let buf = "";
     child.stdout?.setEncoding("utf8");
@@ -122,9 +192,10 @@ export class PadWatcher {
       buf += d;
       let nl;
       while ((nl = buf.indexOf("\n")) >= 0) {
-        const n = Number(buf.slice(0, nl).trim());
+        const [n, fg] = parseHelperLine(buf.slice(0, nl));
         buf = buf.slice(nl + 1);
-        if (Number.isFinite(n)) this.buttons = n;
+        if (n !== null) this.buttons = n;
+        if (fg !== null) this.foreground = fg;
       }
     });
     child.stderr?.on("data", (d: Buffer) => this.log(`controller watcher: ${String(d).trim().slice(0, 200)}`));

@@ -138,14 +138,14 @@ function InGameMenuCard() {
   if (!desktop?.appSettings || !desktop.overlay) return null;
   return (
     <Card title="In-game menu" description="Bring LootDen up over a running game to pause it, ask Bandit, open the browser, take a screenshot or close the game.">
-      <Field label="Open it with" hint="Works over borderless and windowed games. In exclusive full screen, switch the game to borderless if the menu stays behind it.">
+      <Field label="Open it with" hint="Works over borderless and windowed games, and in the Xbox full screen experience. In exclusive full screen, switch the game to borderless if the menu stays behind it.">
         <select
           value={opts?.overlay ?? "view-menu"}
           disabled={!opts}
           onChange={(e) => desktop!.appSettings!({ overlay: e.target.value as NonNullable<AppSettings["overlay"]> }).then(setOpts, (err) => setError(bridgeError(err)))}
         >
           <option value="view-menu">Hold View + Menu</option>
-          <option value="guide">The Xbox button (if Armoury Crate or Game Bar don't take it)</option>
+          <option value="guide">The Xbox button (unless Game Bar, Armoury Crate or Xbox full screen take it)</option>
           <option value="off">Off</option>
         </select>
       </Field>
