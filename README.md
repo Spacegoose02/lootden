@@ -64,8 +64,8 @@ installs games from it on any PC in the house.
   the game by itself, or when that PC next comes on.
 - **PCs**: which PCs are on, free space per drive, and Wake-on-LAN to switch one on.
 - **Game night**: pick who's playing and get games you can all play together (co-op, kid-safe
-  when kids play, installed for most of you first), a "Surprise us" spin, and planned nights
-  with a calendar feed.
+  when kids play, installed for most of you first), a "Surprise us" spin (shared to the family chat
+  with **Share to chat** once a chat webhook is set), and planned nights with a calendar feed.
 - **Family wall**: press Ctrl+Shift+S while playing to share a screenshot with the family (or
   upload one from a phone), with emoji reactions. Kids only see kid-safe games' pictures.
 - **Stream to the TV**: with [Sunshine](https://app.lizardbyte.dev/Sunshine/) on the gaming PC,

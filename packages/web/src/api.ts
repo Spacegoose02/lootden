@@ -196,7 +196,7 @@ export interface Connectors {
   itch: { apiKey: string };
   rules: ReleaseRules;
   wanted: { autoSearch: boolean; autoGrab: boolean; intervalHours: number; onlyReleased: boolean };
-  notify: { appriseUrl: string; appriseTargets: string } & Record<"released" | "found" | "grabbed" | "imported" | "updates" | "flagged" | "sources" | "requests" | "deals", boolean>;
+  notify: { appriseUrl: string; appriseTargets: string; chatWebhook: string } & Record<"released" | "found" | "grabbed" | "imported" | "updates" | "flagged" | "sources" | "requests" | "deals", boolean>;
   scan: { clamav: "off" | "clamd" | "clamscan"; clamdHost: string; clamdPort: number; virusTotalKey: string; hold: boolean };
   nexus: { apiKey: string };
   hltb: { enabled: boolean };
@@ -827,6 +827,7 @@ export const api = {
     return data as Screenshot;
   },
   suggestGameNight: (players: number[]) => call<GameNightPick[]>("POST", "/api/game-nights/suggest", { players }),
+  shareGamePick: (gameId: string, players: number[]) => call<{ ok: true }>("POST", "/api/game-nights/share-pick", { gameId, players }),
   planGameNight: (n: { title?: string; date: string; time: string; players: number[]; gameId?: string | null; note?: string; goalId?: string | null }) => call<GameNight>("POST", "/api/game-nights", n),
   cancelGameNight: (id: number) => call("DELETE", `/api/game-nights/${id}`),
   resetGameNightFeed: () => call<{ feed: string }>("POST", "/api/game-nights/feed/reset"),
@@ -1033,6 +1034,8 @@ export interface GameNightList {
   /** Den Duty family goals reached lately, not celebrated with a game night yet. */
   goals: Array<{ id: string; title: string; icon: string; reward: string | null; reachedAt: string }>;
   canPlan: boolean;
+  /** A chat webhook is set, so a Surprise us pick can be shared to chat (admins). */
+  canShare: boolean;
   /** The calendar feed's address (admins). */
   feed: string | null;
 }

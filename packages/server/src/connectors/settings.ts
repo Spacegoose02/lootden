@@ -49,7 +49,7 @@ export interface ConnectorSettings {
   /** Wanted list: wishlist games searched on a schedule through Prowlarr. */
   wanted: { autoSearch: boolean; autoGrab: boolean; intervalHours: number; onlyReleased: boolean };
   /** Alerts in the web UI, and through an Apprise API server to Discord, Telegram, phones... */
-  notify: { appriseUrl: string; appriseTargets: string; released: boolean; found: boolean; grabbed: boolean; imported: boolean; updates: boolean; flagged: boolean; sources: boolean; requests: boolean; deals: boolean };
+  notify: { appriseUrl: string; appriseTargets: string; chatWebhook: string; released: boolean; found: boolean; grabbed: boolean; imported: boolean; updates: boolean; flagged: boolean; sources: boolean; requests: boolean; deals: boolean };
   /** Virus scanning before an import joins the library. */
   scan: { clamav: "off" | "clamd" | "clamscan"; clamdHost: string; clamdPort: number; virusTotalKey: string; hold: boolean };
   /** NexusMods API key for trending mods on game pages. */
@@ -81,7 +81,7 @@ export const DEFAULT_CONNECTORS: ConnectorSettings = {
   itch: { apiKey: "" },
   rules: DEFAULT_RULES,
   wanted: { autoSearch: false, autoGrab: false, intervalHours: 12, onlyReleased: true },
-  notify: { appriseUrl: "", appriseTargets: "", released: true, found: true, grabbed: true, imported: true, updates: true, flagged: true, sources: true, requests: true, deals: true },
+  notify: { appriseUrl: "", appriseTargets: "", chatWebhook: "", released: true, found: true, grabbed: true, imported: true, updates: true, flagged: true, sources: true, requests: true, deals: true },
   scan: { clamav: "off", clamdHost: "clamav", clamdPort: 3310, virusTotalKey: "", hold: true },
   nexus: { apiKey: "" },
   hltb: { enabled: true },
@@ -99,6 +99,7 @@ const SECRETS: Array<[keyof ConnectorSettings, string]> = [
   ["itch", "apiKey"],
   ["scan", "virusTotalKey"],
   ["nexus", "apiKey"],
+  ["notify", "chatWebhook"],
 ];
 const SECTIONS = Object.keys(DEFAULT_CONNECTORS).filter((k) => typeof DEFAULT_CONNECTORS[k as keyof ConnectorSettings] === "object") as Array<keyof ConnectorSettings>;
 
@@ -151,6 +152,8 @@ export function saveConnectorSettings(db: Db, incoming: Partial<ConnectorSetting
   if (!["off", "clamd", "clamscan"].includes(merged.scan.clamav)) throw new Error("Unknown ClamAV mode");
   merged.scan.clamdPort = Number(merged.scan.clamdPort) || 3310;
   merged.notify.appriseUrl = merged.notify.appriseUrl.trim().replace(/\/+$/, "");
+  merged.notify.chatWebhook = String(merged.notify.chatWebhook ?? "").trim();
+  if (merged.notify.chatWebhook && !/^https?:\/\//i.test(merged.notify.chatWebhook)) throw new Error("The chat webhook needs to start with http:// or https://");
   db.prepare("INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(KEY, JSON.stringify(merged));
   return merged;
 }

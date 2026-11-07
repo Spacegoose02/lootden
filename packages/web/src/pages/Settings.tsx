@@ -789,6 +789,9 @@ function SafetySection({ say }: { say: Msg }) {
           <Field label="Targets (without a saved config)" hint="Apprise URLs, comma separated">
             <input placeholder="discord://id/token, ntfys://topic" value={n.appriseTargets} onChange={(e) => set("notify", { appriseTargets: e.target.value })} />
           </Field>
+          <Field label="Chat webhook" hint="A Dendrop or Discord webhook address, for sharing Surprise us picks to the family chat">
+            <input placeholder="https://chat.example.com/api/hooks/3/…" value={n.chatWebhook} onChange={(e) => set("notify", { chatWebhook: e.target.value })} />
+          </Field>
         </div>
         <div className="toggle-list">
           {ALERT_KINDS.map(([k, label, hint]) => (
