@@ -826,8 +826,15 @@ async function shareScreenshot(): Promise<void> {
  * in-game menu: resume, pause, a screenshot for the family wall, Bandit, the browser and
  * closing the game. Works over borderless and windowed games; exclusive full screen games
  * may need Alt+Tab first, as Windows won't put a window over them.
+ *
+ * The Xbox full screen experience shows one app at a time and ignores always-on-top and
+ * minimize, so floating over the game isn't enough there: LootDen is put in front as the app
+ * shown, and going back puts the game's window in front again (the window that was in front
+ * when the combo was pressed).
  */
 let overlayOpen = false;
+/** The game's window, to put back in front when the menu closes (Windows; 0 when unknown). */
+let overlayGameWindow = 0;
 const padWatch = new PadWatcher(
   () => settings.get().overlay ?? "view-menu",
   () => toggleOverlay(),
@@ -848,14 +855,25 @@ function overlayState(open: boolean) {
 function toggleOverlay(): void {
   if (!win || win.isDestroyed()) return;
   if (overlayOpen && win.isFocused()) return closeOverlay(true);
+  const mine = nativeWindowId(win);
+  const front = padWatch.windowAtCombo;
+  if (!overlayOpen && front && front !== mine) overlayGameWindow = front;
   overlayOpen = true;
   if (win.isMinimized()) win.restore();
   win.setAlwaysOnTop(true, "screen-saver");
   win.show();
   win.moveTop();
   win.focus();
+  // Electron's focus() can be refused while a game has the front; the helper asks Windows properly.
+  padWatch.focusWindow(mine);
   win.webContents.focus();
   win.webContents.send("gm:overlay", overlayState(true));
+}
+
+/** A window's HWND as a number, for the controller helper. */
+function nativeWindowId(w: BrowserWindow): number {
+  const h = w.getNativeWindowHandle();
+  return h.length >= 8 ? Number(h.readBigUInt64LE(0)) : h.length >= 4 ? h.readUInt32LE(0) : 0;
 }
 
 /** Back to the game: LootDen steps out of the way so the game has the screen and the controller again. */
@@ -864,7 +882,12 @@ function closeOverlay(backToGame: boolean): void {
   if (!win || win.isDestroyed()) return;
   win.setAlwaysOnTop(false);
   win.webContents.send("gm:overlay", overlayState(false));
-  if (backToGame) win.minimize();
+  const game = overlayGameWindow;
+  overlayGameWindow = 0;
+  if (!backToGame) return;
+  // In the Xbox full screen experience minimize does nothing, so the game has to be put in front.
+  padWatch.focusWindow(game);
+  win.minimize();
 }
 
 /** Closes a running game straight away (the in-game menu's Close game, which asks first). */
