@@ -13,6 +13,7 @@ import { AchievementsGrid, HoloCard, RaccoonBuilder, useProgress } from "../comp
 import { PlayTimeCard } from "../components/PlayTime";
 import { BanditProfileCard } from "../components/Bandit";
 import { DownloadQueuePanel } from "../components/DownloadQueue";
+import { LinuxRunners, SteamShortcuts } from "../components/LinuxSteam";
 import { AchievementSummaryPanel } from "../components/Achievements";
 
 export function Profile() {
@@ -278,6 +279,8 @@ export function ThisComputer() {
       </ul>
       {installed.length === 0 && <p className="muted">No games installed on this computer yet.</p>}
       <DownloadQueuePanel />
+      <LinuxRunners />
+      <SteamShortcuts />
       <StoreScan />
       <StreamingSetup />
       <AppOptions />

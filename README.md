@@ -29,6 +29,12 @@ installs games from it on any PC in the house.
 - **Verify files and Repair**: a game's page checks every file against the list made when it was
   installed, and downloads only the missing or damaged ones again. Games that came as archives are
   unpacked to one side and just the broken files copied in, so settings and mods are left alone.
+- Windows games on Linux: the app downloads Proton-GE from GitHub (checked against its
+  SHA-512) and starts each Windows game through Proton or Wine with its own prefix. Pick a
+  build for the PC under Profile, This computer, or one for a single game on its page.
+- Add to Steam: puts the PC's LootDen games in Steam as non-Steam games with their covers,
+  so they show in Big Picture and the Steam Deck's Game Mode. Steam starts them through
+  `lootden://play/<id>`, so play time and limits still count.
 - Installers and disc images: Inno Setup installers (most GOG games) are installed on the
   server while a download is imported. Others run once on a PC, then an admin can upload the
   installed folder so everyone else gets a ready-to-play download. The upload goes in 16 MB

@@ -87,6 +87,16 @@ import {
   trackRoblox,
   setRobloxFullscreen,
   uninstallGame,
+  addSteamShortcuts,
+  installedRunners,
+  installRunner,
+  listRunnerReleases,
+  listSteamShortcuts,
+  preparePrefix,
+  removeSteamShortcuts,
+  runnerCommand,
+  steamUsers,
+  WINE,
   applyUpdate,
   undoUpdate,
   UpdateMismatchError,
@@ -1122,6 +1132,15 @@ async function findInstalled(gameId: string) {
   return game;
 }
 
+/** Linux: how this game's .exe starts (its Proton build, the PC's default, or Wine), with its own prefix. */
+function linuxRunner(gameId: string): ((exe: string) => { cmd: string; args: string[]; env: Record<string, string> }) | undefined {
+  if (process.platform !== "linux") return undefined;
+  const r = settings.get().linuxRunner ?? { default: "", games: {} };
+  const choice = r.games[gameId] ?? r.default ?? "";
+  void preparePrefix(toolsDir(), gameId).catch(() => {});
+  return (exe) => runnerCommand(toolsDir(), choice || WINE, gameId, exe);
+}
+
 /** A path relative to dir when it's inside it, otherwise absolute (games installed elsewhere). */
 function relTo(dir: string, file: string): string {
   const rel = path.relative(dir, file);
@@ -1635,6 +1654,97 @@ function registerIpc(): void {
     return play(gameId, typeof actionId === "string" ? actionId : undefined);
   });
 
+  // ---- Windows games on Linux: Proton-GE builds and Wine, per game --------------------------
+
+  ipcMain.handle("gm:runners", async (e) => {
+    fromServer(e);
+    const r = settings.get().linuxRunner ?? { default: "", games: {} };
+    return { platform: process.platform, installed: await installedRunners(toolsDir()), default: r.default, games: r.games };
+  });
+  ipcMain.handle("gm:runnerReleases", async (e) => {
+    fromServer(e);
+    return listRunnerReleases();
+  });
+  ipcMain.handle("gm:installRunner", async (e, name: string) => {
+    fromServer(e);
+    if (process.platform !== "linux") throw new Error("Proton is for Linux PCs");
+    const release = (await listRunnerReleases()).find((x) => x.name === name);
+    if (!release) throw new Error("That Proton-GE release isn't on GitHub any more");
+    let last = 0;
+    const installed = await installRunner(toolsDir(), release, {
+      onProgress: (received, total) => {
+        if (Date.now() - last < 250 && received < total) return;
+        last = Date.now();
+        send({ gameId: "runner", type: "runner", name, received, total });
+      },
+    });
+    const r = settings.get().linuxRunner ?? { default: "", games: {} };
+    // The first Proton installed becomes the one games use.
+    if (!r.default) settings.update({ linuxRunner: { ...r, default: installed } });
+    return installed;
+  });
+  ipcMain.handle("gm:setRunner", async (e, patch: { gameId?: string; runner: string | null }) => {
+    fromServer(e);
+    const r = settings.get().linuxRunner ?? { default: "", games: {} };
+    const runner = patch.runner === null ? null : String(patch.runner);
+    if (runner && runner !== WINE && !(await installedRunners(toolsDir())).includes(runner)) throw new Error("That Proton build isn't installed");
+    if (patch.gameId) {
+      const games = { ...r.games };
+      if (runner === null) delete games[patch.gameId];
+      else games[patch.gameId] = runner;
+      settings.update({ linuxRunner: { ...r, games } });
+    } else settings.update({ linuxRunner: { ...r, default: runner ?? "" } });
+    return settings.get().linuxRunner;
+  });
+
+  // ---- Add to Steam (non-Steam games for Big Picture and the Steam Deck) ----------------------
+
+  const steamUser = async () => {
+    const users = await steamUsers();
+    const want = settings.get().steamUser;
+    return users.find((u) => u.id === want) ?? users[0] ?? null;
+  };
+  ipcMain.handle("gm:steam:status", async (e) => {
+    fromServer(e);
+    const users = await steamUsers();
+    const user = await steamUser();
+    return { users: users.map((u) => u.id), user: user?.id ?? null, added: user ? [...(await listSteamShortcuts(user)).keys()] : [] };
+  });
+  ipcMain.handle("gm:steam:add", async (e, ids?: string[], userId?: string) => {
+    fromServer(e);
+    if (userId) settings.update({ steamUser: String(userId) });
+    const user = await steamUser();
+    if (!user) throw new Error("Steam hasn't been signed in on this PC");
+    const games = (await playableGames()).filter((g) => !ids?.length || ids.includes(g.gameId));
+    const api = await client().catch(() => null);
+    const appPath = process.env.APPIMAGE ?? process.env.PORTABLE_EXECUTABLE_FILE ?? process.execPath;
+    const picture = async (url: string | null | undefined) => {
+      if (!url || !api) return undefined;
+      try {
+        const res = await fetch(/^https?:/.test(url) ? url : api.urlFor(url), { headers: /^https?:/.test(url) ? {} : api.headers() });
+        if (!res.ok) return undefined;
+        const type = res.headers.get("content-type") ?? "";
+        const ext = /png/.test(type) ? ("png" as const) : /jpe?g/.test(type) ? ("jpg" as const) : null;
+        return ext ? { data: Buffer.from(await res.arrayBuffer()), ext } : undefined;
+      } catch {
+        return undefined;
+      }
+    };
+    const shortcuts = [];
+    for (const g of games) {
+      const d = api ? await api.getGame(g.gameId).catch(() => null) : null;
+      shortcuts.push({ gameId: g.gameId, title: g.title, appPath, art: { cover: await picture(d?.coverUrl), hero: await picture(d?.backgroundUrl) } });
+    }
+    const n = await addSteamShortcuts(user, shortcuts);
+    return { added: n, restartSteam: true };
+  });
+  ipcMain.handle("gm:steam:remove", async (e, ids?: string[]) => {
+    fromServer(e);
+    const user = await steamUser();
+    if (!user) return { removed: 0 };
+    return { removed: await removeSteamShortcuts(user, ids?.length ? ids : undefined) };
+  });
+
   /** Games between Play and running: a second press while the first is still starting. */
   const launching = new Set<string>();
 
@@ -1702,7 +1812,7 @@ function registerIpc(): void {
     send({ gameId, type: "playing", action: action?.name });
     const session = action
       ? launchActionAndTrack(action, { gameDir: home, watchDirs: [game.dir], signal: stop.signal, onStep: (step) => step.type === "wait" && send({ gameId, type: "prepare", message: `Waiting ${step.seconds} s…` }) })
-      : launchAndTrack(game.dir, exe!, process.platform, stop.signal, { watchDirs: [home] });
+      : launchAndTrack(game.dir, exe!, process.platform, stop.signal, { watchDirs: [home], runner: linuxRunner(gameId) });
     void session.then(
       async (total) => {
         unwatch();

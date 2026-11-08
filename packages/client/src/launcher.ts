@@ -111,6 +111,8 @@ export interface LaunchOptions {
   list?: () => Promise<RunningProcess[]>;
   /** Closes processes by id (tests). */
   kill?: (pid: number) => void;
+  /** Linux: how a Windows .exe starts (Proton with the game's prefix, or Wine); plain `wine` when missing. */
+  runner?: (exe: string) => { cmd: string; args: string[]; env: Record<string, string> };
 }
 
 /**
@@ -124,9 +126,12 @@ export function launchAndTrack(dir: string, rel: string, platform: NodeJS.Platfo
   const full = path.resolve(dir, rel);
   let cmd = full;
   let args: string[] = [];
+  let env: Record<string, string> = {};
   if (platform !== "win32" && /\.exe$/i.test(rel)) {
-    cmd = "wine";
-    args = [full];
+    const r = opts.runner?.(full) ?? { cmd: "wine", args: [full], env: {} };
+    cmd = r.cmd;
+    args = r.args;
+    env = r.env;
   } else if (platform !== "win32" && /\.sh$/i.test(rel)) {
     cmd = "sh";
     args = [full];
@@ -147,11 +152,11 @@ export function launchAndTrack(dir: string, rel: string, platform: NodeJS.Platfo
     });
   const started = Date.now();
   return new Promise((resolve, reject) => {
-    const child = spawn(cmd, args, { cwd: path.dirname(full), stdio: "ignore", windowsHide: false });
+    const child = spawn(cmd, args, { cwd: path.dirname(full), stdio: "ignore", windowsHide: false, env: { ...process.env, ...env } });
     let failed = false;
     child.on("error", (err) => {
       failed = true;
-      reject(cmd === "wine" ? new Error("This is a Windows game; install Wine (or use Proton through Lutris/Heroic) to run it on Linux") : err);
+      reject(cmd === "wine" ? new Error("This is a Windows game; install Wine, or pick a Proton build for it under Profile, This computer") : err);
     });
     const done = () => resolve(Math.round((Date.now() - started) / 1000));
     // The started process is gone; the game may still be running from its folder (launchers).

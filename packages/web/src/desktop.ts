@@ -121,6 +121,15 @@ export interface VerifyResult {
   changed: string[];
 }
 
+export interface RunnersState {
+  platform: string;
+  /** Proton builds installed for LootDen, newest first. */
+  installed: string[];
+  /** What Windows games use unless they pick their own: a Proton build, "wine", or "" (Wine). */
+  default: string;
+  games: Record<string, string>;
+}
+
 export type Progress =
   | { gameId: string; type: "start"; gameDir: string; totalBytes: number }
   | { gameId: string; type: "download"; file: string; index: number; count: number; received: number; total: number }
@@ -139,6 +148,8 @@ export type Progress =
   | { gameId: string; type: "repaired"; files: number }
   /** Copying from another PC in the house instead of the server. */
   | { gameId: string; type: "peer"; device: string }
+  /** A Proton build downloading (gameId is "runner"). */
+  | { gameId: string; type: "runner"; name: string; received: number; total: number }
   | { gameId: string; type: "playing"; action?: string }
   /** The game was paused or picked up again (suspend). */
   | { gameId: string; type: "suspended" | "resumed" }
@@ -257,6 +268,15 @@ export interface DesktopBridge {
   downloadSettings?(patch?: Partial<DownloadSettings>): Promise<DownloadSettings>;
   verify?(gameId: string): Promise<VerifyResult>;
   repair?(gameId: string, files: string[]): Promise<{ repaired: number }>;
+  /** Linux: Proton builds and which one each game uses (newer apps only). */
+  runners?(): Promise<RunnersState>;
+  runnerReleases?(): Promise<Array<{ name: string; publishedAt: string; size: number }>>;
+  installRunner?(name: string): Promise<string>;
+  setRunner?(patch: { gameId?: string; runner: string | null }): Promise<unknown>;
+  /** Add to Steam (newer apps only). */
+  steamStatus?(): Promise<{ users: string[]; user: string | null; added: string[] }>;
+  addToSteam?(ids?: string[], userId?: string): Promise<{ added: number; restartSteam: boolean }>;
+  removeFromSteam?(ids?: string[]): Promise<{ removed: number }>;
   /** actionId picks one of the game's launch options; "" is the game's own way (apps from 0.25 take it). */
   play(gameId: string, actionId?: string): Promise<{ executable: string } | null>;
   /** Launch options on this PC: extra ways to start a game and steps before and after it (apps from 0.25). */

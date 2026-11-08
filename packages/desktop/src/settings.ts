@@ -75,6 +75,10 @@ export interface DesktopSettings {
   shareGames?: boolean;
   /** The key the server signs LAN copy tickets for this PC with. */
   peerKey?: string;
+  /** Linux: the Proton build (a folder under the tools folder's runners), or "wine", Windows games start with: for every game, and per game. */
+  linuxRunner?: { default: string; games: Record<string, string> };
+  /** Add to Steam: which Steam account's library LootDen's games go in (its userdata id). */
+  steamUser?: string;
 }
 
 export function defaultSettings(): DesktopSettings {
