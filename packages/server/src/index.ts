@@ -65,6 +65,8 @@ setInterval(() => void ctx.prices.scheduled().catch((err) => app.log.warn({ err:
 // Home Assistant sensors over MQTT: connect, then refresh every five minutes.
 void ctx.homeAssistant.restart();
 setInterval(() => ctx.homeAssistant.publishAll(), 5 * 60_000).unref();
+// Dendrop, the family chat: the bot listens for button clicks and Bandit questions.
+void ctx.chat.restart();
 // The wanted list: "it's out" alerts and due Prowlarr searches every half hour.
 setTimeout(() => void ctx.wanted.run().catch((err) => app.log.warn(err, "Wanted search failed")), 90_000).unref();
 setInterval(() => void ctx.wanted.run().catch((err) => app.log.warn(err, "Wanted search failed")), 30 * 60_000).unref();

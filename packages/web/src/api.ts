@@ -677,6 +677,13 @@ export const api = {
   homeAssistant: () => call<HomeAssistantState>("GET", "/api/homeassistant"),
   saveHomeAssistant: (patch: Partial<HomeAssistantState>) => call<HomeAssistantState>("PUT", "/api/homeassistant", patch),
   testHomeAssistant: () => call<HomeAssistantState>("POST", "/api/homeassistant/test"),
+  chat: () => call<ChatState>("GET", "/api/chat"),
+  saveChat: (patch: Partial<ChatState>) => call<ChatState>("PUT", "/api/chat", patch),
+  chatChannels: () => call<ChatChannel[]>("GET", "/api/chat/channels"),
+  testChat: () => call<{ posted: string[] }>("POST", "/api/chat/test"),
+  chatStatus: () => call<{ ready: boolean; buttons: boolean }>("GET", "/api/chat/status"),
+  shareToChat: (gameId: string, note?: string) => call<{ ok: true }>("POST", "/api/chat/share", { gameId, note }),
+  lookingForGroup: (gameId: string, note?: string) => call<{ ok: true }>("POST", "/api/chat/lfg", { gameId, note }),
   setSavePath: (id: string, path: string | null) => call<GameDetail>("PUT", `/api/games/${id}/save-path`, { path }),
   suggestSavePath: (id: string) => call<{ paths: string[] }>("GET", `/api/games/${id}/save-path/suggest`),
 
@@ -1048,6 +1055,32 @@ export interface WishPrices {
   settings: (PriceSettings & { hasKey: boolean }) | null;
   country: string;
   prices: WishPrice[];
+}
+
+/** The link to Dendrop, the family chat (Settings, Chat). */
+export interface ChatState {
+  enabled: boolean;
+  url: string;
+  botToken: string;
+  webhookUrl: string;
+  familyChannelId: number | null;
+  grownupsChannelId: number | null;
+  helperChannelId: number | null;
+  helperUserId: number | null;
+  helperKidSafe: boolean;
+  post: { alerts: boolean; requests: boolean; timeAsks: boolean; achievements: boolean; finished: boolean; newGames: boolean };
+  hasBot: boolean;
+  hasWebhook: boolean;
+  connected: boolean;
+  error: string | null;
+}
+
+export interface ChatChannel {
+  id: number;
+  serverId: number;
+  serverName: string;
+  name: string;
+  conversationId: number;
 }
 
 export interface HomeAssistantState {

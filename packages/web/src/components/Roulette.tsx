@@ -5,6 +5,7 @@ import { api } from "../api";
 import { useAuth } from "../auth";
 import { bridgeError, desktop } from "../desktop";
 import { Cover } from "./Cover";
+import { ChatButtons } from "./ChatButtons";
 import { useEscape } from "../escape";
 
 type Filter = "installed" | "backlog" | "fresh" | "together" | "controller";
@@ -151,6 +152,7 @@ export function GameRoulette({ onClose }: { onClose: () => void }) {
               <button className="secondary" onClick={spin}>
                 Spin again
               </button>
+              <ChatButtons gameId={pick.id} lfg={false} />
             </div>
           </div>
         )}

@@ -1,4 +1,5 @@
 import { SendToPcButton } from "../components/SendToPc";
+import { ChatButtons } from "../components/ChatButtons";
 import { StreamButton } from "../components/Streaming";
 import { useEffect, useState, type CSSProperties } from "react";
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
@@ -119,6 +120,7 @@ export function GameDetail() {
           {me?.user && !isAddon && <ShelfButton gameId={game.id} />}
           {me?.user && !isAddon && <MarkButtons gameKey={game.id} />}
           {me?.user && !isAddon && game.platform === "pc" && <SendToPcButton gameId={game.id} title={game.title} sizeBytes={game.sizeBytes} />}
+          {me?.user && !isAddon && <ChatButtons gameId={game.id} />}
           {!isAddon && game.platform === "pc" && <StreamButton gameId={game.id} title={game.title} />}
           <AlsoOnStores gameId={game.id} />
           {game.platform === "pc" && !isAddon && <VersionBanner gameId={game.id} isAdmin={me?.role === "admin"} />}

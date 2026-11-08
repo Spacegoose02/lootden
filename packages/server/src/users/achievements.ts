@@ -65,7 +65,22 @@ export class AchievementService {
     return this.db.prepare("SELECT * FROM achievement_cache WHERE user_id = ? AND source = ? AND source_id = ?").get(userId, source, sourceId) as CacheRow | undefined;
   }
 
+  /** Called with achievements that weren't unlocked the last time this game was looked up (not on the first look). */
+  onUnlocked: ((userId: number, game: GameAchievements, fresh: GameAchievement[]) => void) | null = null;
+
   private store(userId: number, a: GameAchievements, link: string | null): GameAchievements {
+    const before = this.cached(userId, a.source, a.sourceId);
+    if (before && this.onUnlocked) {
+      const had = new Set((json<GameAchievements | null>(before.data, null)?.items ?? []).filter((i) => i.unlockedAt).map((i) => i.id));
+      const fresh = a.items.filter((i) => i.unlockedAt && !had.has(i.id));
+      if (fresh.length) {
+        try {
+          this.onUnlocked(userId, a, fresh);
+        } catch {
+          /* listeners never break a lookup */
+        }
+      }
+    }
     const last = a.items.map((i) => i.unlockedAt).filter(Boolean).sort().pop() ?? null;
     this.db
       .prepare(

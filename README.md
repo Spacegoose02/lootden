@@ -109,6 +109,11 @@ installs games from it on any PC in the house.
   installed games show up and start from LootDen; Humble Bundle (DRM-free games) and PlayStation
   (PS4 and PS5 games you've played, with play time) connect under Game libraries.
 - **ProtonDB and Steam Deck badges** on Steam games' pages.
+- **Family chat ([Dendrop](https://github.com/Spacegoose02/dendrop))**: Share to chat and "Who wants
+  to play?" on game pages, requests with Approve and Decline buttons, kids' more-time asks answered
+  with +15 or +30 from chat, Install on my PC buttons, new games, rare achievements and finished
+  games posted to the family channel, alerts in a grown-ups channel, and Bandit answering in his
+  own channel. Under Settings, Chat.
 - **Home Assistant**: sensors over MQTT (with discovery) for who's playing what, games, PCs online
   and downloads, under Settings, Home Assistant.
 - `lootden` command-line client and a Playnite plugin.

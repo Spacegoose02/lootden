@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import type { GameNight as Night, GameNightPick, User } from "@lootden/shared";
 import { api, avatarUrl, type GameNightList } from "../api";
+import { ChatButtons } from "../components/ChatButtons";
 import { useAuth } from "../auth";
 
 const when = (n: Pick<Night, "date" | "time">) =>
@@ -235,6 +236,7 @@ function Planner({ data, meId, onPlanned }: { data: GameNightList; meId: number 
         <button className="button primary" disabled={!players.length} onClick={() => void plan()}>
           Plan it{game ? `: ${game.title}` : ""}
         </button>
+        {game && <ChatButtons gameId={game.id} compact />}
       </div>
       {msg && (
         <p className={msg.error ? "error" : "notice"} role="status">

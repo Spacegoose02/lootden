@@ -177,7 +177,7 @@ export class FamilyService {
     const r = this.db
       .prepare("INSERT INTO time_requests (user_id, minutes, note, day, state, created_at) VALUES (?, ?, ?, ?, 'pending', ?) RETURNING id")
       .get(userId, m, clean, today, now()) as { id: number };
-    await this.notifier.send("requests", `${name} asked for ${m} more minutes`, clean, "/requests");
+    await this.notifier.send("requests", `${name} asked for ${m} more minutes`, clean, "/requests", { time: { id: r.id, by: name, minutes: m, note: clean } });
     return this.timeRequests(userId).find((t) => t.id === r.id)!;
   }
 
