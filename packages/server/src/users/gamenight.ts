@@ -155,6 +155,21 @@ export class GameNights {
     return this.view(r);
   }
 
+  /**
+   * Adds someone to a planned night or takes them off it (a "Going" in the family chat). The
+   * last player can't leave; delete the night instead.
+   */
+  setPlayer(id: number, userId: number, going: boolean): GameNight {
+    const r = this.db.prepare("SELECT * FROM game_nights WHERE id = ?").get(id) as unknown as Row | undefined;
+    if (!r) throw new Error("No such game night");
+    if (!this.users.byId(userId)) throw new Error("No such profile");
+    const players = json<number[]>(r.players, []);
+    const next = going ? [...new Set([...players, userId])] : players.filter((p) => p !== userId);
+    if (!next.length) throw new Error("A game night needs at least one player");
+    if (next.length !== players.length) this.db.prepare("UPDATE game_nights SET players = ? WHERE id = ?").run(JSON.stringify(next), id);
+    return this.view({ ...r, players: JSON.stringify(next) });
+  }
+
   remove(id: number): boolean {
     return this.db.prepare("DELETE FROM game_nights WHERE id = ?").run(id).changes > 0;
   }

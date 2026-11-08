@@ -35,6 +35,19 @@ export function chatRoutes(app: FastifyInstance, ctx: AppContext) {
     return { ready: ctx.chat.ready(), buttons: ctx.chat.view().hasBot };
   });
 
+  /** The family channel in the in-game menu: read it, and send a line. Kid profiles read only, so Dendrop's kid rules can't be sidestepped. */
+  app.get("/api/chat/family", async (req) => {
+    requireUser(req);
+    return fail(() => ctx.chat.familyMessages(), 502);
+  });
+  app.post<{ Body: { text?: string } }>("/api/chat/family", async (req) => {
+    const p = requireUser(req);
+    if (!p.user) throw new HttpProblem(400, "The service token has no name to post under");
+    if (p.kidMode) throw new HttpProblem(403, "Kid profiles can read the family chat here; send messages from Dendrop");
+    await fail(() => ctx.chat.sayInFamily(p.user!.displayName || p.user!.username, String(req.body?.text ?? "")), 502);
+    return { ok: true };
+  });
+
   const gameFor = (req: Parameters<typeof requireUser>[0], id: unknown) => {
     const p = requireUser(req);
     const game = ctx.library.get(String(id ?? ""), false);

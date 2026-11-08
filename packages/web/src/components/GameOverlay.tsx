@@ -4,6 +4,7 @@ import { feel } from "../feedback";
 import { HELPER_EVENT } from "../gamepad";
 import { useHelperGame } from "../helperGame";
 import { formatPlaytime } from "../api";
+import { OverlayChat } from "./OverlayChat";
 import { PadGlyph } from "./PadHints";
 
 type Running = OverlayState["games"][number];
@@ -141,6 +142,7 @@ export function GameOverlay() {
               </button>
             ))}
         </div>
+        <OverlayChat />
         {error && <p className="error">{error}</p>}
         <p className="muted small overlay-foot">
           <PadGlyph button="b" /> back to the game · hold <PadGlyph button="view" />
