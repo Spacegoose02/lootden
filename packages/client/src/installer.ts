@@ -167,6 +167,14 @@ export async function installGame(api: GameServerClient, gameId: string, opts: I
     if (warning) emit({ type: "warning", message: warning });
   }
 
+  await finishInstall(api, game, gameDir, opts);
+  emit({ type: "done", gameDir });
+  return gameDir;
+}
+
+/** The last steps of any install (from the server or another PC): the manifest, the file list for Verify, and telling the server. */
+export async function finishInstall(api: GameServerClient, game: GameDetail, gameDir: string, opts: Pick<InstallOptions, "device" | "report" | "onEvent">): Promise<void> {
+  const emit = opts.onEvent ?? (() => {});
   // An installer inside an archive only shows once it's unpacked, so check the files we ended up with too.
   const needsSetup = game.platform === "pc" ? (game.needsSetup ?? (await detectSetup(gameDir))) : null;
   // The list Verify files checks against later. Not for scratch downloads.
@@ -181,6 +189,5 @@ export async function installGame(api: GameServerClient, gameId: string, opts: I
     ) + "\n",
   );
   if (opts.report !== false) await api.reportActivity({ gameId: game.id, device: opts.device ?? os.hostname(), event: "installed", installPath: gameDir });
-  emit({ type: "done", gameDir });
-  return gameDir;
 }
+

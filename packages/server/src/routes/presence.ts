@@ -65,6 +65,22 @@ export function presenceRoutes(app: FastifyInstance, ctx: AppContext) {
     return fail(() => ctx.presence.send(req.params.device, p.user?.displayName ?? "A grown-up", { kind: "install", gameId: game.id, title: game.title }));
   });
 
+  /**
+   * LAN copies: a PC in the house that has this game installed (at the library's version) and
+   * shares it, with a ticket for the asking PC. 404 when no PC can, and the app downloads from
+   * the server as usual.
+   */
+  app.post<{ Params: { id: string }; Body: { device?: string } }>("/api/games/:id/peer-source", async (req) => {
+    const p = requireUser(req);
+    const game = ctx.library.get(req.params.id, false);
+    if (!game || (p.kidMode && game.kidSafe !== true)) throw new HttpProblem(404, "No such game");
+    const device = String(req.body?.device ?? "").trim().slice(0, 100);
+    if (!device) throw new HttpProblem(400, "device is required");
+    const source = ctx.presence.peerSource(game.id, device, game.version ?? null);
+    if (!source) throw new HttpProblem(404, "No PC on the network has this game to share");
+    return source;
+  });
+
   /** PCs a game can be sent to: every PC for admins, the ones they use for others. */
   app.get("/api/pcs/targets", async (req) => {
     const p = requireUser(req);
