@@ -1,6 +1,7 @@
 import { SendToPcButton } from "../components/SendToPc";
 import { ChatButtons } from "../components/ChatButtons";
 import { StreamButton } from "../components/Streaming";
+import { EarnersAdmin, EarnLockBanner } from "../components/EarnLock";
 import { useEffect, useState, type CSSProperties } from "react";
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { browserRomFile, platformFor, truckGameFor, type GameDetail as Game } from "@lootden/shared";
@@ -119,6 +120,7 @@ export function GameDetail() {
             </p>
           )}
           <Badges game={game} />
+          {me?.user && !isAddon && <EarnLockBanner gameId={game.id} />}
           {game.platform === "pc" && <CompatBadges steamAppId={game.metadata?.steamAppId} />}
           {game.platform !== "pc" && !isAddon && <RomBadge gameId={game.id} isAdmin={me?.role === "admin"} />}
           {me?.user && !isAddon && <ShelfButton gameId={game.id} />}
@@ -267,6 +269,7 @@ export function GameDetail() {
               {me?.role === "admin" && game.platform === "pc" && <PackageAdmin game={game} onChange={setGame} />}
 
               {me?.role === "admin" && <AdminTools game={game} onChange={setGame} />}
+              {me?.role === "admin" && !isAddon && <EarnersAdmin gameId={game.id} />}
               {me?.role === "admin" && !isAddon && <ManualAdmin gameId={game.id} />}
               </>
             )}

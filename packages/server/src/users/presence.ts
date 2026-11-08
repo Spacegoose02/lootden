@@ -104,6 +104,8 @@ export class PresenceService {
     private readonly clock: () => number = Date.now,
   ) {}
 
+  private readonly earnClosed = new Set<string>();
+
   /** A heartbeat from a desktop app: what runs there now, and what it says about the PC. */
   report(userId: number, input: PresenceReport): PresenceAnswer {
     const device = String(input?.device ?? "").trim().slice(0, 100);
@@ -141,6 +143,16 @@ export class PresenceService {
       }
     }
     this.savePc(device, userId, input.pc);
+    // Games a kid has to earn in Den Duty first: closed, with the reason, once per launch.
+    for (const game of games) {
+      if (game.source !== "lootden") continue;
+      const lock = this.family.gameLock(userId, game.gameId);
+      const key = `${device}\n${game.gameId}\n${this.live.get(`${device}\n${game.gameId}`)?.game.startedAt ?? ""}`;
+      if (!lock.reason || this.earnClosed.has(key)) continue;
+      this.earnClosed.add(key);
+      if (this.earnClosed.size > 500) this.earnClosed.delete(this.earnClosed.values().next().value!);
+      this.send(device, "LootDen", { kind: "close", gameId: game.gameId, text: lock.reason });
+    }
     const peerKey = this.peerKey(device);
     if (changed) this.onChange();
     // Messages and closes go stale in ten minutes; Send to PC waits a day for the PC to come on.
@@ -385,12 +397,33 @@ export class PresenceService {
     return rows.map((r) => ({ device: r.name, online: Date.parse(r.last_seen) >= cutoff, copies: json<PcCopy[]>(r.copies, []) }));
   }
 
-  /** PCs that stream this game with Sunshine, on first. */
+  /** PCs that stream this game with Sunshine, best first: on and free, then off (it can be woken), then busy. */
   streamHosts(gameId: string, except?: string): StreamHost[] {
+    const rank = (h: StreamHost) => (h.busy ? 3 : h.online ? 0 : h.canWake ? 1 : 2);
     return this.pcs()
       .filter((p) => p.sunshine && p.streamGames.includes(gameId) && p.name !== except)
-      .map((p) => ({ name: p.name, addresses: p.addresses, online: p.online }))
-      .sort((a, b) => Number(b.online) - Number(a.online));
+      .map((p) => {
+        const now = p.online ? p.playing[0] : undefined;
+        return { name: p.name, addresses: p.addresses, online: p.online, busy: now ? `${now.name}: ${now.title}` : null, canWake: p.macs.length > 0 };
+      })
+      .sort((a, b) => rank(a) - rank(b));
+  }
+
+  /**
+   * Streaming without picking a PC: the best one for this game. A free PC that's on is used
+   * straight away; otherwise one that's off gets woken (Wake-on-LAN) and the caller waits for it.
+   */
+  async pickStreamHost(gameId: string, except?: string): Promise<{ host: StreamHost; waking: boolean } | null> {
+    const hosts = this.streamHosts(gameId, except);
+    const free = hosts.find((h) => h.online && !h.busy);
+    if (free) return { host: free, waking: false };
+    const off = hosts.find((h) => !h.online && h.canWake);
+    if (off) {
+      await this.wakePc(off.name);
+      return { host: off, waking: true };
+    }
+    const any = hosts[0];
+    return any ? { host: any, waking: false } : null;
   }
 
   /** Admin: forget a PC (an old one, or a renamed one). */

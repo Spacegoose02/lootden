@@ -213,7 +213,7 @@ export interface Connectors {
   itch: { apiKey: string };
   rules: ReleaseRules;
   wanted: { autoSearch: boolean; autoGrab: boolean; intervalHours: number; onlyReleased: boolean };
-  notify: { appriseUrl: string; appriseTargets: string; chatWebhook: string } & Record<"released" | "found" | "grabbed" | "imported" | "updates" | "flagged" | "sources" | "requests" | "deals", boolean>;
+  notify: { appriseUrl: string; appriseTargets: string; chatWebhook: string } & Record<"released" | "found" | "grabbed" | "imported" | "updates" | "flagged" | "sources" | "requests" | "deals" | "installed" | "timeLimit" | "gameNight" | "saveFailed", boolean>;
   scan: { clamav: "off" | "clamd" | "clamscan"; clamdHost: string; clamdPort: number; virusTotalKey: string; hold: boolean };
   nexus: { apiKey: string };
   hltb: { enabled: boolean };
@@ -723,6 +723,15 @@ export const api = {
   homeAssistant: () => call<HomeAssistantState>("GET", "/api/homeassistant"),
   saveHomeAssistant: (patch: Partial<HomeAssistantState>) => call<HomeAssistantState>("PUT", "/api/homeassistant", patch),
   testHomeAssistant: () => call<HomeAssistantState>("POST", "/api/homeassistant/test"),
+  haPcs: () => call<HaPc[]>("GET", "/api/homeassistant/pcs"),
+  discord: () => call<DiscordState>("GET", "/api/discord"),
+  saveDiscord: (patch: Partial<DiscordState>) => call<DiscordState>("PUT", "/api/discord", patch),
+  testDiscord: () => call<DiscordState>("POST", "/api/discord/test"),
+  setPaused: (userId: number, paused: boolean) => call<{ paused: boolean }>("PUT", `/api/users/${userId}/paused`, { paused }),
+  pausedProfiles: () => call<number[]>("GET", "/api/family/paused"),
+  gameEarners: (gameId: string) => call<{ userIds: number[] }>("GET", `/api/games/${encodeURIComponent(gameId)}/earners`),
+  setGameEarners: (gameId: string, userIds: number[]) => call<{ userIds: number[] }>("PUT", `/api/games/${encodeURIComponent(gameId)}/earners`, { userIds }),
+  gameLock: (gameId: string) => call<{ reason: string | null; unlockedUntil: string | null }>("GET", `/api/games/${encodeURIComponent(gameId)}/lock`),
   chat: () => call<ChatState>("GET", "/api/chat"),
   saveChat: (patch: Partial<ChatState>) => call<ChatState>("PUT", "/api/chat", patch),
   chatChannels: () => call<ChatChannel[]>("GET", "/api/chat/channels"),
@@ -863,6 +872,8 @@ export const api = {
   bonusNow: (userId: number, minutes: number) => call<{ allowance: Allowance }>("POST", `/api/family/now-playing/${userId}/bonus`, { minutes }),
   pcs: () => call<PcInfo[]>("GET", "/api/pcs"),
   streamHosts: (gameId: string, from?: string) => call<StreamHost[]>("GET", `/api/games/${encodeURIComponent(gameId)}/stream-hosts${qs({ from })}`),
+  helperAction: (action: unknown) => call<{ text: string; link?: string }>("POST", "/api/helper/action", { action }),
+  streamPick: (gameId: string, from?: string) => call<{ host: StreamHost; waking: boolean }>("POST", `/api/games/${encodeURIComponent(gameId)}/stream-pick`, { from }),
   gameNights: () => call<GameNightList>("GET", "/api/game-nights"),
   screenshots: (q: { before?: number; limit?: number; userId?: number; gameId?: string } = {}) =>
     call<Screenshot[]>("GET", `/api/screenshots${qs({ before: q.before, limit: q.limit, userId: q.userId, gameId: q.gameId })}`),
@@ -942,9 +953,11 @@ export interface AchievementsAnswer {
 }
 
 export interface GameSessions {
-  sessions: Array<{ device: string | null; seconds: number; startedAt: string; endedAt: string }>;
+  sessions: Array<{ device: string | null; seconds: number; startedAt: string; endedAt: string; energyWh?: number | null }>;
   count: number;
   totalSeconds: number;
+  /** Energy the PCs used, from smart plugs; null when none report. */
+  totalWh?: number | null;
   averageSeconds: number;
   longestSeconds: number;
   firstPlayedAt: string | null;
@@ -953,12 +966,13 @@ export interface GameSessions {
 export interface PlayHistory {
   days: number;
   totalSeconds: number;
+  totalWh?: number | null;
   sessionCount: number;
   perDay: Array<{ day: string; seconds: number }>;
   perWeekday: Array<{ day: string; seconds: number }>;
   perHour: Array<{ hour: number; seconds: number }>;
   genres: Array<{ name: string; seconds: number }>;
-  devices: Array<{ name: string; seconds: number }>;
+  devices: Array<{ name: string; seconds: number; wh?: number | null }>;
   games: Array<{ id: string; title: string; seconds: number }>;
   recent: Array<{ gameId: string; title: string | null; device: string | null; seconds: number; startedAt: string }>;
 }
@@ -1030,6 +1044,11 @@ export function formatBytes(n: number): string {
     i++;
   }
   return `${n.toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
+}
+
+/** "0.4 kWh" or "120 Wh", for power use from smart plugs. */
+export function formatEnergy(wh: number): string {
+  return wh >= 1000 ? `${(wh / 1000).toFixed(1)} kWh` : `${Math.round(wh)} Wh`;
 }
 
 export function formatPlaytime(seconds: number): string {
@@ -1139,6 +1158,28 @@ export interface HomeAssistantState {
   password: string;
   prefix: string;
   discovery: string;
+  /** Buttons and switches in Home Assistant (pause a kid's games, +30 minutes, wake a PC, stop a game). */
+  controls: boolean;
+  /** Smart plug per PC: the MQTT topic with its watts, and the JSON field (blank for a bare number). */
+  power: Record<string, { topic: string; field: string }>;
+  connected: boolean;
+  error: string | null;
+}
+
+export interface HaPc {
+  name: string;
+  online: boolean;
+  plug: { topic: string; field: string } | null;
+  watts: number | null;
+}
+
+export interface DiscordState {
+  webhookUrl: string;
+  newGames: boolean;
+  gameNights: boolean;
+  achievements: "off" | "rare" | "all";
+  finished: boolean;
+  kidSafeOnly: boolean;
   connected: boolean;
   error: string | null;
 }

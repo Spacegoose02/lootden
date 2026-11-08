@@ -11,7 +11,9 @@ import type { UserRepo } from "./repo.js";
  *   - locks a kid's games while a Den Duty time-out says so (all games, or just Roblox),
  *   - can keep games closed until the kid's chores for today are done,
  *   - hands out game time a kid bought in Den Duty's rewards shop, and marks it given there,
- *   - lets family goals reached in Den Duty unlock a game night.
+ *   - lets family goals reached in Den Duty unlock a game night,
+ *   - reports each kid's play time today back to Den Duty, with the games a reward can unlock,
+ *   - unlocks a game a kid bought in the shop ("Fortnite for the weekend").
  */
 
 export interface DenDutySettings {
@@ -46,6 +48,8 @@ interface GamingKid {
   chores: { due: number; done: number; left: number } | null;
   locks: Array<{ id: string; what: string; games: "all" | "roblox"; endsAt: string }>;
   gameTime: Array<{ orderId: string; title: string; icon: string; minutes: number; boughtAt: string }>;
+  /** Shop rewards that unlock one game for a while (Den Duty 0.6+). */
+  gameUnlocks?: Array<{ orderId: string; title: string; icon: string; gameId: string; gameTitle: string; hours: number; boughtAt: string }>;
 }
 
 interface GamingState {
@@ -84,6 +88,11 @@ export class DenDutyLink {
     private readonly presence: PresenceService,
     private readonly fetchImpl: FetchLike = fetch,
   ) {}
+
+  /** A game's title, for the games a Den Duty reward can unlock. */
+  gameTitle: (gameId: string) => string | null = () => null;
+  /** Den Duty is too old to take LootDen's report; don't keep asking. */
+  private noReport = false;
 
   settings(): DenDutySettings {
     const row = this.db.prepare("SELECT value FROM settings WHERE key = ?").get(KEY) as { value: string } | undefined;
@@ -166,12 +175,12 @@ export class DenDutyLink {
     this.timer = null;
   }
 
-  private async call<T>(method: "GET" | "POST", path: string): Promise<T> {
+  private async call<T>(method: "GET" | "POST", path: string, body: unknown = {}): Promise<T> {
     const s = this.settings();
     const res = await this.fetchImpl(`${s.url}/api/v1/homes/${encodeURIComponent(s.homeId)}${path}`, {
       method,
       headers: { authorization: `Bearer ${this.token()}`, ...(method === "POST" ? { "content-type": "application/json" } : {}) },
-      body: method === "POST" ? "{}" : undefined,
+      body: method === "POST" ? JSON.stringify(body) : undefined,
       signal: AbortSignal.timeout(10_000),
     });
     if (res.status === 401 || res.status === 403) throw new Error("Den Duty refused the token. Make a control token in Den Duty, Settings, Home Assistant and API tokens.");
@@ -206,6 +215,61 @@ export class DenDutyLink {
       const id = Number(userId);
       if (s.gameTime) await this.handOut(id, kid);
       if (s.locks) this.closeLocked(id, kid);
+      await this.unlockBought(id, kid);
+    }
+    await this.report().catch(() => {});
+  }
+
+  /** What LootDen tells Den Duty: play time today per linked kid, and the games a reward can unlock. */
+  reportBody(): { kids: Array<{ kidId: string; minutes: number; playing: string | null; remaining: number | null }>; games: Array<{ id: string; title: string }> } {
+    const s = this.settings();
+    const playing = this.presence.nowPlaying({ id: null, admin: true, kid: false });
+    const kids = Object.entries(s.kids).map(([userId, kidId]) => {
+      const id = Number(userId);
+      const a = this.family.allowance(id);
+      const now = playing.filter((p) => p.userId === id);
+      // Sessions count once they end, so add the one going on now.
+      const live = now.reduce((n, p) => n + Math.max(0, Date.now() - Date.parse(p.startedAt)) / 1000, 0);
+      return {
+        kidId,
+        minutes: Math.round((a.usedSeconds + live) / 60),
+        playing: now[0]?.title ?? null,
+        remaining: a.remainingSeconds === null ? null : Math.max(0, Math.round((a.remainingSeconds - live) / 60)),
+      };
+    });
+    const ids = new Set(Object.keys(s.kids).flatMap((u) => this.family.earnedGames(Number(u))));
+    const games = [...ids]
+      .map((id) => ({ id, title: this.gameTitle(id) ?? "" }))
+      .filter((g) => g.title)
+      .sort((a, b) => a.title.localeCompare(b.title));
+    return { kids, games };
+  }
+
+  private async report(): Promise<void> {
+    if (this.noReport || !Object.keys(this.settings().kids).length) return;
+    try {
+      await this.call("POST", "/gaming/report", this.reportBody());
+    } catch (err) {
+      // An older Den Duty doesn't have the report yet: the rest of the link still works.
+      if (/too old|answered 404/.test((err as Error).message)) this.noReport = true;
+    }
+  }
+
+  /** A game bought in Den Duty's shop: claimed there first, then unlocked here for the kid. */
+  private async unlockBought(userId: number, kid: GamingKid): Promise<void> {
+    for (const u of kid.gameUnlocks ?? []) {
+      if (!this.gameTitle(u.gameId)) continue;
+      let claim: { already: boolean };
+      try {
+        claim = await this.call<{ ok: boolean; already: boolean }>("POST", `/gaming/orders/${encodeURIComponent(u.orderId)}/claim`);
+      } catch {
+        continue;
+      }
+      if (claim.already) continue;
+      this.family.unlockGame(userId, u.gameId, u.hours, `${u.icon} ${u.title} from the Den Duty shop`);
+      for (const np of this.presence.nowPlaying({ id: null, admin: true, kid: false })) {
+        if (np.userId === userId) this.presence.send(np.device, "Den Duty", { kind: "message", text: `${u.icon} ${u.gameTitle} is unlocked! A reward from the Den Duty shop.` });
+      }
     }
   }
 

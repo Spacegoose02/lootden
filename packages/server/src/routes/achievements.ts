@@ -8,7 +8,12 @@ interface SessionRow {
   seconds: number;
   started_at: string;
   ended_at: string;
+  /** Watt-hours the PC used, when its smart plug reports to Home Assistant. */
+  energy_wh: number | null;
 }
+
+/** Watt-hours added up, null when no session had a plug reading. */
+const sumWh = (rows: Array<{ energy_wh: number | null }>) => (rows.some((r) => r.energy_wh != null) ? Math.round(rows.reduce((n, r) => n + (r.energy_wh ?? 0), 0)) : null);
 
 /** Game achievements (Steam, RetroAchievements, Xbox) and each person's play session history. */
 export function achievementRoutes(app: FastifyInstance, ctx: AppContext) {
@@ -83,13 +88,14 @@ export function achievementRoutes(app: FastifyInstance, ctx: AppContext) {
     const user = requirePerson(req);
     visibleGame(req, req.params.id);
     const rows = ctx.db
-      .prepare("SELECT game_id, device, seconds, started_at, ended_at FROM play_sessions WHERE user_id = ? AND game_id = ? ORDER BY ended_at DESC")
+      .prepare("SELECT game_id, device, seconds, started_at, ended_at, energy_wh FROM play_sessions WHERE user_id = ? AND game_id = ? ORDER BY ended_at DESC")
       .all(user.id, req.params.id) as unknown as SessionRow[];
     const total = rows.reduce((n, r) => n + r.seconds, 0);
     return {
-      sessions: rows.slice(0, 50).map((r) => ({ device: r.device, seconds: r.seconds, startedAt: r.started_at, endedAt: r.ended_at })),
+      sessions: rows.slice(0, 50).map((r) => ({ device: r.device, seconds: r.seconds, startedAt: r.started_at, endedAt: r.ended_at, energyWh: r.energy_wh })),
       count: rows.length,
       totalSeconds: total,
+      totalWh: sumWh(rows),
       averageSeconds: rows.length ? Math.round(total / rows.length) : 0,
       longestSeconds: rows.reduce((n, r) => Math.max(n, r.seconds), 0),
       firstPlayedAt: rows.at(-1)?.started_at ?? null,
@@ -107,8 +113,8 @@ export function achievementRoutes(app: FastifyInstance, ctx: AppContext) {
     const everyone = p.role === "admin" && req.query.everyone === "1";
     const since = new Date(Date.now() - days * 86400_000).toISOString();
     const rows = (everyone
-      ? ctx.db.prepare("SELECT game_id, device, seconds, started_at, ended_at FROM play_sessions WHERE ended_at >= ? ORDER BY ended_at DESC").all(since)
-      : ctx.db.prepare("SELECT game_id, device, seconds, started_at, ended_at FROM play_sessions WHERE user_id = ? AND ended_at >= ? ORDER BY ended_at DESC").all(user.id, since)) as unknown as SessionRow[];
+      ? ctx.db.prepare("SELECT game_id, device, seconds, started_at, ended_at, energy_wh FROM play_sessions WHERE ended_at >= ? ORDER BY ended_at DESC").all(since)
+      : ctx.db.prepare("SELECT game_id, device, seconds, started_at, ended_at, energy_wh FROM play_sessions WHERE user_id = ? AND ended_at >= ? ORDER BY ended_at DESC").all(user.id, since)) as unknown as SessionRow[];
     // Days follow the browser's time zone when it says, so evening play lands on the right day.
     const tz = typeof req.query.tz === "string" && /^[A-Za-z_]+(\/[A-Za-z_+-]+){0,2}$/.test(req.query.tz) ? req.query.tz : undefined;
     const parts = (iso: string) => {
@@ -123,6 +129,7 @@ export function achievementRoutes(app: FastifyInstance, ctx: AppContext) {
     const perHour = Array.from({ length: 24 }, () => 0);
     const perGenre = new Map<string, number>();
     const perDevice = new Map<string, number>();
+    const whPerDevice = new Map<string, number>();
     const perGame = new Map<string, number>();
     const titles = new Map<string, string>();
     for (const r of rows) {
@@ -131,6 +138,7 @@ export function achievementRoutes(app: FastifyInstance, ctx: AppContext) {
       perWeekday.set(at.weekday, (perWeekday.get(at.weekday) ?? 0) + r.seconds);
       perHour[at.hour]! += r.seconds;
       perDevice.set(r.device || "Unknown PC", (perDevice.get(r.device || "Unknown PC") ?? 0) + r.seconds);
+      if (r.energy_wh != null) whPerDevice.set(r.device || "Unknown PC", (whPerDevice.get(r.device || "Unknown PC") ?? 0) + r.energy_wh);
       perGame.set(r.game_id, (perGame.get(r.game_id) ?? 0) + r.seconds);
       const g = ctx.library.get(r.game_id);
       if (g && !(p.kidMode && g.kidSafe !== true)) {
@@ -142,18 +150,19 @@ export function achievementRoutes(app: FastifyInstance, ctx: AppContext) {
     return {
       days,
       totalSeconds: rows.reduce((n, r) => n + r.seconds, 0),
+      totalWh: sumWh(rows),
       sessionCount: rows.length,
       perDay: [...perDay.entries()].map(([day, seconds]) => ({ day, seconds })),
       perWeekday: WEEK.map((d) => ({ day: d, seconds: perWeekday.get(d) ?? 0 })),
       perHour: perHour.map((seconds, hour) => ({ hour, seconds })),
       genres: top(perGenre, 10).map(([name, seconds]) => ({ name, seconds })),
-      devices: top(perDevice, 10).map(([name, seconds]) => ({ name, seconds })),
+      devices: top(perDevice, 10).map(([name, seconds]) => ({ name, seconds, wh: whPerDevice.has(name) ? Math.round(whPerDevice.get(name)!) : null })),
       games: top(perGame, 10)
         .filter(([id]) => titles.has(id) || /^(roblox|store):/.test(id))
         .map(([id, seconds]) => ({ id, title: titles.get(id) ?? id.replace(/^roblox:.*/, "Roblox"), seconds })),
       recent: rows
         .slice(0, 20)
-        .map((r) => ({ gameId: r.game_id, title: titles.get(r.game_id) ?? (r.game_id.startsWith("roblox:") ? "Roblox" : null), device: r.device, seconds: r.seconds, startedAt: r.started_at }))
+        .map((r) => ({ gameId: r.game_id, title: titles.get(r.game_id) ?? (r.game_id.startsWith("roblox:") ? "Roblox" : null), device: r.device, seconds: r.seconds, startedAt: r.started_at, energyWh: r.energy_wh }))
         .filter((r) => r.title),
     };
   });

@@ -57,6 +57,16 @@ export function saveRoutes(app: FastifyInstance, ctx: AppContext) {
   });
 
   // Where the game keeps its saves. Admins set it once for everyone.
+  /** The desktop app couldn't back up a game's saves: an alert for admins. */
+  app.post<{ Params: { id: string }; Body: { device?: string; error?: string } }>("/api/games/:id/saves/failed", async (req) => {
+    const me = requirePerson(req);
+    const game = ctx.library.get(req.params.id, false);
+    if (!game) throw new HttpProblem(404, "Game not found");
+    const device = String(req.body?.device ?? "a PC").slice(0, 100);
+    await ctx.notifier.send("saveFailed", `Couldn't back up ${game.title}'s saves`, `${me.displayName} on ${device}: ${String(req.body?.error ?? "unknown error").slice(0, 300)}`, `/games/${game.id}`);
+    return { ok: true };
+  });
+
   app.put<{ Params: { id: string }; Body: { path?: string | null } }>("/api/games/:id/save-path", async (req) => {
     requireAdmin(req);
     game(req, req.params.id);

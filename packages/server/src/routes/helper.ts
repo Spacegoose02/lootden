@@ -2,7 +2,8 @@ import { Readable } from "node:stream";
 import Anthropic from "@anthropic-ai/sdk";
 import type { FastifyInstance } from "fastify";
 import { HELPER_NAME, type HelperChatRequest, type HelperSettings } from "@lootden/shared";
-import { HttpProblem, requireAdmin, requirePerson, type AppContext } from "../context.js";
+import { HttpProblem, requireAdmin, requirePerson, requireUser, type AppContext } from "../context.js";
+import { cleanAction, houseContext, runAction } from "../helper/actions.js";
 import { HelperProblem, type HelperGameContext } from "../helper/service.js";
 
 /** Bandit, the AI gaming helper: admin settings, who may use him, and the chat itself. */
@@ -69,7 +70,7 @@ export function helperRoutes(app: FastifyInstance, ctx: AppContext) {
     reply.raw.on("close", () => {
       if (!reply.raw.writableFinished) abort.abort();
     });
-    const answer = await ctx.helper.chat(me, req.body?.messages, game, abort.signal).catch((err: unknown) => {
+    const answer = await ctx.helper.chat(me, req.body?.messages, game, abort.signal, { house: houseContext(ctx, me) }).catch((err: unknown) => {
       throw err instanceof HelperProblem ? new HttpProblem(err.status, err.message) : err;
     });
     const it = answer[Symbol.asyncIterator]();
@@ -98,6 +99,20 @@ export function helperRoutes(app: FastifyInstance, ctx: AppContext) {
       // Reverse proxies (nginx) would otherwise hold the answer back until it's finished.
       .header("x-accel-buffering", "no")
       .send(Readable.from(rest()));
+  });
+
+  /** Something Bandit offered to do, and the person pressed the button for. Runs as them. */
+  app.post<{ Body: { action?: unknown } }>("/api/helper/action", async (req) => {
+    const p = requireUser(req);
+    const me = requirePerson(req);
+    const st = ctx.helper.status(me);
+    if (!st.allowed || !st.enabled) throw new HttpProblem(403, `${HELPER_NAME} is switched off for you`);
+    try {
+      return await runAction(ctx, { user: me, admin: p.role === "admin" }, cleanAction(req.body?.action));
+    } catch (err) {
+      if (err instanceof HttpProblem) throw err;
+      throw new HttpProblem(400, (err as Error).message);
+    }
   });
 }
 

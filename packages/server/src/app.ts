@@ -90,6 +90,9 @@ import { BackupService } from "./settings/backups.js";
 import { CompatService } from "./integrations/compat.js";
 import { LudusaviManifest } from "./saves/ludusavi.js";
 import { PriceService } from "./integrations/prices.js";
+import { PowerMeter } from "./integrations/power.js";
+import { DiscordPoster } from "./integrations/discord.js";
+import { HouseWatch } from "./alerts/housewatch.js";
 import { HomeAssistantBridge, type HouseState } from "./integrations/homeassistant.js";
 import { ChatLink, type SocketFactory } from "./integrations/chat.js";
 import { chatRoutes } from "./routes/chat.js";
@@ -189,14 +192,21 @@ export function buildContext(config: ServerConfig, db: Db, log: Log, opts: Build
   addons.extraGames = (userId) => roblox.storeGames(userId);
   const family = new FamilyService(db, library, users, () => requests, notifier);
   const presence = new PresenceService(db, users, library, family, opts.wake);
+  const power = new PowerMeter(db);
+  family.energyFor = (device, start, end) => power.between(device, start, end);
   const houseState = (): HouseState => {
     const playing = presence.nowPlaying({ id: null, admin: true, kid: false });
+    const paused = family.paused();
+    const midnight = new Date(Date.now() - zonedParts(new Date(), family.timeZone()).seconds * 1000).toISOString();
     return {
+      pcs: presence.pcs().map((pc) => ({ name: pc.name, online: pc.online, watts: power.watts(pc.name), kwhToday: power.kwhSince(pc.name, midnight) })),
       people: users.list().map((u) => {
         const p = playing.find((x) => x.userId === u.id);
         return {
           id: u.id,
           name: u.displayName,
+          kid: u.kidMode,
+          paused: paused.includes(u.id),
           playing: p ? { title: p.title, device: p.device, startedAt: p.startedAt, remainingMinutes: p.remainingSeconds == null ? null : Math.round(p.remainingSeconds / 60), picture: p.coverUrl } : null,
         };
       }),
@@ -206,6 +216,31 @@ export function buildContext(config: ServerConfig, db: Db, log: Log, opts: Build
     };
   };
   const homeAssistant = new HomeAssistantBridge(db, houseState, () => config.publicUrl ?? "", log);
+  /** Closes whatever a profile is playing, with a reason on its screen. */
+  const closeGamesOf = (userId: number, text: string) => {
+    for (const np of presence.nowPlaying({ id: null, admin: true, kid: false })) {
+      if (np.userId !== userId || !np.gameId) continue;
+      try {
+        presence.send(np.device, "LootDen", { kind: "close", gameId: np.gameId, text });
+      } catch {
+        // stopped meanwhile
+      }
+    }
+  };
+  homeAssistant.actions = {
+    pause: (userId, on) => {
+      family.setPaused(userId, on);
+      if (on) closeGamesOf(userId, "A grown-up paused games for now.");
+    },
+    bonus: (userId, minutes) => void family.giveTime(userId, minutes),
+    wake: (pc) => presence.wakePc(pc),
+    stop: (pc) => {
+      for (const np of presence.nowPlaying({ id: null, admin: true, kid: false })) {
+        if (np.device === pc && np.gameId) presence.send(pc, "Home Assistant", { kind: "close", gameId: np.gameId, text: "Time to stop: closed from Home Assistant." });
+      }
+    },
+    power: (pc, watts) => power.record(pc, watts),
+  };
   presence.onChange = () => {
     live.publish("playing");
     homeAssistant.changed();
@@ -237,7 +272,11 @@ export function buildContext(config: ServerConfig, db: Db, log: Log, opts: Build
   libraryRefresh.onChange = () => live.publish("library");
   const denDuty = new DenDutyLink(db, vault, users, family, presence, opts.fetchImpl);
   family.externalLock = (userId) => denDuty.lockFor(userId);
+  denDuty.gameTitle = (gameId) => library.get(gameId, false)?.title ?? null;
   const gameNights = new GameNights(db, library, users, family, denDuty);
+  const discord = new DiscordPoster(db, () => config.publicUrl ?? "", opts.fetchImpl, log);
+  gameNights.onCreated = (n) => void discord.gameNight(n);
+  const houseWatch = new HouseWatch(users, family, presence, gameNights, notifier, push, discord);
   return {
     config,
     db,
@@ -292,6 +331,10 @@ export function buildContext(config: ServerConfig, db: Db, log: Log, opts: Build
     prices: new PriceService(db, wishlist, notifier, opts.fetchImpl),
     homeAssistant,
     chat,
+    discord,
+    power,
+    houseWatch,
+    closeGamesOf,
     helper: new HelperService(db, vault, config.anthropicApiKey, () => zonedParts(new Date(), family.timeZone()).date, opts.helperAi),
     shelves: new ShelfStore(db, library),
     timeToBeat: timeToBeat(metadata.igdb, new HowLongToBeat(opts.fetchImpl), () => settings().hltb.enabled !== false),
@@ -469,6 +512,8 @@ function linkChat(ctx: AppContext): void {
     },
   };
   ctx.achievements.onUnlocked = (userId, game, fresh) => {
+    const who = ctx.users.byId(userId);
+    if (who) void ctx.discord.achievements(who.displayName, { title: game.title, kidSafe: ctx.library.list().some((g) => g.title.toLowerCase() === game.title.toLowerCase() && g.kidSafe === true) }, fresh);
     const rare = fresh.filter((a) => a.rarity != null && a.rarity <= 10);
     const user = ctx.users.list().find((u) => u.id === userId);
     if (!rare.length || !user) return;
@@ -480,6 +525,7 @@ function linkChat(ctx: AppContext): void {
     const user = ctx.users.list().find((u) => u.id === userId);
     const game = ctx.library.get(gameId, false);
     if (user && game) void chat.finished(user.displayName, { id: game.id, title: game.title, kidSafe: game.kidSafe }, status);
+    if (user && game) void ctx.discord.finished(user.displayName, { id: game.id, title: game.title, kidSafe: game.kidSafe }, status);
   };
   // New games: posted once their details have had a few minutes to arrive. The first scan only remembers.
   let seen: Set<string> | null = null;
@@ -487,11 +533,12 @@ function linkChat(ctx: AppContext): void {
     const ids = new Set(games.filter((g) => g.kind === "game").map((g) => g.id));
     const fresh = seen ? [...ids].filter((id) => !seen!.has(id)) : [];
     seen = ids;
-    if (!fresh.length || !chat.ready()) return;
+    if (!fresh.length || (!chat.ready() && !ctx.discord.settings().webhookUrl)) return;
     setTimeout(() => {
       for (const id of fresh.slice(0, 10)) {
         const g = ctx.library.get(id, false);
-        if (g) void chat.newGame({ id: g.id, title: g.title, kidSafe: g.kidSafe });
+        if (g && chat.ready()) void chat.newGame({ id: g.id, title: g.title, kidSafe: g.kidSafe });
+        if (g) void ctx.discord.newGame({ id: g.id, title: g.title, kidSafe: g.kidSafe, coverUrl: g.coverUrl, summary: g.metadata?.summary });
       }
     }, 5 * 60_000).unref();
   });

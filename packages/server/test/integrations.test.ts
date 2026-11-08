@@ -5,6 +5,8 @@ import { after, before, describe, it } from "node:test";
 import { humbleGames, humbleSession } from "../src/addons/humble.js";
 import { isoDurationSeconds, npssoOf, psnGames } from "../src/addons/playstation.js";
 import { dealWorthAlert } from "../src/integrations/prices.js";
+import { PowerMeter, readWatts } from "../src/integrations/power.js";
+import { openDatabase } from "../src/db/database.js";
 import { HomeAssistantBridge } from "../src/integrations/homeassistant.js";
 import { connectPacket, MqttPublisher, publishPacket, remainingLength } from "../src/integrations/mqtt.js";
 import { LudusaviManifest, manifestPathToTemplate, parseGameBlock } from "../src/saves/ludusavi.js";
@@ -151,7 +153,7 @@ describe("Home Assistant over MQTT", () => {
     const port = (broker.address() as net.AddressInfo).port;
     const { ctx, db } = await makeApp(root);
     const kid = await ctx.users.create({ username: "kiddo", password: "password123", role: "user" });
-    const bridge = new HomeAssistantBridge(db, () => ({ people: [{ id: kid.id, name: "Kiddo", playing: { title: "Stardew Valley", device: "DEN-PC", startedAt: "2026-11-01T10:00:00Z", remainingMinutes: 30, picture: null } }], games: 12, pcsOnline: 1, downloads: 0 }), () => "http://lootden.lan");
+    const bridge = new HomeAssistantBridge(db, () => ({ people: [{ id: kid.id, name: "Kiddo", kid: true, paused: false, playing: { title: "Stardew Valley", device: "DEN-PC", startedAt: "2026-11-01T10:00:00Z", remainingMinutes: 30, picture: null } }], games: 12, pcsOnline: 1, downloads: 0, pcs: [] }), () => "http://lootden.lan");
     await assert.rejects(bridge.save({ enabled: true, url: "http://nope" }), /mqtt:\/\//);
     const view = await bridge.save({ enabled: true, url: `mqtt://127.0.0.1:${port}`, username: "ha", password: "secret" });
     assert.equal(view.password, "********");
@@ -169,6 +171,105 @@ describe("Home Assistant over MQTT", () => {
     await new Promise((r) => setTimeout(r, 50));
     assert.equal(got.at(-1)?.payload, "offline");
     await new Promise<void>((r) => broker.close(() => r()));
+  });
+
+  it("takes Home Assistant's buttons and switches, and a smart plug's watts", async () => {
+    const got: Array<{ topic: string; payload: string }> = [];
+    const subscribed: string[] = [];
+    let client: net.Socket | null = null;
+    const broker = net.createServer((sock) => {
+      client = sock;
+      let buf = Buffer.alloc(0);
+      sock.on("data", (d: Buffer) => {
+        buf = Buffer.concat([buf, d]);
+        for (;;) {
+          if (buf.length < 2) return;
+          let len = 0;
+          let mul = 1;
+          let i = 1;
+          for (; i < buf.length; i++) {
+            len += (buf[i]! & 0x7f) * mul;
+            mul *= 128;
+            if (!(buf[i]! & 0x80)) break;
+          }
+          const start = i + 1;
+          if (buf.length < start + len) return;
+          const type = buf[0]!;
+          const body = buf.subarray(start, start + len);
+          if (type === 0x10) sock.write(Buffer.from([0x20, 2, 0, 0]));
+          else if ((type & 0xf0) === 0x30) {
+            const tl = body.readUInt16BE(0);
+            got.push({ topic: body.subarray(2, 2 + tl).toString(), payload: body.subarray(2 + tl).toString() });
+          } else if (type === 0x82) {
+            for (let at = 2; at < body.length; ) {
+              const tl = body.readUInt16BE(at);
+              subscribed.push(body.subarray(at + 2, at + 2 + tl).toString());
+              at += 3 + tl;
+            }
+          }
+          buf = buf.subarray(start + len);
+        }
+      });
+    });
+    await new Promise<void>((r) => broker.listen(0, "127.0.0.1", () => r()));
+    const port = (broker.address() as net.AddressInfo).port;
+    const { db } = await makeApp(root);
+    const calls: string[] = [];
+    const bridge = new HomeAssistantBridge(
+      db,
+      () => ({ people: [{ id: 7, name: "Kit", kid: true, paused: false, playing: null }, { id: 1, name: "Mom", kid: false, paused: false, playing: null }], games: 1, pcsOnline: 1, downloads: 0, pcs: [{ name: "Den PC", online: true, watts: 250, kwhToday: 1.25 }] }),
+      () => "",
+    );
+    bridge.actions = {
+      pause: (id, on) => void calls.push(`pause ${id} ${on}`),
+      bonus: (id, m) => void calls.push(`bonus ${id} ${m}`),
+      wake: async (pc) => void calls.push(`wake ${pc}`),
+      stop: (pc) => void calls.push(`stop ${pc}`),
+      power: (pc, w) => void calls.push(`power ${pc} ${w}`),
+    };
+    await bridge.save({ enabled: true, url: `mqtt://127.0.0.1:${port}`, power: { "Den PC": { topic: "zigbee2mqtt/den-plug", field: "power" } } });
+    await new Promise((r) => setTimeout(r, 100));
+    assert.deepEqual(subscribed.sort(), ["lootden/cmd/#", "zigbee2mqtt/den-plug"]);
+    assert.ok(got.some((g) => g.topic === "homeassistant/switch/lootden/games_allowed_7/config"), "a switch for the kid");
+    assert.ok(!got.some((g) => g.topic === "homeassistant/switch/lootden/games_allowed_1/config"), "none for grown-ups");
+    assert.ok(got.some((g) => g.topic === "homeassistant/button/lootden/wake_Den_PC/config"));
+    assert.equal(JSON.parse(got.find((g) => g.topic === "homeassistant/sensor/lootden/energy_Den_PC/config")!.payload).device_class, "energy");
+    assert.equal(got.find((g) => g.topic === "lootden/pcs/Den_PC/power")?.payload, "250");
+    const send = (topic: string, payload: string) => client!.write(publishPacket(topic, payload, false));
+    send("lootden/cmd/kid/7/games", "OFF");
+    send("lootden/cmd/kid/7/bonus", "PRESS");
+    send("lootden/cmd/kid/1/games", "OFF");
+    send("lootden/cmd/pc/Den_PC/wake", "PRESS");
+    send("lootden/cmd/pc/Den_PC/stop", "PRESS");
+    send("zigbee2mqtt/den-plug", JSON.stringify({ power: 182.5, state: "ON" }));
+    await new Promise((r) => setTimeout(r, 100));
+    assert.deepEqual(calls, ["pause 7 true", "bonus 7 30", "wake Den PC", "stop Den PC", "power Den PC 182.5"]);
+    bridge.stop();
+    await new Promise<void>((r) => broker.close(() => r()));
+  });
+
+  it("adds a PC's power readings up into energy per hour and per play session", () => {
+    const db = openDatabase(":memory:");
+    let t = Date.parse("2026-11-01T10:50:00Z");
+    const meter = new PowerMeter(db, () => t);
+    // 300 W, read every five minutes from 10:50 to 11:10.
+    for (let i = 0; i < 5; i++) {
+      meter.record("Den PC", 300);
+      if (i < 4) t += 5 * 60_000;
+    }
+    assert.equal(meter.watts("Den PC"), 300);
+    // 300 W average for 20 minutes = 100 Wh.
+    assert.equal(meter.kwhSince("Den PC", "2026-11-01T00:00:00Z"), 0.1);
+    t += 50 * 60_000;
+    assert.equal(meter.between("Den PC", "2026-11-01T10:50:00Z", "2026-11-01T11:10:00Z"), 100);
+    assert.equal(meter.between("Den PC", "2026-11-01T11:00:00Z", "2026-11-01T11:10:00Z"), 50);
+    assert.equal(meter.watts("Den PC"), null, "stale after ten minutes");
+    t += 60 * 60_000;
+    meter.record("Den PC", 100);
+    assert.equal(meter.kwhSince("Den PC", "2026-11-01T00:00:00Z"), 0.1, "a long gap isn't joined up");
+    assert.equal(readWatts("12.5", ""), 12.5);
+    assert.equal(readWatts(JSON.stringify({ ENERGY: { Power: 61 } }), "ENERGY.Power"), 61);
+    assert.equal(readWatts("not json", "power"), null);
   });
 
   it("says when the broker refuses the password", async () => {

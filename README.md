@@ -59,7 +59,10 @@ installs games from it on any PC in the house.
 - Bandit, an AI gaming helper (a raccoon, of course) in the corner of every page: tips and
   hints for the game you're looking at, with kid-safe answers on kid profiles that a parent
   switches on. Bring your own Anthropic API key; admins pick the model and set daily limits
-  and a monthly budget, and see what it costs.
+  and a monthly budget, and see what it costs. Bandit knows the library and the PCs, so he can
+  answer "what co-op games do we all have installed?", and offer to do things ("install Stardew
+  on Timmy's PC", "make a shelf of short games", "switch on the den PC"): a button shows what
+  he'll do, and nothing happens until you press it, with your own permissions.
 - Emulation: console games in their own section. The desktop app sets up RetroArch,
   DuckStation, PCSX2, RPCS3 and xemu, and many systems also play in the browser. PS2 games
   play in the browser too (experimental, on a fast PC in Chrome or Edge) through
@@ -101,12 +104,15 @@ installs games from it on any PC in the house.
   upload one from a phone), with emoji reactions. Kids only see kid-safe games' pictures.
 - **Stream to the TV**: with [Sunshine](https://app.lizardbyte.dev/Sunshine/) on the gaming PC,
   LootDen adds its games to Sunshine; a TV PC or laptop with
-  [Moonlight](https://moonlight-stream.org) gets "Stream from …" on game pages.
+  [Moonlight](https://moonlight-stream.org) gets a 📺 Stream button on game pages. It picks the
+  best PC (on and free first, nobody playing on it) and wakes one that's off with Wake-on-LAN.
 - **[Den Duty](https://github.com/Spacegoose02/den-duty) link** (the family chore tracker): Den
   Duty time-outs can lock games (or only Roblox), games can wait until today's chores are done,
   game time bought in Den Duty's rewards shop turns into bonus time here, reaching a family goal
   unlocks a game night, and Den Duty's family wall shows who's playing, the next game night and
-  a screenshot slideshow.
+  a screenshot slideshow. It works both ways: Den Duty shows each kid's play time today, and a
+  game can be "earned" (on its Admin tab), staying locked for a kid until they buy it in Den
+  Duty's shop for a few hours or a weekend.
 - **Launch options** (desktop app, per PC): extra ways to start a game, such as SMAPI for Stardew
   Valley or a mod launcher that has to wait for GTA V to load first (start, wait so many seconds,
   start the next program), plus scripts and programs to run before a game starts and after it
@@ -158,7 +164,13 @@ installs games from it on any PC in the house.
   replies; kids read only), and game nights become Dendrop events whose RSVPs sync back to the
   players list. Under Settings, Chat.
 - **Home Assistant**: sensors over MQTT (with discovery) for who's playing what, games, PCs online
-  and downloads, under Settings, Home Assistant.
+  and downloads, plus controls: a "games allowed" switch and a +30 minutes button per kid, and
+  wake and stop buttons per PC. With a smart plug per PC (Shelly, Tasmota, Zigbee2MQTT), each
+  PC's power use shows in Home Assistant and next to play time. Under Settings, Home Assistant.
+- **Discord**: a channel webhook gets new games, game nights (with a reminder an hour before),
+  rare achievements and finished games. Under Settings, Discord.
+- **More alerts**: a game installed on a PC, a kid reaching today's play time while playing, game
+  night starting within the hour, and a save backup that failed.
 - `lootden` command-line client and a Playnite plugin.
 
 ## Running the server

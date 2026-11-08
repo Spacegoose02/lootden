@@ -86,7 +86,7 @@ describe("Den Duty link", () => {
     // Ava bought 30 minutes in Den Duty's shop: claimed there, given here, once.
     await ctx.denDuty.sync();
     assert.equal(ctx.family.allowance(ava.id).bonusSeconds, 30 * 60);
-    assert.equal(den.calls.filter((c) => c.startsWith("POST")).length, 1);
+    assert.equal(den.calls.filter((c) => c.startsWith("POST") && c.endsWith("/claim")).length, 1);
     const beat = (await app.inject({ method: "POST", url: "/api/me/presence", headers: ava.headers, payload: { device: "DEN", playing: [] } })).json() as PresenceAnswer;
     assert.ok(beat.commands.some((c) => c.kind === "message" && /30 minutes of game time/.test(c.text)));
 

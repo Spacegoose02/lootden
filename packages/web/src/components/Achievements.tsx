@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { ACHIEVEMENT_SOURCES, achievementPercent, type AchievementSummary } from "@lootden/shared";
-import { api, formatPlaytime, type AchievementsAnswer, type GameSessions } from "../api";
+import { api, formatEnergy, formatPlaytime, type AchievementsAnswer, type GameSessions } from "../api";
 
 const when = (iso: string) => new Date(iso).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
 
@@ -229,6 +229,7 @@ export function GameSessionsPanel({ gameId }: { gameId: string }) {
             ["Total", formatPlaytime(s.totalSeconds)],
             ["Average", formatPlaytime(s.averageSeconds)],
             ["Longest", formatPlaytime(s.longestSeconds)],
+            ...(s.totalWh != null ? ([["Power used", formatEnergy(s.totalWh)]] as const) : []),
           ] as const
         ).map(([label, value]) => (
           <div key={label} className="stat-tile">
@@ -243,6 +244,7 @@ export function GameSessionsPanel({ gameId }: { gameId: string }) {
             <th>When</th>
             <th>PC</th>
             <th className="num">Played</th>
+            {s.totalWh != null && <th className="num">Power</th>}
           </tr>
         </thead>
         <tbody>
@@ -251,6 +253,7 @@ export function GameSessionsPanel({ gameId }: { gameId: string }) {
               <td>{new Date(x.startedAt).toLocaleString(undefined, { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</td>
               <td>{x.device ?? "—"}</td>
               <td className="num">{formatPlaytime(x.seconds)}</td>
+              {s.totalWh != null && <td className="num">{x.energyWh != null ? formatEnergy(x.energyWh) : "—"}</td>}
             </tr>
           ))}
         </tbody>

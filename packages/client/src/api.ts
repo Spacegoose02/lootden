@@ -101,6 +101,14 @@ export class GameServerClient {
     }).catch(() => undefined);
     return !!res;
   }
+  /** Tells the server a save backup failed, so admins get an alert. Never throws. */
+  async reportSaveFailure(gameId: string, device: string, error: string): Promise<void> {
+    await fetch(`${this.base}/api/games/${encodeURIComponent(gameId)}/saves/failed`, {
+      method: "POST",
+      headers: this.headers({ "Content-Type": "application/json" }),
+      body: JSON.stringify({ device, error: error.slice(0, 300) }),
+    }).catch(() => undefined);
+  }
   /** The heartbeat: what runs on this PC. The answer carries parents' messages for it (404 on older servers). */
   presence(report: PresenceReport) {
     return this.json<PresenceAnswer>("/api/me/presence", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(report) });

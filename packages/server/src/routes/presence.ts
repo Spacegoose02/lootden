@@ -97,6 +97,15 @@ export function presenceRoutes(app: FastifyInstance, ctx: AppContext) {
     if (!game || (p.kidMode && game.kidSafe !== true)) throw new HttpProblem(404, "No such game");
     return ctx.presence.streamHosts(game.id, req.query.from);
   });
+  /** Stream on the best PC for this game, waking one that's off. */
+  app.post<{ Params: { id: string }; Body: { from?: string } }>("/api/games/:id/stream-pick", async (req) => {
+    const p = requireUser(req);
+    const game = ctx.library.get(req.params.id, false);
+    if (!game || (p.kidMode && game.kidSafe !== true)) throw new HttpProblem(404, "No such game");
+    const picked = await fail(() => ctx.presence.pickStreamHost(game.id, req.body?.from));
+    if (!picked) throw new HttpProblem(404, "No PC streams this game yet");
+    return picked;
+  });
 
   // ---- PCs -----------------------------------------------------------------------------------
   app.get("/api/pcs", async (req) => {

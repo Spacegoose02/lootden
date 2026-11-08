@@ -1825,6 +1825,8 @@ function registerIpc(): void {
         // Save sync: back up after every session when the game has a save location.
         const saved = await syncSaves(api, gameId, game.dir).catch((err: Error) => ({ error: err.message }));
         if (saved) send({ gameId, type: "saves", ...saved });
+        // A missing save folder is normal (nothing saved yet); anything else is worth an alert.
+        if (saved && "error" in saved && saved.error && !saved.error.startsWith("No saves found")) void api.reportSaveFailure(gameId, os.hostname(), saved.error);
       },
       (err: Error) => {
         unwatch();

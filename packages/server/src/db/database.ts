@@ -813,6 +813,31 @@ export const MIGRATIONS: string[] = [
     created_at TEXT NOT NULL
   );
   `,
+  `
+  -- Batch 8: power use per PC (from a smart plug over MQTT), energy per play session, game night
+  -- reminders, and games a kid earns in Den Duty before playing.
+  CREATE TABLE pc_energy (
+    device TEXT NOT NULL,
+    -- The start of a five-minute slot, YYYY-MM-DDTHH:MM (UTC).
+    hour TEXT NOT NULL,
+    wh REAL NOT NULL DEFAULT 0,
+    PRIMARY KEY (device, hour)
+  );
+  ALTER TABLE play_sessions ADD COLUMN energy_wh REAL;
+  ALTER TABLE game_nights ADD COLUMN reminded_at TEXT;
+  CREATE TABLE earned_games (
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    game_id TEXT NOT NULL,
+    PRIMARY KEY (user_id, game_id)
+  );
+  CREATE TABLE game_unlocks (
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    game_id TEXT NOT NULL,
+    until TEXT NOT NULL,
+    reason TEXT,
+    PRIMARY KEY (user_id, game_id)
+  );
+  `,
 ];
 
 export function openDatabase(file: string): Db {
