@@ -777,6 +777,7 @@ export const MIGRATIONS: string[] = [
     files TEXT NOT NULL DEFAULT '[]',
     stamp TEXT NOT NULL DEFAULT '',
     checked_at TEXT NOT NULL
+  );
   `,
   `
   -- Two-step sign-in: an authenticator app (secret encrypted with the server's key), one-time
