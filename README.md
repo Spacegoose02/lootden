@@ -21,6 +21,11 @@ installs games from it on any PC in the house.
   downloads run one at a time (or two or three), can be moved to the top, paused and resumed, and
   share a speed limit. A download window ("only between 23:00 and 07:00") holds them until then
   and stops them when it ends; they resume where they stopped.
+- **Copy games between PCs at home**: when another PC in the house has a game installed (at the
+  library's version), the app copies it from there instead of the server: faster on a home network,
+  already unpacked, and no load on the server. The server hands out a ticket for that one game, so
+  a PC only shares its LootDen games' own files. On by default; switch it off under Profile, This
+  computer. Windows asks once to let LootDen through the firewall (port 47631, private networks).
 - **Verify files and Repair**: a game's page checks every file against the list made when it was
   installed, and downloads only the missing or damaged ones again. Games that came as archives are
   unpacked to one side and just the broken files copied in, so settings and mods are left alone.

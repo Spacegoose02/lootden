@@ -71,6 +71,10 @@ export interface DesktopSettings {
   storeSaves?: boolean;
   /** Downloads on this PC: a speed limit in KB/s (0 is none), how many at once, and an optional daily window ("23:00" to "07:00"). */
   downloads?: { limitKBps: number; maxAtOnce: number; window: { from: string; to: string } | null };
+  /** LAN copies: share installed LootDen games with the other PCs at home (off only when false). */
+  shareGames?: boolean;
+  /** The key the server signs LAN copy tickets for this PC with. */
+  peerKey?: string;
 }
 
 export function defaultSettings(): DesktopSettings {

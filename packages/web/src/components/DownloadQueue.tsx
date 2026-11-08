@@ -63,6 +63,16 @@ export function DownloadQueuePanel() {
         </button>
         {s && <span className="muted small">{[s.limitKBps ? `${Math.round((s.limitKBps / 1024) * 10) / 10} MB/s` : "No speed limit", s.window ? `${s.window.from} to ${s.window.to}` : "any time"].join(" · ")}</span>}
       </div>
+      <label className="check">
+        <input
+          type="checkbox"
+          checked={s?.shareGames !== false}
+          onChange={(e) => void bridge.downloadSettings!({ shareGames: e.target.checked }).then(setS, (err) => setError(bridgeError(err)))}
+        />
+        Share my installed games with the other PCs at home, so they copy from here instead of the server
+        {s?.shareGames !== false && s && !s.sharing && <span className="error small"> (couldn't open port 47631; is another app using it?)</span>}
+        {!!s?.sharingNow && <span className="muted small"> · sending to {s.sharingNow} now</span>}
+      </label>
       {error && <p className="error small">{error}</p>}
       {items.length > 0 && (
         <ol className="list download-queue">

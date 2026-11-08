@@ -106,6 +106,12 @@ export interface DownloadSettings {
   limitKBps: number;
   maxAtOnce: number;
   window: { from: string; to: string } | null;
+  /** LAN copies: this PC shares its installed games with the others at home. */
+  shareGames?: boolean;
+  /** Sharing is running (it can fail if the port is taken). */
+  sharing?: boolean;
+  /** Copies going to other PCs right now. */
+  sharingNow?: number;
 }
 
 export interface VerifyResult {
@@ -131,6 +137,8 @@ export type Progress =
   | { gameId: string; type: "verify"; done: number; total: number }
   | { gameId: string; type: "repair"; step: string; received: number; total: number }
   | { gameId: string; type: "repaired"; files: number }
+  /** Copying from another PC in the house instead of the server. */
+  | { gameId: string; type: "peer"; device: string }
   | { gameId: string; type: "playing"; action?: string }
   /** The game was paused or picked up again (suspend). */
   | { gameId: string; type: "suspended" | "resumed" }
