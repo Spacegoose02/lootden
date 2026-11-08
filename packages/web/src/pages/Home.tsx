@@ -19,6 +19,7 @@ import { HomeScreenshots } from "./Screenshots";
 import { WeekStrip } from "../components/Family";
 import { GameOfTheDay } from "../components/Roulette";
 import { HomeShelves } from "../components/Shelves";
+import { t } from "../i18n";
 
 const NOTES: Record<string, string> = {
   setup:
@@ -123,7 +124,7 @@ export function Home() {
     blocks.push(
       <section className="row row-installed" key="installed">
         <div className="row-head">
-          <h2>{desktop ? "Ready to play" : "Installed"}</h2>
+          <h2>{desktop ? t("Ready to play") : t("Installed")}</h2>
           {desktop && launchers.length > 0 && <span className="muted small row-sub">{listOf(launchers)} on this PC</span>}
           <Link to="/library?tab=installed" className="muted small">
             All installed
@@ -146,7 +147,7 @@ export function Home() {
     blocks.push(
       <section className="row" key="together">
         <div className="row-head">
-          <h2>👥 Play together</h2>
+          <h2>👥 {t("Play together")}</h2>
           <span className="muted small row-sub">Couch co-op, split screen and party games</span>
           <Link to="/library?tab=all&together=any" className="muted small">
             All of them
@@ -181,7 +182,7 @@ export function Home() {
   if (news.length) blocks.push(<NewsStrip key="news" items={news} />);
   if (videos[0]) blocks.push(<VideoRow key="v0" title={videos[0].title} videos={videos[0].videos} />);
   blocks.push(row(take("top")));
-  if (upcoming.length) blocks.push(<ListingRow key="upcoming" title="Coming soon" items={upcoming} more={{ to: "/calendar", label: "Release calendar" }} />);
+  if (upcoming.length) blocks.push(<ListingRow key="upcoming" title={t("Coming soon")} items={upcoming} more={{ to: "/calendar", label: "Release calendar" }} />);
   blocks.push(row(take("controller")));
   for (const [i, g] of videos.slice(1).entries()) {
     blocks.push(row(sections.shift() ?? null));
@@ -240,7 +241,7 @@ function NewsStrip({ items }: { items: NewsItem[] }) {
   return (
     <section className="row">
       <div className="row-head">
-        <h2>Latest news</h2>
+        <h2>{t("Latest news")}</h2>
         <Link to="/news" className="muted small">
           All news
         </Link>

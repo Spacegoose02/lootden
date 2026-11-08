@@ -19,6 +19,7 @@ import { downloadRoutes } from "./routes/downloads.js";
 import { newsRoutes } from "./routes/news.js";
 import { authRoutes } from "./routes/auth.js";
 import { pushRoutes } from "./routes/push.js";
+import { MAX_MANUAL, mediaRoutes } from "./routes/media.js";
 import { gameRoutes } from "./routes/games.js";
 import { userRoutes } from "./routes/users.js";
 import { UserRepo } from "./users/repo.js";
@@ -373,6 +374,7 @@ export function buildApp(config: ServerConfig, db: Db, opts: BuildOptions = {}):
   // Raw uploads: images for game artwork (buffered, small) and app files for the
   // client downloads page (streamed to disk, can be hundreds of MB).
   app.addContentTypeParser(/^image\//, { parseAs: "buffer", bodyLimit: 16 * 1024 * 1024 }, (_req, body, done) => done(null, body));
+  app.addContentTypeParser("application/pdf", { parseAs: "buffer", bodyLimit: MAX_MANUAL }, (_req, body, done) => done(null, body));
   app.addContentTypeParser("application/octet-stream", (_req, payload, done) => done(null, payload));
   // No-Intro and Redump DATs for ROM checks.
   app.addContentTypeParser(/^(text|application)\/xml/, { parseAs: "string", bodyLimit: 64 * 1024 * 1024 }, (_req, body, done) => done(null, body));
@@ -414,6 +416,7 @@ export function buildApp(config: ServerConfig, db: Db, opts: BuildOptions = {}):
   pushRoutes(app, ctx);
   userRoutes(app, ctx);
   gameRoutes(app, ctx);
+  mediaRoutes(app, ctx);
   emulationRoutes(app, ctx, opts.ps2Dir ?? "");
   newsRoutes(app, ctx);
   downloadRoutes(app, ctx);

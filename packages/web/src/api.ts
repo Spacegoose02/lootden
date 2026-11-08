@@ -40,6 +40,7 @@ import type {
   RomDat,
   GameDetail,
   GameInfo,
+  GameManual,
   GameListing,
   GameSummary,
   LibraryStats,
@@ -697,6 +698,10 @@ export const api = {
   setArtworkUrl: (id: string, kind: string, url: string) => call<GameDetail>("PUT", `/api/games/${id}/artwork/${kind}`, { url }),
   uploadArtwork: (id: string, kind: string, file: File) => upload<GameDetail>("PUT", `/api/games/${id}/artwork/${kind}`, file, file.type || "image/jpeg"),
   resetArtwork: (id: string, kind: string) => call<GameDetail>("DELETE", `/api/games/${id}/artwork/${kind}`),
+  manuals: (id: string) => call<GameManual[]>("GET", `/api/games/${encodeURIComponent(id)}/manuals`),
+  uploadManual: (id: string, file: File) => upload<{ ok: true }>("PUT", `/api/games/${encodeURIComponent(id)}/manual`, file, "application/pdf"),
+  removeManual: (id: string) => call<{ ok: true }>("DELETE", `/api/games/${encodeURIComponent(id)}/manual`),
+  preview: (id: string) => call<{ trailer: GameInfo["trailer"] }>("GET", `/api/games/${encodeURIComponent(id)}/preview`),
 
   clients: () => call<ClientFile[]>("GET", "/api/clients"),
   uploadClient: (file: File) => upload<ClientFile>("PUT", `/api/clients/${encodeURIComponent(file.name)}`, file, "application/octet-stream"),

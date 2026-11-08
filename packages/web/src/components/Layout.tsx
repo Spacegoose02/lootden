@@ -14,6 +14,8 @@ import { Keyboard } from "./Keyboard";
 import { QuickMenus } from "./QuickMenus";
 import { GameOverlay } from "./GameOverlay";
 import { useScrollMemory } from "../scrollMemory";
+import { t } from "../i18n";
+import { AttractMode } from "./AttractMode";
 
 interface NavItem {
   to: string;
@@ -102,22 +104,22 @@ function MainNav({ items, onSignOut }: { items: NavItem[]; onSignOut: () => void
       <nav className="nav" ref={bar} aria-label="Main">
         {items.slice(0, fit).map((i) => (
           <NavLink key={i.to} to={i.to} end={i.end} state={i.state} className={() => (isOn(i, location.pathname) ? "active" : "")}>
-            {i.label}
+            {t(i.label)}
           </NavLink>
         ))}
         {hidden.length > 0 && (
           <button className={`nav-more${activeHidden ? " active" : ""}`} aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
-            More ▾
+            {t("More ▾")}
           </button>
         )}
         <div className="nav-measure" ref={measure} aria-hidden="true">
           {items.map((i) => (
-            <a key={i.to}>{i.label}</a>
+            <a key={i.to}>{t(i.label)}</a>
           ))}
-          <button className="nav-more">More ▾</button>
+          <button className="nav-more">{t("More ▾")}</button>
         </div>
       </nav>
-      <button className="nav-burger" aria-label="Menu" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
+      <button className="nav-burger" aria-label={t("Menu")} aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
         <span aria-hidden="true">☰</span>
       </button>
       {open && (
@@ -125,11 +127,11 @@ function MainNav({ items, onSignOut }: { items: NavItem[]; onSignOut: () => void
           {/* On phones every link is here; on wider screens only the ones that didn't fit. */}
           {items.map((i, n) => (
             <NavLink key={i.to} to={i.to} end={i.end} state={i.state} role="menuitem" className={() => `${n < fit ? "nav-menu-fits" : ""}${isOn(i, location.pathname) ? " active" : ""}`}>
-              {i.label}
+              {t(i.label)}
             </NavLink>
           ))}
           <button className="ghost nav-menu-signout" role="menuitem" onClick={onSignOut}>
-            Sign out
+            {t("Sign out")}
           </button>
         </div>
       )}
@@ -213,10 +215,10 @@ export function Layout() {
               <span className="me-name">{user.displayName}</span>
             </NavLink>
           ) : (
-            <span className="muted">Service token</span>
+            <span className="muted">{t("Service token")}</span>
           )}
           <button className="ghost topbar-signout" onClick={() => void signOut()}>
-            Sign out
+            {t("Sign out")}
           </button>
         </div>
       </header>
@@ -232,6 +234,7 @@ export function Layout() {
       <QuickMenus />
       <Keyboard />
       <FunLayer />
+      <AttractMode />
     </div>
   );
 }
@@ -248,7 +251,7 @@ function SubNav({ items }: { items: NavItem[] }) {
     <nav className="subnav" aria-label={hub.label}>
       {hub.pages.map((p) => (
         <NavLink key={p.to} to={p.to} state={p.state} className={() => (isOn(p, location.pathname) ? "active" : "")}>
-          {p.label}
+          {t(p.label)}
         </NavLink>
       ))}
     </nav>

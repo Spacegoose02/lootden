@@ -90,3 +90,48 @@ export function usePadPrefs(): [PadPrefs, (patch: Partial<PadPrefs>) => void] {
   }, []);
   return [prefs, (patch) => setPrefs(setPadPrefs(patch))];
 }
+
+/** Video previews on game cards and attract mode, per device. */
+export interface MediaPrefs {
+  /** Play a game's trailer, muted, when the pointer or controller selection rests on its card. */
+  previews: boolean;
+  /** Minutes idle with a controller before attract mode starts; 0 is never. */
+  attractMinutes: number;
+}
+
+export const MEDIA_DEFAULTS: MediaPrefs = { previews: true, attractMinutes: 5 };
+const MEDIA_KEY = "gm-media-prefs";
+const MEDIA_EVENT = "lootden:media-prefs";
+
+export function mediaPrefs(): MediaPrefs {
+  try {
+    const r = JSON.parse(localStorage.getItem(MEDIA_KEY) || "{}") as Partial<MediaPrefs>;
+    return {
+      previews: typeof r.previews === "boolean" ? r.previews : MEDIA_DEFAULTS.previews,
+      attractMinutes: [0, 2, 5, 10, 20].includes(r.attractMinutes as number) ? (r.attractMinutes as number) : MEDIA_DEFAULTS.attractMinutes,
+    };
+  } catch {
+    return { ...MEDIA_DEFAULTS };
+  }
+}
+
+export function useMediaPrefs(): [MediaPrefs, (patch: Partial<MediaPrefs>) => void] {
+  const [prefs, setPrefs] = useState(mediaPrefs);
+  useEffect(() => {
+    const on = () => setPrefs(mediaPrefs());
+    window.addEventListener(MEDIA_EVENT, on);
+    return () => window.removeEventListener(MEDIA_EVENT, on);
+  }, []);
+  return [
+    prefs,
+    (patch) => {
+      const next = { ...mediaPrefs(), ...patch };
+      try {
+        localStorage.setItem(MEDIA_KEY, JSON.stringify(next));
+      } catch {
+        // private mode
+      }
+      window.dispatchEvent(new Event(MEDIA_EVENT));
+    },
+  ];
+}

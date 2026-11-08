@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { feel } from "../feedback";
-import { PAD_DEFAULTS, usePadPrefs, type PadPrefs } from "../prefs";
+import { PAD_DEFAULTS, useMediaPrefs, usePadPrefs, type PadPrefs } from "../prefs";
+import { language, LANGUAGES, setLanguage, t, type Language } from "../i18n";
 import { POSTER_SIZES, THEMES, usePosterSize, useTheme } from "../theme";
 import { bridgeError, desktop, type AppSettings } from "../desktop";
 import { PadGlyph } from "./PadHints";
@@ -111,9 +112,36 @@ export function ControllerSettings() {
 export function AppearanceSettings() {
   const { theme } = useTheme();
   const [poster, setPoster] = usePosterSize();
-  const current = THEMES.find((t) => t.id === theme) ?? THEMES[0]!;
+  const current = THEMES.find((x) => x.id === theme) ?? THEMES[0]!;
+  const [media, setMedia] = useMediaPrefs();
+  const lang = language();
   return (
     <>
+      <Card title={t("Language")} description={t("Menus and buttons in this language, on this device. Game descriptions stay as the stores write them.")}>
+        <select aria-label={t("Language")} value={lang.picked} onChange={(e) => setLanguage(e.target.value as Language | "")}>
+          <option value="">{t("Same as this device")} ({LANGUAGES.find((l) => l.code === lang.current)?.name})</option>
+          {LANGUAGES.map((l) => (
+            <option key={l.code} value={l.code}>
+              {l.name}
+            </option>
+          ))}
+        </select>
+      </Card>
+
+      <Card title={t("Video previews")} description={t("Play a game's trailer, muted, when you rest on it in the library.")}>
+        <Toggle checked={media.previews} onChange={(v) => setMedia({ previews: v })} label={t("Video previews")} />
+        <Field label={t("Attract mode")} hint={t("When the app sits idle with a controller, show trailers from the library until someone presses a button.")}>
+          <select value={media.attractMinutes} onChange={(e) => setMedia({ attractMinutes: Number(e.target.value) })}>
+            <option value={0}>{t("Off")}</option>
+            {[2, 5, 10, 20].map((n) => (
+              <option key={n} value={n}>
+                {t("After {n} minutes", { n })}
+              </option>
+            ))}
+          </select>
+        </Field>
+      </Card>
+
       <Card title="Banner and poster size" description={`Theme: ${current.name}. The Featured banner on Home and the poster on a game's page.`}>
         <div className="segmented" role="radiogroup" aria-label="Poster size">
           {POSTER_SIZES.map(([id, label]) => (
