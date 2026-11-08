@@ -4,6 +4,7 @@ import { EMULATORS, platformFor, recompsFor, RECOMP_LOOKS, type GameDetail, type
 import { api, formatBytes } from "../api";
 import { useAuth } from "../auth";
 import { bridgeError, desktop, useDesktopGame, type Drive, type GameBananaModView, type RecompLookView, type RecompModsView, type RecompSettingView, type RecompSetup } from "../desktop";
+import { VerifyFiles } from "./DownloadQueue";
 import { LaunchOptionsPanel, PlayWithButtons, useLaunchOptions } from "./LaunchOptions";
 
 /** Install / play / uninstall panel shown inside the desktop app. */
@@ -158,6 +159,7 @@ export function DesktopInstall({ game, autoFocus }: { game: GameDetail; autoFocu
           <button className="secondary" onClick={() => run(() => bridge.openFolder(game.id))}>
             Open folder
           </button>
+          {pcGame && <VerifyFiles gameId={game.id} />}
           <button className="ghost" onClick={() => run(() => bridge.uninstall(game.id))}>
             Uninstall
           </button>
@@ -247,6 +249,7 @@ export function DesktopInstall({ game, autoFocus }: { game: GameDetail; autoFocu
               {p.type === "extract" && `Unpacking ${p.archive}`}
               {p.type === "removed" && "Cleaning up archives"}
               {p.type === "start" && "Starting…"}
+              {p.type === "queued" && p.message}
               {p.type === "downloaded" && "Downloaded"}
             </span>
           </div>

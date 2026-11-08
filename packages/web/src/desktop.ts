@@ -94,6 +94,27 @@ export interface RecompSetup {
   installed: { version: string; installedAt: string } | null;
 }
 
+export interface QueueItem {
+  id: string;
+  title: string;
+  state: "queued" | "waiting" | "running" | "paused";
+  note: string | null;
+}
+
+export interface DownloadSettings {
+  /** KB a second; 0 is no limit. */
+  limitKBps: number;
+  maxAtOnce: number;
+  window: { from: string; to: string } | null;
+}
+
+export interface VerifyResult {
+  basis: "install" | "server";
+  checked: number;
+  missing: string[];
+  changed: string[];
+}
+
 export type Progress =
   | { gameId: string; type: "start"; gameDir: string; totalBytes: number }
   | { gameId: string; type: "download"; file: string; index: number; count: number; received: number; total: number }
@@ -103,6 +124,13 @@ export type Progress =
   | { gameId: string; type: "warning"; message: string }
   | { gameId: string; type: "done"; gameDir: string }
   | { gameId: string; type: "error" | "cancelled"; message: string }
+  /** Waiting in the download queue (behind others, paused, or for the download window). */
+  | { gameId: string; type: "queued"; message: string; state: QueueItem["state"] }
+  /** The whole download queue changed (gameId is "downloads:queue"). */
+  | { gameId: string; type: "queue"; items: QueueItem[] }
+  | { gameId: string; type: "verify"; done: number; total: number }
+  | { gameId: string; type: "repair"; step: string; received: number; total: number }
+  | { gameId: string; type: "repaired"; files: number }
   | { gameId: string; type: "playing"; action?: string }
   /** The game was paused or picked up again (suspend). */
   | { gameId: string; type: "suspended" | "resumed" }
@@ -216,6 +244,11 @@ export interface DesktopBridge {
   installed(): Promise<InstalledGame[]>;
   install(gameId: string, dir?: string): Promise<{ gameDir: string }>;
   cancel(gameId: string): Promise<void>;
+  /** The download queue, after moving, pausing or resuming one (newer apps only). */
+  queue?(action?: { id: string; do: "up" | "down" | "top" | "pause" | "resume" }): Promise<QueueItem[]>;
+  downloadSettings?(patch?: Partial<DownloadSettings>): Promise<DownloadSettings>;
+  verify?(gameId: string): Promise<VerifyResult>;
+  repair?(gameId: string, files: string[]): Promise<{ repaired: number }>;
   /** actionId picks one of the game's launch options; "" is the game's own way (apps from 0.25 take it). */
   play(gameId: string, actionId?: string): Promise<{ executable: string } | null>;
   /** Launch options on this PC: extra ways to start a game and steps before and after it (apps from 0.25). */
