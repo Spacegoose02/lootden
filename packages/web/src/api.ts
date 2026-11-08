@@ -682,6 +682,9 @@ export const api = {
   chatChannels: () => call<ChatChannel[]>("GET", "/api/chat/channels"),
   testChat: () => call<{ posted: string[] }>("POST", "/api/chat/test"),
   chatStatus: () => call<{ ready: boolean; buttons: boolean }>("GET", "/api/chat/status"),
+  /** The family channel, for the in-game menu (needs the Dendrop bot to read messages). */
+  familyChat: () => call<Array<{ id: number; from: string; text: string; at: string; mine: boolean }>>("GET", "/api/chat/family"),
+  sayInFamily: (text: string) => call<{ ok: boolean }>("POST", "/api/chat/family", { text }),
   shareToChat: (gameId: string, note?: string) => call<{ ok: true }>("POST", "/api/chat/share", { gameId, note }),
   lookingForGroup: (gameId: string, note?: string) => call<{ ok: true }>("POST", "/api/chat/lfg", { gameId, note }),
   setSavePath: (id: string, path: string | null) => call<GameDetail>("PUT", `/api/games/${id}/save-path`, { path }),

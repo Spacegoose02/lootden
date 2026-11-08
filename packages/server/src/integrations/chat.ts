@@ -127,6 +127,16 @@ export function matchUser(users: UserRecord[], who: { username: string; displayN
   );
 }
 
+/** A family channel message, as the in-game menu shows it. */
+export interface FamilyMessage {
+  id: number;
+  from: string;
+  text: string;
+  at: string;
+  /** Posted by LootDen's bot (alerts, and lines sent from the in-game menu). */
+  mine: boolean;
+}
+
 export class ChatLink {
   private socket: SocketLike | null = null;
   private ping: NodeJS.Timeout | null = null;
@@ -235,6 +245,37 @@ export class ChatLink {
     return servers.flatMap((sv) =>
       (sv.channels ?? []).filter((c) => c.kind === "text").map((c) => ({ id: c.id, serverId: sv.id, serverName: sv.name, name: c.name, kind: c.kind, conversationId: c.conversationId })),
     );
+  }
+
+  /**
+   * The family channel's last messages, for the in-game menu. Needs the bot to read messages
+   * (Dendrop, Server settings, Bots). Encrypted and deleted messages are left out.
+   */
+  async familyMessages(limit = 15): Promise<FamilyMessage[]> {
+    const s = this.settings();
+    if (!s.enabled || !this.hasBot(s) || !s.familyChannelId) throw new Error("The family chat isn't linked");
+    const list = await this.bot<Array<{ id: number; authorId: number; body: string; createdAt: string; deleted?: boolean; keyVersion?: number | null; webhook?: { name: string } | null; author?: { displayName?: string; username?: string } | null }>>(
+      "GET",
+      `/channels/${s.familyChannelId}/messages?limit=${Math.min(50, Math.max(1, limit))}`,
+    );
+    return (Array.isArray(list) ? list : [])
+      .filter((m) => !m.deleted && m.keyVersion == null && String(m.body ?? "").trim())
+      .map((m) => ({
+        id: m.id,
+        from: m.webhook?.name ?? (m.authorId === this.botUserId ? "LootDen" : (m.author?.displayName || m.author?.username || "Someone")),
+        text: String(m.body).slice(0, 500),
+        at: m.createdAt,
+        mine: m.authorId === this.botUserId,
+      }));
+  }
+
+  /** A line from the in-game menu, posted by the bot under the player's name. */
+  async sayInFamily(by: string, text: string): Promise<void> {
+    const s = this.settings();
+    const t = text.trim().slice(0, 500);
+    if (!t) throw new Error("Write something first");
+    if (!s.enabled || !this.hasBot(s) || !s.familyChannelId) throw new Error("The family chat isn't linked");
+    await this.postTo(s.familyChannelId, `🎮 ${by}: ${t}`);
   }
 
   /** Posts in a channel through the bot. Answers the new message's id. */
