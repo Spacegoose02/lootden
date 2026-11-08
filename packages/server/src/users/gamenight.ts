@@ -152,7 +152,32 @@ export class GameNights {
         "INSERT INTO game_nights (title, day, time, players, game_id, game_title, note, goal_id, goal_title, goal_icon, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING *",
       )
       .get(title, date, time, JSON.stringify(players), gameId, gameTitle, note, goal?.id ?? null, goal?.title ?? null, goal?.icon ?? null, by, now()) as unknown as Row;
-    return this.view(r);
+    const night = this.view(r);
+    try {
+      this.onCreated?.(night);
+    } catch {
+      /* a listener never stops the plan */
+    }
+    return night;
+  }
+
+  /** Called when a night is planned (the Discord webhook posts it). */
+  onCreated?: (n: GameNight) => void;
+
+  /** Nights starting within the next `minutes` that haven't had their reminder; marked as reminded. */
+  dueReminders(minutes = 60): Array<GameNight & { inMinutes: number }> {
+    const tz = this.family.timeZone();
+    const nowParts = zonedParts(new Date(), tz);
+    const rows = this.db.prepare("SELECT * FROM game_nights WHERE day = ? AND reminded_at IS NULL").all(nowParts.date) as unknown as Row[];
+    const out: Array<GameNight & { inMinutes: number }> = [];
+    for (const r of rows) {
+      const [h, m] = r.time.split(":").map(Number);
+      const inSeconds = (h ?? 0) * 3600 + (m ?? 0) * 60 - nowParts.seconds;
+      if (inSeconds <= 0 || inSeconds > minutes * 60) continue;
+      this.db.prepare("UPDATE game_nights SET reminded_at = ? WHERE id = ?").run(now(), r.id);
+      out.push({ ...this.view(r), inMinutes: Math.round(inSeconds / 60) });
+    }
+    return out;
   }
 
   /**

@@ -158,9 +158,19 @@ export function PlayLimitsEditor({ user, say }: { user: User; say: (m: string, e
   const [l, setL] = useState<PlayLimits | null>(null);
   const [a, setA] = useState<Allowance | null>(null);
   const [busy, setBusy] = useState(false);
+  const [paused, setPaused] = useState(false);
   useEffect(() => {
     api.userLimits(user.id).then((r) => (setL(r.limits), setA(r.allowance)), (e: Error) => say(e.message, true));
+    api.pausedProfiles().then((ids) => setPaused(ids.includes(user.id)), () => {});
   }, [user.id]);
+  const pause = async (on: boolean) => {
+    try {
+      setPaused((await api.setPaused(user.id, on)).paused);
+      say(on ? `Paused ${user.displayName}'s games` : `${user.displayName} can play again`);
+    } catch (e) {
+      say((e as Error).message, true);
+    }
+  };
   if (!l) return <p className="muted small browser-rules">Loading…</p>;
   const save = async (next: PlayLimits) => {
     setBusy(true);
@@ -213,6 +223,12 @@ export function PlayLimitsEditor({ user, say }: { user: User; say: (m: string, e
         onChange={(v) => void save({ ...l, hardStop: v })}
         label="Close the game when time's up"
         hint="The LootDen app gives heads-ups at 10, 5 and 1 minute, then a minute to save. Off: only the heads-ups. Emulated games and other stores' games only get the heads-ups."
+      />
+      <Toggle
+        checked={paused}
+        onChange={(v) => void pause(v)}
+        label="⏸ Pause games now"
+        hint="Closes what's running and keeps games closed until you switch this off (Home Assistant has the same switch)."
       />
       {a && a.limited && (
         <p className="muted small">

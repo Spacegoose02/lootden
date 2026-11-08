@@ -101,6 +101,8 @@ export function emulationRoutes(app: FastifyInstance, ctx: AppContext, ps2Dir: s
     if (user.user) {
       const today = ctx.family.allowance(user.user.id);
       if (today.limited && !today.canPlay) throw new HttpProblem(403, today.reason ?? "No play time left today");
+      const earn = ctx.family.gameLock(user.user.id, game.id);
+      if (earn.reason) throw new HttpProblem(403, earn.reason);
     }
     if (!browserPlayable(game)) throw new HttpProblem(400, "This game can't be played in the browser");
     // PS2: TabStationToo's own page, which fetches the BIOS and streams the disc from here.

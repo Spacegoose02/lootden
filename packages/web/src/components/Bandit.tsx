@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { Link } from "react-router-dom";
 import { HELPER_AVATAR, HELPER_AVATAR_THINKING, HELPER_MAX_MESSAGE, HELPER_NAME, helperSuggestions, type HelperChatMessage, type HelperStatus } from "@lootden/shared";
 import { api, askHelper, avatarUrl } from "../api";
 import { useAuth } from "../auth";
@@ -167,7 +168,7 @@ function BanditChat({ name, status, onStatus, onClose }: { name: string; status:
                 <i />
               </span>
             ) : (
-              <Answer text={l.content} />
+              <BanditLine line={l} streaming={busy && i === lines.length - 1} />
             )}
           </div>
         ))}
@@ -209,6 +210,87 @@ function BanditChat({ name, status, onStatus, onClose }: { name: string; status:
         </button>
       </form>
       <p className="bandit-note muted small">{status.kid ? `${HELPER_NAME} is an AI and can get things wrong. Ask a grown-up if you're not sure.` : `${HELPER_NAME} is an AI and can make mistakes.`}</p>
+    </div>
+  );
+}
+
+/** Something Bandit offers to do; it only happens when the person presses the button. */
+type BanditAction =
+  | { type: "install"; gameId: string; pc: string }
+  | { type: "wake"; pc: string }
+  | { type: "shelf"; name: string; emoji?: string; gameIds?: string[]; rules?: Record<string, unknown> };
+
+/** Takes the [[action {...}]] line off the end of an answer. While it's still arriving, it's hidden. */
+export function splitAction(text: string): { text: string; action: BanditAction | null } {
+  const at = text.lastIndexOf("[[action");
+  if (at < 0) {
+    // The start of the marker, still arriving.
+    const partial = /\[(?:\[(?:a(?:c(?:t(?:i(?:on?)?)?)?)?)?)?$/.exec(text);
+    return { text: partial ? text.slice(0, partial.index) : text, action: null };
+  }
+  const m = /^\[\[action\s*(\{[\s\S]*\})\s*\]\]/.exec(text.slice(at));
+  let action: BanditAction | null = null;
+  if (m) {
+    try {
+      const a = JSON.parse(m[1]!) as BanditAction;
+      if (a && (a.type === "install" || a.type === "wake" || a.type === "shelf")) action = a;
+    } catch {
+      // Not JSON: no button.
+    }
+  }
+  return { text: text.slice(0, at).trimEnd(), action };
+}
+
+function BanditLine({ line, streaming }: { line: Line; streaming: boolean }) {
+  if (line.role !== "assistant" || line.error) return <Answer text={line.content} />;
+  const { text, action } = splitAction(line.content);
+  return (
+    <>
+      <Answer text={text} />
+      {action && !streaming && <ActionCard action={action} />}
+    </>
+  );
+}
+
+function ActionCard({ action }: { action: BanditAction }) {
+  const [title, setTitle] = useState<string | null>(null);
+  const [state, setState] = useState<"ask" | "busy" | "no" | { text: string; link?: string; error?: boolean }>("ask");
+  useEffect(() => {
+    if (action.type === "install") void api.game(action.gameId).then((g) => setTitle(g.title), () => setTitle(null));
+  }, [action]);
+  const what =
+    action.type === "install"
+      ? `📥 Install ${title ?? "the game"} on ${action.pc}`
+      : action.type === "wake"
+        ? `⚡ Switch on ${action.pc}`
+        : `${action.emoji ?? "📚"} Make the ${action.rules ? "smart " : ""}shelf "${action.name}"${action.gameIds?.length ? ` with ${action.gameIds.length} game${action.gameIds.length === 1 ? "" : "s"}` : ""}`;
+  const go = async () => {
+    setState("busy");
+    try {
+      setState(await api.helperAction(action));
+    } catch (e) {
+      setState({ text: (e as Error).message, error: true });
+    }
+  };
+  return (
+    <div className="bandit-action">
+      <strong>{what}</strong>
+      {(state === "ask" || state === "busy") && (
+        <div className="row">
+          <button className="primary small" disabled={state === "busy"} onClick={() => void go()}>
+            Yes, do it
+          </button>
+          <button className="ghost small" disabled={state === "busy"} onClick={() => setState("no")}>
+            No thanks
+          </button>
+        </div>
+      )}
+      {state === "no" && <p className="muted small">Okay, nothing changed.</p>}
+      {typeof state === "object" && (
+        <p className={state.error ? "error small" : "notice small"}>
+          {state.text} {state.link && !state.error && <Link to={state.link}>Open</Link>}
+        </p>
+      )}
     </div>
   );
 }

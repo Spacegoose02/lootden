@@ -1,5 +1,5 @@
 import { BackupsSection } from "../components/Backups";
-import { ChatSection, HomeAssistantSection } from "../components/Integrations";
+import { ChatSection, DiscordSection, HomeAssistantSection } from "../components/Integrations";
 import { useEffect, useState, type ReactNode } from "react";
 import { Link, NavLink, Navigate, useNavigate, useParams } from "react-router-dom";
 import { KID_SITES, type BrowserPolicy, type GameSummary, type LibraryStats, type User } from "@lootden/shared";
@@ -36,7 +36,8 @@ const SECTIONS: Array<{ id: string; title: string; blurb: string }> = [
   { id: "helper", title: "Bandit (AI helper)", blurb: "AI key, model, budget and who can use him" },
   { id: "services", title: "Sign-in & services", blurb: "SSO, metadata keys, itch.io, Nexus" },
   { id: "content", title: "News & apps", blurb: "Feeds, videos and app builds" },
-  { id: "homeassistant", title: "Home Assistant", blurb: "Who's playing, as sensors over MQTT" },
+  { id: "homeassistant", title: "Home Assistant", blurb: "Who's playing, pause switches, wake buttons and smart plugs over MQTT" },
+  { id: "discord", title: "Discord", blurb: "New games, game nights and achievements in a channel" },
   { id: "chat", title: "Chat (Dendrop)", blurb: "Share to chat, request and more-time buttons, Bandit in a channel" },
   { id: "backups", title: "Backups", blurb: "Copies of the database, daily or now, and restoring one" },
 ];
@@ -51,7 +52,7 @@ const GROUPS: Array<{ id: string; title: string; admin: boolean; sections: strin
   { id: "library", title: "Library", admin: true, sections: ["library", "steam", "roblox"] },
   { id: "downloads", title: "Downloads", admin: true, sections: ["downloads", "wanted", "sources", "safety"] },
   { id: "family", title: "Family", admin: true, sections: ["denduty", "pcs", "helper"] },
-  { id: "server", title: "Server", admin: true, sections: ["services", "content", "homeassistant", "chat", "backups"] },
+  { id: "server", title: "Server", admin: true, sections: ["services", "content", "homeassistant", "chat", "discord", "backups"] },
 ];
 
 /** This PC only makes sense inside the desktop app. */
@@ -124,6 +125,7 @@ export function Settings() {
           {section === "backups" && <BackupsSection say={say} />}
           {section === "homeassistant" && <HomeAssistantSection say={say} />}
           {section === "chat" && <ChatSection say={say} />}
+          {section === "discord" && <DiscordSection say={say} />}
         </div>
       </div>
     </div>
@@ -727,6 +729,10 @@ const ALERT_KINDS: Array<[keyof Connectors["notify"] & string, string, string]> 
   ["sources", "A wishlist game shows up in a release source", "From the sources under Release sources"],
   ["requests", "Someone asks for a game", "Approve or decline it under Requests"],
   ["deals", "A wishlist game is on sale", "Prices from IsThereAnyDeal, set up on the Wishlist page"],
+  ["installed", "A game is installed on a PC", "Which game, which PC and who"],
+  ["timeLimit", "A kid reaches today's play time", "While they're playing, once a day"],
+  ["gameNight", "Game night starts in an hour", "Players get a reminder on their phones too"],
+  ["saveFailed", "A save backup fails", "The desktop app couldn't back up a game's saves"],
 ];
 
 function SafetySection({ say }: { say: Msg }) {

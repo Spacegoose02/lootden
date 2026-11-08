@@ -86,6 +86,10 @@ export function userRoutes(app: FastifyInstance, ctx: AppContext) {
       }
       ctx.users.recordActivity(me.id, { ...b, device: b.device.slice(0, 100) });
       if (b.event === "played") ctx.family.recordSession(me.id, b.gameId, b.device, Number(b.seconds) || 0, typeof b.endedAt === "string" ? b.endedAt : undefined);
+      if (b.event === "installed") {
+        const game = ctx.library.get(b.gameId, false);
+        if (game) void ctx.notifier.send("installed", `${game.title} was installed on ${b.device.slice(0, 100)}`, `By ${me.displayName}`, `/games/${game.id}`);
+      }
       return { ok: true };
     },
   );

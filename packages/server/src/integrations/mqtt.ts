@@ -92,12 +92,12 @@ export class MqttPublisher {
         }
       };
       sock.once(secure ? "secureConnect" : "connect", () => sock.write(connectPacket(this.o)));
-      let buf = Buffer.alloc(0);
+      let buf: Buffer = Buffer.alloc(0);
       sock.on("data", (d: Buffer) => {
         buf = Buffer.concat([buf, d]);
-        // After CONNACK the broker only sends ping answers, which need nothing.
+        // After CONNACK: messages on topics this client subscribed to, ping answers and SUBACKs.
         if (settled) {
-          buf = Buffer.alloc(0);
+          buf = this.readPackets(buf);
           return;
         }
         if (buf.length < 4) return;
@@ -127,6 +127,57 @@ export class MqttPublisher {
         if (was) onClose?.(null);
       });
     });
+  }
+
+  /** Called for every message on a subscribed topic. */
+  onMessage: ((topic: string, payload: string) => void) | null = null;
+  private packetId = 0;
+
+  /** Subscribes (QoS 0) to topic filters such as lootden/cmd/# or a smart plug's power topic. */
+  subscribe(filters: string[]): void {
+    if (!this.socket || this.socket.destroyed || !filters.length) return;
+    this.packetId = (this.packetId % 65535) + 1;
+    const body = Buffer.concat([
+      Buffer.from([this.packetId >> 8, this.packetId & 0xff]),
+      ...filters.map((f) => {
+        const t = Buffer.from(f, "utf8");
+        return Buffer.concat([Buffer.from([t.length >> 8, t.length & 0xff]), t, Buffer.from([0])]);
+      }),
+    ]);
+    this.socket.write(Buffer.concat([Buffer.from([0x82]), remainingLength(body.length), body]));
+  }
+
+  /** Takes whole packets off the front of buf; returns what's left (a packet still arriving). */
+  private readPackets(buf: Buffer): Buffer {
+    for (;;) {
+      if (buf.length < 2) return buf;
+      let len = 0;
+      let mul = 1;
+      let i = 1;
+      for (; i < 5; i++) {
+        if (i >= buf.length) return buf;
+        const b = buf[i]!;
+        len += (b & 0x7f) * mul;
+        mul *= 128;
+        if (!(b & 0x80)) break;
+      }
+      const start = i + 1;
+      if (buf.length < start + len) return buf;
+      const type = buf[0]! >> 4;
+      if (type === 3) {
+        const qos = (buf[0]! >> 1) & 3;
+        const tl = buf.readUInt16BE(start);
+        const topic = buf.subarray(start + 2, start + 2 + tl).toString("utf8");
+        const payloadStart = start + 2 + tl + (qos ? 2 : 0);
+        const payload = buf.subarray(payloadStart, start + len).toString("utf8");
+        try {
+          this.onMessage?.(topic, payload);
+        } catch {
+          /* a handler never breaks the connection */
+        }
+      }
+      buf = buf.subarray(start + len);
+    }
   }
 
   publish(topic: string, payload: string, retain = false): void {

@@ -157,7 +157,7 @@ describe("now playing", () => {
     await app.inject({ method: "POST", url: "/api/me/presence", headers: mom.headers, payload: { device: "GAMING-PC", playing: [], pc: { sunshine: true, streamGames: [game.id], addresses: ["192.168.1.5"] } } });
     await app.inject({ method: "POST", url: "/api/me/presence", headers: mom.headers, payload: { device: "TV-PC", playing: [], pc: { moonlight: true } } });
     const hosts = (await app.inject({ url: `/api/games/${encodeURIComponent(game.id)}/stream-hosts?from=TV-PC`, headers: mom.headers })).json() as Array<{ name: string; addresses: string[] }>;
-    assert.deepEqual(hosts, [{ name: "GAMING-PC", addresses: ["192.168.1.5"], online: true }]);
+    assert.deepEqual(hosts, [{ name: "GAMING-PC", addresses: ["192.168.1.5"], online: true, busy: null, canWake: false }]);
     const self = (await app.inject({ url: `/api/games/${encodeURIComponent(game.id)}/stream-hosts?from=GAMING-PC`, headers: mom.headers })).json() as unknown[];
     assert.equal(self.length, 0, "not from the PC itself");
   });

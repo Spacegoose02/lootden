@@ -77,11 +77,12 @@ export function StreamingSetup() {
   );
 }
 
-/** A game's page: "Stream from DEN-PC" when another PC streams it and this one has Moonlight. */
+/** A game's page: "📺 Stream" picks the best PC (on and free, or woken up), plus a button per PC. */
 export function StreamButton({ gameId, title }: { gameId: string; title: string }) {
   const [hosts, setHosts] = useState<StreamHost[]>([]);
   const [status, setStatus] = useState<StreamingStatus | null>(null);
   const [msg, setMsg] = useState<{ text: string; error?: boolean } | null>(null);
+  const [busy, setBusy] = useState(false);
   useEffect(() => {
     if (!desktop?.streamGame || !desktop.streaming) return;
     void desktop.streaming().then((st) => {
@@ -90,25 +91,54 @@ export function StreamButton({ gameId, title }: { gameId: string; title: string 
     }, () => {});
   }, [gameId]);
   if (!status?.moonlight || !hosts.length) return null;
+
+  const start = async (h: StreamHost) => {
+    if (!h.addresses.length) throw new Error(`LootDen doesn't know ${h.name}'s address yet`);
+    await desktop!.streamGame!(h.addresses[0]!, title);
+    setMsg({ text: `Starting ${title} on ${h.name}…` });
+  };
+  /** Picks the PC, wakes it when it's off and waits (up to two minutes) for it to come on. */
+  const streamBest = async () => {
+    setBusy(true);
+    setMsg(null);
+    try {
+      const { host, waking } = await api.streamPick(gameId, status.hostname);
+      if (!waking) return await start(host);
+      setMsg({ text: `Waking ${host.name}… this takes a minute.` });
+      for (let i = 0; i < 24; i++) {
+        await new Promise((r) => setTimeout(r, 5000));
+        const now = (await api.streamHosts(gameId, status.hostname).catch(() => [])).find((x) => x.name === host.name);
+        if (now?.online) {
+          setHosts((all) => all.map((x) => (x.name === now.name ? now : x)));
+          return await start(now);
+        }
+      }
+      setMsg({ text: `${host.name} didn't come on. Check it's plugged in and Wake-on-LAN is on in its BIOS.`, error: true });
+    } catch (e) {
+      setMsg({ text: bridgeError(e), error: true });
+    } finally {
+      setBusy(false);
+    }
+  };
+  const best = hosts[0]!;
   return (
     <div className="stream-buttons">
-      {hosts.map((h) => (
-        <button
-          key={h.name}
-          className="secondary"
-          disabled={!h.addresses.length}
-          title={h.online ? undefined : `${h.name} is off. Wake it from Settings, PCs.`}
-          onClick={() =>
-            void desktop!.streamGame!(h.addresses[0]!, title).then(
-              () => setMsg({ text: `Starting ${title} on ${h.name}…` }),
-              (e) => setMsg({ text: bridgeError(e), error: true }),
-            )
-          }
-        >
-          📺 Stream from {h.name}
-          {h.online ? "" : " (off)"}
-        </button>
-      ))}
+      <button className="primary" disabled={busy} onClick={() => void streamBest()} title={best.busy ? `Every PC is busy (${best.busy})` : undefined}>
+        📺 Stream{hosts.length > 1 ? "" : ` from ${best.name}`}
+      </button>
+      {hosts.length > 1 &&
+        hosts.map((h) => (
+          <button
+            key={h.name}
+            className="secondary"
+            disabled={busy || !h.addresses.length}
+            title={h.busy ?? (h.online ? undefined : h.canWake ? `${h.name} is off: 📺 Stream wakes it` : `${h.name} is off. Wake it from Settings, PCs.`)}
+            onClick={() => void start(h).catch((e) => setMsg({ text: bridgeError(e), error: true }))}
+          >
+            {h.name}
+            {h.busy ? " (busy)" : h.online ? "" : " (off)"}
+          </button>
+        ))}
       {msg && <p className={msg.error ? "error small" : "notice small"}>{msg.text}</p>}
     </div>
   );

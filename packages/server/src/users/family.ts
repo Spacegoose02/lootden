@@ -97,6 +97,9 @@ export class FamilyService {
 
   // ---- Play sessions ---------------------------------------------------------------
 
+  /** Watt-hours a PC used between two times, when its smart plug reports power (set by the app). */
+  energyFor?: (device: string, startIso: string, endIso: string) => number | null;
+
   /** One finished session; `endedAt` lets a PC that was offline report when it really happened. */
   recordSession(userId: number, gameId: string, device: string, seconds: number, endedAt?: string): void {
     const secs = Math.max(0, Math.min(Math.round(seconds), 24 * 3600));
@@ -106,8 +109,8 @@ export class FamilyService {
     const end = Number.isFinite(reported) && reported <= Date.now() && reported > Date.now() - 31 * 86400_000 ? new Date(reported) : new Date();
     const start = new Date(end.getTime() - secs * 1000);
     this.db
-      .prepare("INSERT INTO play_sessions (user_id, game_id, device, seconds, started_at, ended_at) VALUES (?, ?, ?, ?, ?, ?)")
-      .run(userId, gameId, device.slice(0, 100), secs, start.toISOString(), end.toISOString());
+      .prepare("INSERT INTO play_sessions (user_id, game_id, device, seconds, started_at, ended_at, energy_wh) VALUES (?, ?, ?, ?, ?, ?, ?)")
+      .run(userId, gameId, device.slice(0, 100), secs, start.toISOString(), end.toISOString(), this.energyFor?.(device, start.toISOString(), end.toISOString()) ?? null);
   }
 
   /** Sessions that ended in the last `days` days (a little extra either side for time zones). */
@@ -140,10 +143,60 @@ export class FamilyService {
       .reduce((n, s) => n + s.seconds, 0);
     const bonus = (this.db.prepare("SELECT COALESCE(SUM(minutes), 0) AS m FROM time_requests WHERE user_id = ? AND day = ? AND state = 'approved'").get(userId, today) as { m: number }).m;
     const a = computeAllowance(this.limits(userId), used, bonus * 60, at, tz);
+    // A grown-up paused games (from Home Assistant, or the family page).
+    if (this.paused().includes(userId)) return { ...a, canPlay: false, reason: "A grown-up paused games for now.", robloxLock: null };
     // Den Duty: a time-out that locks games, or chores still to do.
     const lock = this.externalLock?.(userId);
     if (lock?.all) return { ...a, canPlay: false, reason: lock.all, robloxLock: null };
     return lock?.roblox ? { ...a, robloxLock: lock.roblox } : a;
+  }
+
+  // ---- Pausing games, and games a kid earns ------------------------------------------
+
+  /** Profiles whose games a grown-up paused (until they're switched back on). */
+  paused(): number[] {
+    const row = this.db.prepare("SELECT value FROM settings WHERE key = 'paused_profiles'").get() as { value: string } | undefined;
+    return json<number[]>(row?.value, []);
+  }
+
+  setPaused(userId: number, on: boolean): number[] {
+    const next = [...new Set(this.paused().filter((id) => id !== userId).concat(on ? [userId] : []))];
+    this.db.prepare("INSERT INTO settings (key, value) VALUES ('paused_profiles', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(JSON.stringify(next));
+    return next;
+  }
+
+  /** Games a kid has to earn (in Den Duty) before playing, for one profile. */
+  earnedGames(userId: number): string[] {
+    return (this.db.prepare("SELECT game_id FROM earned_games WHERE user_id = ?").all(userId) as Array<{ game_id: string }>).map((r) => r.game_id);
+  }
+
+  /** Admin: which profiles have to earn this game. */
+  earnersOf(gameId: string): number[] {
+    return (this.db.prepare("SELECT user_id FROM earned_games WHERE game_id = ?").all(gameId) as Array<{ user_id: number }>).map((r) => r.user_id);
+  }
+
+  setEarners(gameId: string, userIds: number[]): number[] {
+    this.db.prepare("DELETE FROM earned_games WHERE game_id = ?").run(gameId);
+    for (const id of new Set(userIds)) if (this.users.byId(id)) this.db.prepare("INSERT INTO earned_games (user_id, game_id) VALUES (?, ?)").run(id, gameId);
+    return this.earnersOf(gameId);
+  }
+
+  /** Unlocks an earned game for a while (a Den Duty reward). */
+  unlockGame(userId: number, gameId: string, hours: number, reason: string | null): string {
+    const until = new Date(Date.now() + Math.max(0.25, Math.min(hours, 24 * 7)) * 3600_000).toISOString();
+    this.db
+      .prepare("INSERT INTO game_unlocks (user_id, game_id, until, reason) VALUES (?, ?, ?, ?) ON CONFLICT(user_id, game_id) DO UPDATE SET until = MAX(until, excluded.until), reason = excluded.reason")
+      .run(userId, gameId, until, reason);
+    return (this.db.prepare("SELECT until FROM game_unlocks WHERE user_id = ? AND game_id = ?").get(userId, gameId) as { until: string }).until;
+  }
+
+  /** Why this profile can't play this game right now (it has to be earned first), or null. */
+  gameLock(userId: number, gameId: string): { reason: string; unlockedUntil: null } | { reason: null; unlockedUntil: string | null } {
+    const must = this.db.prepare("SELECT 1 FROM earned_games WHERE user_id = ? AND game_id = ?").get(userId, gameId);
+    if (!must) return { reason: null, unlockedUntil: null };
+    const u = this.db.prepare("SELECT until FROM game_unlocks WHERE user_id = ? AND game_id = ? AND until > ?").get(userId, gameId, new Date().toISOString()) as { until: string } | undefined;
+    if (u) return { reason: null, unlockedUntil: u.until };
+    return { reason: "This game unlocks with a reward from Den Duty. Do your chores to earn it!", unlockedUntil: null };
   }
 
   /** Locks from outside LootDen (the Den Duty link), in words. */

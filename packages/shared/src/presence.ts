@@ -293,4 +293,8 @@ export interface StreamHost {
   /** Its home network addresses, for Moonlight. */
   addresses: string[];
   online: boolean;
+  /** Someone is playing on it right now ("Ben: Minecraft"), so it's the last pick. */
+  busy: string | null;
+  /** LootDen can wake it (it knows its network card). */
+  canWake: boolean;
 }

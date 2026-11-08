@@ -449,7 +449,7 @@ export class HelperService {
    * left today, and the month's budget isn't used up, before anything is sent to the provider.
    * What the answer used is added to the person's tally when it finishes.
    */
-  async chat(user: User, history: unknown, game: HelperGameContext | null, signal: AbortSignal, opts: { kidSafe?: boolean } = {}): Promise<AsyncIterable<string>> {
+  async chat(user: User, history: unknown, game: HelperGameContext | null, signal: AbortSignal, opts: { kidSafe?: boolean; house?: string } = {}): Promise<AsyncIterable<string>> {
     const st = this.status(user);
     if (!st.configured) throw new HelperProblem(503, `${HELPER_NAME} isn't set up on this server yet. An admin can add an AI key in Settings.`);
     if (!st.allowed) throw new HelperProblem(403, user.kidMode ? `Ask a grown-up to switch ${HELPER_NAME} on for you.` : `An admin has switched ${HELPER_NAME} off for you.`);
@@ -470,7 +470,7 @@ export class HelperService {
         effort: s.effort,
         maxTokens: HELPER_ANSWER_LENGTHS[s.answerLength],
         system: BASE_PROMPT,
-        context: `Today is ${this.today()}.\n\n${contextPrompt(asked, game)}`,
+        context: `Today is ${this.today()}.\n\n${contextPrompt(asked, game)}${opts.house ? `\n\n${opts.house}` : ""}`,
         messages,
         web: this.webFor(asked, s),
         userRef: `lootden-${user.id}`,

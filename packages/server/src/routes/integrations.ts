@@ -1,6 +1,7 @@
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import type { PriceSettings } from "@lootden/shared";
 import { HttpProblem, requireAdmin, requireUser, type AppContext } from "../context.js";
+import type { DiscordSettings } from "../integrations/discord.js";
 import type { HomeAssistantSettings } from "../integrations/homeassistant.js";
 
 const fail = async <T>(fn: () => T | Promise<T>, status = 400): Promise<T> => {
@@ -11,7 +12,7 @@ const fail = async <T>(fn: () => T | Promise<T>, status = 400): Promise<T> => {
   }
 };
 
-/** ProtonDB and Steam Deck badges, wishlist prices, and Home Assistant. */
+/** ProtonDB and Steam Deck badges, wishlist prices, Home Assistant and Discord. */
 export function integrationRoutes(app: FastifyInstance, ctx: AppContext) {
   const grownUp = (req: FastifyRequest) => {
     if (requireUser(req).kidMode) throw new HttpProblem(403, "Not available on kid profiles");
@@ -68,5 +69,27 @@ export function integrationRoutes(app: FastifyInstance, ctx: AppContext) {
     requireAdmin(req);
     await fail(() => ctx.homeAssistant.test(), 502);
     return ctx.homeAssistant.view();
+  });
+  /** PCs LootDen knows, with their smart plug's power right now, for matching plugs to PCs. */
+  app.get("/api/homeassistant/pcs", async (req) => {
+    requireAdmin(req);
+    const plugs = ctx.homeAssistant.settings().power;
+    return ctx.presence.pcs().map((pc) => ({ name: pc.name, online: pc.online, plug: plugs[pc.name] ?? null, watts: ctx.power.watts(pc.name) }));
+  });
+
+  // ---- Discord ------------------------------------------------------------------------------
+
+  app.get("/api/discord", async (req) => {
+    requireAdmin(req);
+    return ctx.discord.view();
+  });
+  app.put<{ Body: Partial<DiscordSettings> }>("/api/discord", async (req) => {
+    requireAdmin(req);
+    return fail(() => ctx.discord.save(req.body ?? {}));
+  });
+  app.post("/api/discord/test", async (req) => {
+    requireAdmin(req);
+    await fail(() => ctx.discord.test(), 502);
+    return ctx.discord.view();
   });
 }

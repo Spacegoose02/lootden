@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import type { GameSummary } from "@lootden/shared";
-import { api, BACKLOG, BACKLOG_LABELS, formatBytes, formatPlaytime, type BacklogData, type BacklogStatus, type LibraryStatsDetail, type PlayHistory } from "../api";
+import { api, BACKLOG, BACKLOG_LABELS, formatBytes, formatEnergy, formatPlaytime, type BacklogData, type BacklogStatus, type LibraryStatsDetail, type PlayHistory } from "../api";
 import { useAuth } from "../auth";
 import { Cover } from "./Cover";
 import { GameGrid } from "./GameCard";
@@ -269,7 +269,8 @@ function PlayHistoryStats() {
           )}
         </div>
         <p className="muted small">
-          {formatPlaytime(h.totalSeconds)} in {h.sessionCount} session{h.sessionCount === 1 ? "" : "s"} (hours per {step === 1 ? "day" : "week"} below).
+          {formatPlaytime(h.totalSeconds)} in {h.sessionCount} session{h.sessionCount === 1 ? "" : "s"}
+          {h.totalWh != null ? `, ⚡ ${formatEnergy(h.totalWh)} of power` : ""} (hours per {step === 1 ? "day" : "week"} below).
         </p>
         <Columns rows={columns} />
       </section>
@@ -287,7 +288,7 @@ function PlayHistoryStats() {
       {h.devices.length > 1 && (
         <section className="panel">
           <h2>Play time by PC</h2>
-          <Bars rows={h.devices.map((d) => ({ label: d.name, value: d.seconds }))} format={formatPlaytime} />
+          <Bars rows={h.devices.map((d) => ({ label: d.wh != null ? `${d.name} (⚡ ${formatEnergy(d.wh)})` : d.name, value: d.seconds }))} format={formatPlaytime} />
         </section>
       )}
       {h.recent.length > 0 && (

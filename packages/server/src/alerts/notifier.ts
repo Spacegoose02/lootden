@@ -2,7 +2,7 @@ import { now, type Db } from "../db/database.js";
 import type { ConnectorSettings } from "../connectors/settings.js";
 import type { FetchLike } from "../metadata/http.js";
 
-export type AlertKind = "released" | "found" | "grabbed" | "imported" | "updates" | "flagged" | "sources" | "requests" | "failed" | "deals" | "test";
+export type AlertKind = "released" | "found" | "grabbed" | "imported" | "updates" | "flagged" | "sources" | "requests" | "failed" | "deals" | "installed" | "timeLimit" | "gameNight" | "saveFailed" | "test";
 
 /** Extra details some alerts carry, so a chat bot can put buttons on them. */
 export interface AlertMeta {

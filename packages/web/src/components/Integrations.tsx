@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { DECK_LABELS, PROTON_LABELS, type GameCompat, type SaveBackup } from "@lootden/shared";
-import { api, formatBytes, formatMoney, type ChatChannel, type ChatState, type HomeAssistantState, type WishPrices } from "../api";
+import { api, formatBytes, formatMoney, type ChatChannel, type ChatState, type DiscordState, type HaPc, type HomeAssistantState, type WishPrices } from "../api";
 import { Toggle } from "./SettingsUi";
 import { bridgeError, desktop, type StoreSavesState } from "../desktop";
 
@@ -316,6 +316,14 @@ export function HomeAssistantSection({ say }: { say: (m: string, error?: boolean
           {field("prefix", "Topic prefix")}
           {field("discovery", "Discovery prefix")}
         </div>
+        <label className="check">
+          <input type="checkbox" checked={form.controls ?? true} onChange={(e) => setForm({ ...form, controls: e.target.checked })} />
+          <span>
+            Buttons and switches in Home Assistant
+            <small className="muted"> a "games allowed" switch and a +30 minutes button per kid, and wake and stop buttons per PC</small>
+          </span>
+        </label>
+        <PlugPicker power={form.power ?? {}} onChange={(power) => setForm({ ...form, power })} />
         <div className="inline">
           <button className="primary">{s.enabled ? "Save and reconnect" : "Switch on"}</button>
           {s.enabled && (
@@ -330,6 +338,101 @@ export function HomeAssistantSection({ say }: { say: (m: string, error?: boolean
           )}
         </div>
       </form>
+    </section>
+  );
+}
+
+/** A smart plug per gaming PC (Shelly, Tasmota, Zigbee2MQTT…), for power use next to play time. */
+function PlugPicker({ power, onChange }: { power: Record<string, { topic: string; field: string }>; onChange: (p: Record<string, { topic: string; field: string }>) => void }) {
+  const [pcs, setPcs] = useState<HaPc[]>([]);
+  useEffect(() => void api.haPcs().then(setPcs, () => {}), []);
+  if (!pcs.length) return null;
+  const set = (pc: string, patch: Partial<{ topic: string; field: string }>) => {
+    const cur = power[pc] ?? { topic: "", field: "" };
+    const next = { ...power, [pc]: { ...cur, ...patch } };
+    if (!next[pc]!.topic.trim()) delete next[pc];
+    onChange(next);
+  };
+  return (
+    <details className="stack">
+      <summary>⚡ Smart plugs ({Object.keys(power).length} of {pcs.length} PCs)</summary>
+      <p className="muted small">
+        A plug that reports watts over MQTT shows each PC's power use, in Home Assistant and next to play time. For a Shelly Plug that's like <code>shellies/plug-den/relay/0/power</code> (a bare
+        number, leave the field blank); for Tasmota <code>tele/den-plug/SENSOR</code> with field <code>ENERGY.Power</code>; for Zigbee2MQTT <code>zigbee2mqtt/den-plug</code> with field <code>power</code>.
+      </p>
+      {pcs.map((pc) => (
+        <div key={pc.name} className="inline wrap">
+          <strong style={{ minWidth: "8rem" }}>
+            {pc.name}
+            {pc.watts != null && <small className="muted"> {Math.round(pc.watts)} W now</small>}
+          </strong>
+          <input value={power[pc.name]?.topic ?? ""} placeholder="Plug's MQTT topic" aria-label={`${pc.name} plug topic`} onChange={(e) => set(pc.name, { topic: e.target.value })} />
+          <input value={power[pc.name]?.field ?? ""} placeholder="JSON field (optional)" aria-label={`${pc.name} plug field`} onChange={(e) => set(pc.name, { field: e.target.value })} />
+        </div>
+      ))}
+    </details>
+  );
+}
+
+/** Settings, Discord: a channel webhook for new games, game nights and achievements. */
+export function DiscordSection({ say }: { say: (m: string, error?: boolean) => void }) {
+  const [s, setS] = useState<DiscordState | null>(null);
+  const [url, setUrl] = useState("");
+  useEffect(() => {
+    api.discord().then((x) => (setS(x), setUrl(x.webhookUrl)), (e: Error) => say(e.message, true));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  if (!s) return <p className="muted">Loading…</p>;
+  const save = (patch: Partial<DiscordState>, done = "Saved.") =>
+    api.saveDiscord(patch).then(
+      (x) => (setS(x), setUrl(x.webhookUrl), say(done)),
+      (e: Error) => say(e.message, true),
+    );
+  const toggle = (k: "newGames" | "gameNights" | "finished" | "kidSafeOnly", label: string, hint: string) => (
+    <label className="check">
+      <input type="checkbox" checked={s[k]} onChange={(e) => void save({ [k]: e.target.checked })} />
+      <span>
+        {label}
+        <small className="muted"> {hint}</small>
+      </span>
+    </label>
+  );
+  return (
+    <section className="panel stack">
+      <p className="muted small">
+        Posts to a Discord channel: new games in the library, game nights (and a reminder an hour before), achievements and finished games. In Discord, open the channel's settings, Integrations,
+        Webhooks, New Webhook, and copy its URL here. No bot needed.
+      </p>
+      <p className="small">
+        Status: {s.connected ? s.error ? <strong className="error">last post failed ({s.error})</strong> : <strong className="good">connected</strong> : <span className="muted">not set up</span>}
+      </p>
+      <form
+        className="inline wrap"
+        onSubmit={(e) => {
+          e.preventDefault();
+          void save({ webhookUrl: url }, url ? "Saved the webhook." : "Removed the webhook.");
+        }}
+      >
+        <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://discord.com/api/webhooks/…" aria-label="Discord webhook URL" style={{ flex: 1, minWidth: "16rem" }} />
+        <button className="primary">Save</button>
+        {s.connected && (
+          <button type="button" onClick={() => void api.testDiscord().then((x) => (setS(x), say("Sent a test message.")), (e: Error) => say(e.message, true))}>
+            Send a test
+          </button>
+        )}
+      </form>
+      {toggle("newGames", "New games", "when a game lands in the library")}
+      {toggle("gameNights", "Game nights", "when one's planned, and an hour before")}
+      {toggle("finished", "Finished games", "when someone marks a game Done or Completed 100%")}
+      <label className="field">
+        <span className="field-label">Achievements</span>
+        <select value={s.achievements} onChange={(e) => void save({ achievements: e.target.value as DiscordState["achievements"] })}>
+          <option value="off">Don't post</option>
+          <option value="rare">Rare ones (10% of players or fewer)</option>
+          <option value="all">Every one</option>
+        </select>
+      </label>
+      {toggle("kidSafeOnly", "Kid-safe games only", "leave out games not marked kid-safe, when kids read the channel")}
     </section>
   );
 }

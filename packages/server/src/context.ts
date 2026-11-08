@@ -132,6 +132,11 @@ export interface AppContext {
   prices: PriceService;
   /** Sensors for Home Assistant over MQTT. */
   homeAssistant: HomeAssistantBridge;
+  discord: import("./integrations/discord.js").DiscordPoster;
+  power: import("./integrations/power.js").PowerMeter;
+  houseWatch: import("./alerts/housewatch.js").HouseWatch;
+  /** Closes whatever a profile is playing, with a reason on its screen. */
+  closeGamesOf: (userId: number, text: string) => void;
   /** Dendrop, the family chat: posts, buttons and Bandit in a channel. */
   chat: ChatLink;
   /** Bandit, the AI gaming helper. */

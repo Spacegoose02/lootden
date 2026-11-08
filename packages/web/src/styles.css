@@ -4294,6 +4294,18 @@ html[data-lootden-frame] .lightbox {
   border: 1px solid var(--border);
   border-bottom-left-radius: 4px;
 }
+.bandit-action {
+  margin-top: 0.5rem;
+  padding: 0.6rem 0.7rem;
+  border: 1px solid var(--accent, #8b5cf6);
+  border-radius: 10px;
+  display: grid;
+  gap: 0.4rem;
+}
+.bandit-action .row {
+  display: flex;
+  gap: 0.5rem;
+}
 .bandit-msg.user {
   align-self: flex-end;
   background: var(--accent);

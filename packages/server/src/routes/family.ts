@@ -56,6 +56,40 @@ export function familyRoutes(app: FastifyInstance, ctx: AppContext) {
     return { limits: ctx.family.limits(user.id), allowance: ctx.family.allowance(user.id) };
   });
 
+  /** Pause or resume a kid's games right away (Home Assistant has the same switch). */
+  app.put<{ Params: { id: string }; Body: { paused?: boolean } }>("/api/users/:id/paused", async (req) => {
+    requireAdmin(req);
+    const user = person(req.params.id);
+    const paused = ctx.family.setPaused(user.id, req.body?.paused === true);
+    if (req.body?.paused === true) ctx.closeGamesOf(user.id, "A grown-up paused games for now.");
+    ctx.homeAssistant.changed();
+    return { paused: paused.includes(user.id), allowance: ctx.family.allowance(user.id) };
+  });
+  app.get("/api/family/paused", async (req) => {
+    requireAdmin(req);
+    return ctx.family.paused();
+  });
+
+  // ---- Games a kid earns in Den Duty ----------------------------------------------------
+  app.get<{ Params: { id: string } }>("/api/games/:id/earners", async (req) => {
+    requireAdmin(req);
+    return { userIds: ctx.family.earnersOf(req.params.id) };
+  });
+  app.put<{ Params: { id: string }; Body: { userIds?: number[] } }>("/api/games/:id/earners", async (req) => {
+    requireAdmin(req);
+    if (!ctx.library.get(req.params.id, false)) throw new HttpProblem(404, "Game not found");
+    const ids = Array.isArray(req.body?.userIds) ? req.body.userIds.map(Number).filter(Number.isInteger) : [];
+    const userIds = ctx.family.setEarners(req.params.id, ids);
+    void ctx.denDuty.sync().catch(() => {});
+    return { userIds };
+  });
+  /** Whether I can play this game now, or have to earn it in Den Duty first. */
+  app.get<{ Params: { id: string } }>("/api/games/:id/lock", async (req) => {
+    const user = requireUser(req);
+    if (!user.user) return { reason: null, unlockedUntil: null };
+    return ctx.family.gameLock(user.user.id, req.params.id);
+  });
+
   app.get("/api/time-requests", async (req) => (isAdmin(req) ? ctx.family.timeRequests(null) : ctx.family.timeRequests(requirePerson(req).id)));
   app.post<{ Body: { minutes?: number; note?: string } }>("/api/time-requests", async (req) => {
     const me = requirePerson(req);
