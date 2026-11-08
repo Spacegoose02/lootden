@@ -745,12 +745,6 @@ export const MIGRATIONS: string[] = [
   UPDATE wishlist SET image = NULL WHERE image LIKE 'https://cdn.cloudflare.steamstatic.com/steam/apps/%/header.jpg';
   `,
   `
-  -- LAN copies: the port each PC's app shares installed games on, and the key the server signs
-  -- tickets for that PC with, so another PC in the house can copy a game from it.
-  ALTER TABLE pcs ADD COLUMN peer_port INTEGER;
-  ALTER TABLE pcs ADD COLUMN peer_key TEXT;
-  `,
-  `
   -- No-Intro and Redump DATs for checking emulated games' ROMs, and what each check found.
   CREATE TABLE rom_dats (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -778,6 +772,12 @@ export const MIGRATIONS: string[] = [
     stamp TEXT NOT NULL DEFAULT '',
     checked_at TEXT NOT NULL
   );
+  `,
+  `
+  -- LAN copies: the port each PC's app shares installed games on, and the key the server signs
+  -- tickets for that PC with, so another PC in the house can copy a game from it.
+  ALTER TABLE pcs ADD COLUMN peer_port INTEGER;
+  ALTER TABLE pcs ADD COLUMN peer_key TEXT;
   `,
   `
   -- Two-step sign-in: an authenticator app (secret encrypted with the server's key), one-time
