@@ -73,6 +73,22 @@ export async function recordFiles(gameDir: string): Promise<number> {
   return files.length;
 }
 
+/** A game's own files with their sizes: the install's list when there is one, else every file in the folder. */
+export async function listGameFiles(gameDir: string): Promise<Array<{ path: string; size: number }>> {
+  const record = await readRecord(gameDir);
+  if (record) {
+    const out: Array<{ path: string; size: number }> = [];
+    for (const f of record) {
+      const size = await stat(path.join(gameDir, ...f.path.split("/"))).then((x) => x.size, () => -1);
+      if (size >= 0) out.push({ path: f.path, size });
+    }
+    return out;
+  }
+  const out: Array<{ path: string; size: number }> = [];
+  for (const rel of await walk(gameDir)) out.push({ path: rel, size: (await stat(path.join(gameDir, ...rel.split("/")))).size });
+  return out;
+}
+
 export async function readRecord(gameDir: string): Promise<FileRecord[] | null> {
   try {
     const j = JSON.parse(await readFile(path.join(gameDir, FILES_NAME), "utf8")) as { files?: FileRecord[] };

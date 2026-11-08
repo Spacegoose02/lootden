@@ -744,6 +744,12 @@ export const MIGRATIONS: string[] = [
   -- the tall library cover; clearing them lets the next sync fill them in again.
   UPDATE wishlist SET image = NULL WHERE image LIKE 'https://cdn.cloudflare.steamstatic.com/steam/apps/%/header.jpg';
   `,
+  `
+  -- LAN copies: the port each PC's app shares installed games on, and the key the server signs
+  -- tickets for that PC with, so another PC in the house can copy a game from it.
+  ALTER TABLE pcs ADD COLUMN peer_port INTEGER;
+  ALTER TABLE pcs ADD COLUMN peer_key TEXT;
+  `,
 ];
 
 export function openDatabase(file: string): Db {

@@ -5,6 +5,7 @@ export { listDrives, type Drive } from "./drives.js";
 export { extractArchive, findSevenZip } from "./extractor.js";
 export { adoptFolder, detectSetup, exeStampOf, findCopies, listInstalled, saveManifest, uninstallGame, versionTag, type GameRef, type InstalledGame } from "./installed.js";
 export { installGame, isManifest, LEGACY_MANIFEST_NAME, MANIFEST_NAME, pickGame, type InstallEvent, type InstallOptions } from "./installer.js";
+export { checkTicket, installFromPeer, lanAddresses, PEER_PORT, PeerShare } from "./peer.js";
 export { DownloadQueue, QueueHold, type QueueItem, type QueueState } from "./queue.js";
 export { clockMinutes, inWindow, RateLimiter } from "./throttle.js";
 export { FILES_NAME, readRecord, recordFiles, repairGame, verifyGame, type VerifyResult } from "./verify.js";

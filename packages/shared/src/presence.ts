@@ -45,6 +45,20 @@ export interface PcReport {
    * when a PC holds a newer copy than the library (see LibraryRefresh).
    */
   copies?: PcCopy[];
+  /** The port this PC shares installed games on (LAN copies), or null when sharing is off. */
+  peerPort?: number | null;
+}
+
+/**
+ * POST /api/games/:id/peer-source: another PC in the house that has this game installed and
+ * shares it, with a ticket its app accepts for this game only, for a few hours.
+ */
+export interface PeerSource {
+  device: string;
+  /** Addresses to try in order, e.g. http://192.168.1.20:47631 */
+  urls: string[];
+  ticket: string;
+  version: string | null;
 }
 
 /** A LootDen game installed on a PC, at the version the PC knows it's at. */
@@ -110,6 +124,8 @@ export interface RefreshJob {
 /** The server's answer to a heartbeat. */
 export interface PresenceAnswer {
   commands: PcCommand[];
+  /** The key this PC checks LAN copy tickets with (base64url). */
+  peerKey?: string;
   /** Seconds until the next heartbeat. */
   nextInSeconds: number;
 }
