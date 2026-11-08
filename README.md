@@ -59,6 +59,13 @@ installs games from it on any PC in the house.
   play in the browser too (experimental, on a fast PC in Chrome or Edge) through
   [TabStationToo](https://github.com/TabStationToo/TabStationToo), PCSX2 compiled to
   WebAssembly (GPL-3.0); admins can switch it off under Emulation, Emulators and BIOS.
+- ROM checks: upload No-Intro and Redump DATs under Emulation, Emulators and BIOS, and each
+  console game gets a "Verified dump" badge when its files match a known good dump. Zipped
+  ROMs are checked from the zip's own CRCs, and iNES and copier headers are skipped like
+  No-Intro does. New games are checked after each scan.
+- Save states follow you: in the browser player, Save State and Load State use a slot on
+  your profile, so a state saved on the laptop loads on the TV. The desktop emulators' save
+  states go up with their save backups and come back on the next PC.
 - Recomps: native PC versions of console games (Zelda 64: Recompiled, Star Fox 64: Recompiled).
   The desktop app downloads each one from its developer's GitHub releases, checks it against
   GitHub's SHA-256, and plays the ROM from your library with it, with save backups kept apart

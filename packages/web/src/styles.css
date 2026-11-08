@@ -4986,6 +4986,10 @@ html[data-lootden-frame] .lightbox {
 .badge.proton-borked { background: #ff4f4f; color: #111; }
 .badge.deck-verified { background: #59bf40; color: #111; }
 .badge.deck-playable { background: #ffc82c; color: #111; }
+.badge.rom-verified { background: #59bf40; color: #111; }
+.badge.rom-partial { background: #ffc82c; color: #111; }
+.badge.rom-unknown { background: #6b6b6b; color: #fff; }
+.badge.rom-unchecked { background: #3a3a3a; color: #ddd; }
 .badge.deck-unsupported { background: #6b6b6b; color: #fff; }
 .wish-price { display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem; }
 .wish-price .price { font-weight: 700; text-decoration: none; }

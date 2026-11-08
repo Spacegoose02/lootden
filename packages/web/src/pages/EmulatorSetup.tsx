@@ -3,6 +3,7 @@ import { platformFor, RECOMPS, type EmulatorInfo, type RecompInfo } from "@lootd
 import { api, formatBytes, type EmulationOverview } from "../api";
 import { useAuth } from "../auth";
 import { bridgeError, desktop, type EmulatorSetup as Setup, type RecompSetup } from "../desktop";
+import { RomDats } from "../components/RomChecks";
 import { connectedPads } from "../gamepad";
 
 /**
@@ -155,6 +156,7 @@ export function EmulatorSetup() {
 
       {isAdmin && <Ps2BrowserPanel data={data} onChange={load} />}
       {isAdmin && <ServerBios data={data} onChange={load} />}
+      {isAdmin && <RomDats />}
     </div>
   );
 }

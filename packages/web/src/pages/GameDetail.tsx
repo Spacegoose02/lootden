@@ -29,6 +29,7 @@ import { launchStoreGame, storeKey, useStoreGames } from "../components/StoreGam
 import { KindBadge, UpdateActions, useInstalled, versionLabel } from "../components/UpdateActions";
 import type { GameSummary } from "@lootden/shared";
 import { useImageTint } from "../tint";
+import { RomBadge } from "../components/RomChecks";
 import { useHelperGame } from "../helperGame";
 
 /** What a game card passes along, so the page can show the cover at once while the rest loads. */
@@ -117,6 +118,7 @@ export function GameDetail() {
           )}
           <Badges game={game} />
           {game.platform === "pc" && <CompatBadges steamAppId={game.metadata?.steamAppId} />}
+          {game.platform !== "pc" && !isAddon && <RomBadge gameId={game.id} isAdmin={me?.role === "admin"} />}
           {me?.user && !isAddon && <ShelfButton gameId={game.id} />}
           {me?.user && !isAddon && <MarkButtons gameKey={game.id} />}
           {me?.user && !isAddon && game.platform === "pc" && <SendToPcButton gameId={game.id} title={game.title} sizeBytes={game.sizeBytes} />}

@@ -33,6 +33,7 @@ import { ReleaseCalendar } from "./metadata/calendar.js";
 import { VideoService } from "./news/videos.js";
 import { SaveStore } from "./saves/store.js";
 import { BiosStore } from "./emulation/bios.js";
+import { RomChecker } from "./emulation/romcheck.js";
 import { GameUpdates } from "./news/updates.js";
 import { FreeGames } from "./news/freegames.js";
 import { loadConnectorSettings } from "./connectors/settings.js";
@@ -225,6 +226,7 @@ export function buildContext(config: ServerConfig, db: Db, log: Log, opts: Build
     clients: new ClientDownloads(config.dataDir, opts.fetchImpl, db),
     saves: new SaveStore(db, config.dataDir),
     bios: new BiosStore(db, config.dataDir),
+    roms: new RomChecker(db, () => config.gamesDir),
     recompCache: new RecompCache(config.dataDir, opts.fetchImpl),
     updates,
     freeGames: new FreeGames(opts.fetchImpl, () => settings().itch.apiKey),
@@ -307,6 +309,8 @@ export function buildApp(config: ServerConfig, db: Db, opts: BuildOptions = {}):
   // client downloads page (streamed to disk, can be hundreds of MB).
   app.addContentTypeParser(/^image\//, { parseAs: "buffer", bodyLimit: 16 * 1024 * 1024 }, (_req, body, done) => done(null, body));
   app.addContentTypeParser("application/octet-stream", (_req, payload, done) => done(null, payload));
+  // No-Intro and Redump DATs for ROM checks.
+  app.addContentTypeParser(/^(text|application)\/xml/, { parseAs: "string", bodyLimit: 64 * 1024 * 1024 }, (_req, body, done) => done(null, body));
   app.decorateRequest("principal", null);
   app.addHook("onSend", async (_req, reply) => {
     reply.headers(SECURITY_HEADERS);

@@ -43,6 +43,11 @@ if (ctx.users.count() === 0) app.log.warn("No accounts yet: open the web UI to c
 if (config.oidc.issuer && !config.publicUrl) app.log.warn("GM_OIDC_ISSUER is set but GM_PUBLIC_URL is not; single sign-on stays off.");
 
 if (config.metadataAuto) ctx.library.onScanned((games) => ctx.metadata.queueMissing(games));
+// New or changed emulated games are checked against the uploaded No-Intro/Redump DATs (unchanged ones are skipped).
+ctx.library.onScanned(() => {
+  if (!ctx.roms.dats().length) return;
+  ctx.roms.checkAll(ctx.library.list({}).flatMap((g) => (g.platform === "pc" ? [] : [ctx.library.get(g.id, false)].filter((x) => !!x))));
+});
 await ctx.library.rescan();
 app.log.info({ games: (await ctx.library.stats()).gameCount, gamesDir: config.gamesDir, metadata: ctx.metadata.status().providers }, "Library scanned");
 

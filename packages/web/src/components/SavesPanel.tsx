@@ -111,11 +111,11 @@ export function SavesPanel({ game, onChange }: { game: GameDetail; onChange: (g:
                 <td>{new Date(s.createdAt).toLocaleString()}</td>
                 <td className="muted">
                   {s.device ?? ""}
-                  {s.runner?.startsWith("recomp:") ? ` · ${recompInfo(s.runner.slice(7))?.name ?? "recomp"}` : ""}
+                  {s.runner?.startsWith("recomp:") ? ` · ${recompInfo(s.runner.slice(7))?.name ?? "recomp"}` : s.runner?.startsWith("state:") ? " · save state" : ""}
                 </td>
                 <td className="num">{formatBytes(s.size)}</td>
                 <td className="actions">
-                  {canSync && desktop?.restoreSaves && (
+                  {canSync && !s.runner?.startsWith("state:") && desktop?.restoreSaves && (
                     <button
                       disabled={busy}
                       onClick={() =>
