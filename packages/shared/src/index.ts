@@ -378,6 +378,14 @@ export interface GameInfo extends GameListing {
   ageRatings: AgeRating[];
 }
 
+/** A game's manual: a PDF that came in its files, or one an admin uploaded. */
+export interface GameManual {
+  name: string;
+  /** Server-relative URL that opens the PDF in the browser. */
+  url: string;
+  uploaded: boolean;
+}
+
 /** A Steam Workshop item (a mod, map or skin) for a game. */
 export interface WorkshopItem {
   id: string;

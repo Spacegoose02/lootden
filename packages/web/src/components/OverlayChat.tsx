@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { api } from "../api";
 import { useAuth } from "../auth";
+import { t } from "../i18n";
 
 type Line = Awaited<ReturnType<typeof api.familyChat>>[number];
 
@@ -42,8 +43,8 @@ export function OverlayChat() {
     }
   };
   return (
-    <section className="overlay-chat" aria-label="Family chat">
-      <h3>Family chat</h3>
+    <section className="overlay-chat" aria-label={t("Family chat")}>
+      <h3>{t("Family chat")}</h3>
       <div className="overlay-chat-lines">
         {lines.length === 0 && <p className="muted small">Nothing said yet.</p>}
         {lines.slice(-8).map((l) => (
@@ -72,7 +73,7 @@ export function OverlayChat() {
           >
             <input value={text} onChange={(e) => setText(e.target.value)} maxLength={500} placeholder="Say something to the family" aria-label="Message" />
             <button className="primary small" disabled={busy || !text.trim()}>
-              Send
+              {t("Send")}
             </button>
           </form>
         </>

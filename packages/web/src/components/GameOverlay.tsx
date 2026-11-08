@@ -6,6 +6,7 @@ import { useHelperGame } from "../helperGame";
 import { formatPlaytime } from "../api";
 import { OverlayChat } from "./OverlayChat";
 import { PadGlyph } from "./PadHints";
+import { t } from "../i18n";
 
 type Running = OverlayState["games"][number];
 
@@ -116,7 +117,7 @@ export function GameOverlay() {
 
         <div className="overlay-actions">
           <button className="primary overlay-resume" onClick={run("resume")}>
-            ▶ Back to the game
+            ▶ {t("Back to the game")}
           </button>
           {ownGame && (
             <button onClick={run("pause", game!.gameId)}>{paused ? "▶ Carry on (unpause)" : "⏸ Pause the game"}</button>

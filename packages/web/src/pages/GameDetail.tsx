@@ -31,6 +31,8 @@ import type { GameSummary } from "@lootden/shared";
 import { useImageTint } from "../tint";
 import { RomBadge } from "../components/RomChecks";
 import { useHelperGame } from "../helperGame";
+import { t } from "../i18n";
+import { ManualAdmin, ManualsPanel, TrailerPanel } from "../components/GameManuals";
 
 /** What a game card passes along, so the page can show the cover at once while the rest loads. */
 type Preview = Pick<GameSummary, "id" | "title" | "coverUrl">;
@@ -142,7 +144,7 @@ export function GameDetail() {
           ) : (
           <div className="install panel">
             <a className="button primary" href={`lootden://install/${game.id}`}>
-              Install on this PC
+              {t("Install on this PC")}
             </a>
             <p className="muted small">
               Opens the LootDen app. Or run{" "}
@@ -167,10 +169,10 @@ export function GameDetail() {
       {(() => {
         // The rest of the page in tabs, so the d-pad isn't a long scroll past every panel.
         const tabs: Array<[string, string]> = [
-          ["overview", "Overview"],
-          ["updates", game.platform === "pc" && !isAddon ? "Updates & mods" : "Updates"],
-          ["files", "Saves & files"],
-          ...(me?.role === "admin" ? ([["admin", "Admin"]] as Array<[string, string]>) : []),
+          ["overview", t("Overview")],
+          ["updates", game.platform === "pc" && !isAddon ? t("Updates & mods") : t("Updates")],
+          ["files", t("Saves & files")],
+          ...(me?.role === "admin" ? ([["admin", t("Admin")]] as Array<[string, string]>) : []),
         ];
         const open = tabs.some(([id]) => id === tab) ? tab : "overview";
         return (
@@ -188,11 +190,13 @@ export function GameDetail() {
               {me?.user && !isAddon && <GameAchievementsPanel gameId={game.id} journalId={game.id} />}
               {me?.user && !isAddon && <GameSessionsPanel gameId={game.id} />}
               {me?.user && !isAddon && <TagsPanel gameKey={game.id} />}
+              {!isAddon && <ManualsPanel gameId={game.id} title={game.title} />}
+              {!isAddon && <TrailerPanel gameId={game.id} title={game.title} />}
               {!isAddon && <LocalScreenshots title={m?.name ?? game.title} steamAppId={m?.steamAppId ?? null} gameId={game.id} />}
 
               {m?.screenshots.length ? (
                 <section className="row">
-                  <h2>Screenshots</h2>
+                  <h2>{t("Screenshots")}</h2>
                   <div className="row-track shots">
                     {m.screenshots.map((s) => (
                       <a key={s} href={s} target="_blank" rel="noreferrer">
@@ -239,7 +243,7 @@ export function GameDetail() {
 
               {!isAddon && <SavesPanel game={game} onChange={setGame} />}
               <section className="panel">
-                <h2>Files</h2>
+                <h2>{t("Files")}</h2>
                 <table className="table">
                   <tbody>
                     {game.files.map((f) => (
@@ -263,6 +267,7 @@ export function GameDetail() {
               {me?.role === "admin" && game.platform === "pc" && <PackageAdmin game={game} onChange={setGame} />}
 
               {me?.role === "admin" && <AdminTools game={game} onChange={setGame} />}
+              {me?.role === "admin" && !isAddon && <ManualAdmin gameId={game.id} />}
               </>
             )}
           </>

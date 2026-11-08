@@ -3056,7 +3056,7 @@ async function createWindow(): Promise<void> {
     title: "LootDen",
     ...(customFrame ? { titleBarStyle: "hidden" as const, titleBarOverlay: { color: "#0d0820", symbolColor: "#f3eeff", height: TITLEBAR_HEIGHT } } : {}),
     icon: path.join(__dirname, "..", "build", "icon.png"),
-    webPreferences: { preload: path.join(__dirname, "preload.cjs"), contextIsolation: true, sandbox: true, nodeIntegration: false },
+    webPreferences: { preload: path.join(__dirname, "preload.cjs"), contextIsolation: true, sandbox: true, nodeIntegration: false, plugins: true },
   });
   Menu.setApplicationMenu(null);
   // Links to other sites (news, screenshots) open in the normal browser.

@@ -140,6 +140,16 @@ installs games from it on any PC in the house.
   installed games show up and start from LootDen; Humble Bundle (DRM-free games) and PlayStation
   (PS4 and PS5 games you've played, with play time) connect under Game libraries.
 - **ProtonDB and Steam Deck badges** on Steam games' pages.
+- **Manuals**: PDFs that come with a game show as "Read the manual" on its page and open full
+  screen (B closes them). Admins can upload one under the game's Admin tab, e.g. a scanned manual
+  for an emulated game.
+- **Video previews and attract mode**: resting on a game in the library plays its trailer muted
+  (from Steam, IGDB or RAWG), and its page shows the trailer. When the app sits idle with a
+  controller, attract mode plays trailers from the library full screen until someone presses a
+  button. Both are under Settings, Appearance.
+- **Other languages**: menus and the main pages in Spanish, French, German or Portuguese, picked
+  per device under Settings, Appearance (the default follows the device). Text without a
+  translation yet stays in English.
 - **Family chat ([Dendrop](https://github.com/Spacegoose02/dendrop))**: Share to chat and "Who wants
   to play?" on game pages, requests with Approve and Decline buttons, kids' more-time asks answered
   with +15 or +30 from chat, Install on my PC buttons, new games, rare achievements and finished

@@ -1,9 +1,12 @@
-import type { CSSProperties, PointerEvent } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type PointerEvent } from "react";
 import { Link } from "react-router-dom";
-import type { GameSummary } from "@lootden/shared";
+import type { GameInfo, GameSummary } from "@lootden/shared";
+import { mediaPrefs } from "../prefs";
+import { previewFor, TrailerVideo } from "./GameManuals";
 import { Badges } from "./Badges";
 import { Cover } from "./Cover";
 import { VersionTag } from "./VersionTag";
+import { t } from "../i18n";
 
 /** Tilts the card toward the pointer and moves the light across its cover (fx.css). */
 function tilt(e: PointerEvent<HTMLElement>) {
@@ -34,10 +37,54 @@ function nameCover(e: { currentTarget: HTMLElement }) {
   cover.dataset.vtCover = "";
 }
 
+const PREVIEW_DELAY = 900;
+const reducedMotion = () => typeof matchMedia !== "undefined" && matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+/** The trailer, muted, over the cover once the pointer or the controller's selection rests on a card. */
+function useHoverPreview(gameId: string) {
+  const [trailer, setTrailer] = useState<GameInfo["trailer"]>(null);
+  const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const on = useRef(false);
+  const start = () => {
+    if (!mediaPrefs().previews || reducedMotion()) return;
+    on.current = true;
+    clearTimeout(timer.current);
+    timer.current = setTimeout(() => void previewFor(gameId).then((tr) => on.current && setTrailer(tr)), PREVIEW_DELAY);
+  };
+  const stop = () => {
+    on.current = false;
+    clearTimeout(timer.current);
+    setTrailer(null);
+  };
+  useEffect(() => () => clearTimeout(timer.current), []);
+  return { trailer, start, stop };
+}
+
 export function GameCard({ game }: { game: GameSummary }) {
+  const preview = useHoverPreview(game.id);
   return (
-    <Link to={`/games/${game.id}`} className="card" aria-label={game.title} viewTransition state={{ preview: { id: game.id, title: game.title, coverUrl: game.coverUrl } }} onClick={nameCover} onPointerMove={tilt} onPointerLeave={untilt}>
+    <Link
+      to={`/games/${game.id}`}
+      className={`card${preview.trailer ? " previewing" : ""}`}
+      aria-label={game.title}
+      viewTransition
+      state={{ preview: { id: game.id, title: game.title, coverUrl: game.coverUrl } }}
+      onClick={nameCover}
+      onPointerMove={tilt}
+      onPointerEnter={(e) => e.pointerType === "mouse" && preview.start()}
+      onPointerLeave={(e) => {
+        untilt(e);
+        preview.stop();
+      }}
+      onFocus={() => document.documentElement.dataset.nav === "pad" && preview.start()}
+      onBlur={preview.stop}
+    >
       <Cover game={game} />
+      {preview.trailer && (
+        <div className="card-preview" aria-hidden="true">
+          <TrailerVideo trailer={preview.trailer} title={game.title} preview />
+        </div>
+      )}
       <VersionTag game={game} />
       <div className="card-body">
         <div className="card-title">{game.title}</div>
@@ -66,7 +113,7 @@ export function GameGrid({ games, aspect }: { games: GameSummary[]; aspect?: num
 export function GameRow({ title, games, note }: { title: string; games: GameSummary[]; note?: string }) {
   return (
     <section className="row">
-      <h2>{title}</h2>
+      <h2>{t(title)}</h2>
       {note && <p className="muted small row-note">{note}</p>}
       <div className="row-track">
         {games.map((g) => (
