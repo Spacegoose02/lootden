@@ -4,6 +4,7 @@ import { EMULATORS, platformFor, recompsFor, RECOMP_LOOKS, type GameDetail, type
 import { api, formatBytes } from "../api";
 import { useAuth } from "../auth";
 import { bridgeError, desktop, useDesktopGame, type Drive, type GameBananaModView, type RecompLookView, type RecompModsView, type RecompSettingView, type RecompSetup } from "../desktop";
+import { GameRunner } from "./LinuxSteam";
 import { LaunchOptionsPanel, PlayWithButtons, useLaunchOptions } from "./LaunchOptions";
 
 /** Install / play / uninstall panel shown inside the desktop app. */
@@ -155,6 +156,7 @@ export function DesktopInstall({ game, autoFocus }: { game: GameDetail; autoFocu
               {paused ? "▶ Resume" : "⏸ Pause game"}
             </button>
           )}
+          {pcGame && <GameRunner gameId={game.id} />}
           <button className="secondary" onClick={() => run(() => bridge.openFolder(game.id))}>
             Open folder
           </button>

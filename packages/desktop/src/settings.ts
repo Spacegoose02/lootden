@@ -69,6 +69,10 @@ export interface DesktopSettings {
   overlay?: "view-menu" | "guide" | "off";
   /** Back up other stores' games' saves (found through Ludusavi's list) after playing them. Off only when false. */
   storeSaves?: boolean;
+  /** Linux: the Proton build (a folder under the tools folder's runners), or "wine", Windows games start with: for every game, and per game. */
+  linuxRunner?: { default: string; games: Record<string, string> };
+  /** Add to Steam: which Steam account's library LootDen's games go in (its userdata id). */
+  steamUser?: string;
 }
 
 export function defaultSettings(): DesktopSettings {

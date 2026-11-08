@@ -5,6 +5,8 @@ export { listDrives, type Drive } from "./drives.js";
 export { extractArchive, findSevenZip } from "./extractor.js";
 export { adoptFolder, detectSetup, exeStampOf, findCopies, listInstalled, saveManifest, uninstallGame, versionTag, type GameRef, type InstalledGame } from "./installed.js";
 export { installGame, isManifest, LEGACY_MANIFEST_NAME, MANIFEST_NAME, pickGame, type InstallEvent, type InstallOptions } from "./installer.js";
+export { installedRunners, installRunner, listRunnerReleases, preparePrefix, prefixDir, runnerCommand, WINE, type RunnerRelease } from "./runners.js";
+export { addSteamShortcuts, listSteamShortcuts, parseBinaryVdf, removeSteamShortcuts, shortcutAppId, steamUsers, writeBinaryVdf, type SteamUser } from "./steamshortcuts.js";
 export { findExecutable, launchAndTrack, listProcesses, processesIn, saveExecutable } from "./launcher.js";
 export { backupStoreSaves, findStoreSaves, restoreStoreSaves, type SaveLocation } from "./storesaves.js";
 export { commandFor, isLaunchUrl, launchActionAndTrack, runLaunchSteps, stepTarget, suspendProcesses, type Spawner } from "./launchactions.js";
