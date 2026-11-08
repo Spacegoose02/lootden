@@ -5,6 +5,7 @@ import type { GameServerClient } from "./api.js";
 import { extractArchive, findSevenZip } from "./extractor.js";
 import { exeStampOf, knownVersion, saveManifest, versionTag, type InstalledGame } from "./installed.js";
 import { installGame, isManifest, type InstallEvent } from "./installer.js";
+import { readRecord, recordFiles } from "./verify.js";
 import { findSetup, installerArgs } from "./prepare.js";
 
 /** Kept in each game's folder: copies of the files an update replaced, so it can be undone. */
@@ -222,6 +223,8 @@ export async function applyUpdate(api: GameServerClient, updateId: string, insta
       exeStamp: await exeStampOf(installed),
       updates: [...(installed.updates ?? []).filter((u) => u.id !== update.id), record],
     });
+    // The updated files are the new normal for Verify files.
+    if (await readRecord(installed.dir)) await recordFiles(installed.dir).catch(() => 0);
     return record;
   } finally {
     // A scratch folder that's still locked is left for next time, rather than turning a
@@ -262,5 +265,6 @@ export async function undoUpdate(installed: InstalledGame, updateId: string): Pr
     exeStamp: await exeStampOf(installed),
     updates: updates.filter((u) => u.id !== updateId),
   });
+  if (await readRecord(installed.dir)) await recordFiles(installed.dir).catch(() => 0);
   return record;
 }

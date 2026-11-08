@@ -6,6 +6,8 @@ import type { GameServerClient } from "./api.js";
 import { downloadFile } from "./downloader.js";
 import { extractArchive, findSevenZip } from "./extractor.js";
 import { detectSetup } from "./installed.js";
+import type { RateLimiter } from "./throttle.js";
+import { recordFiles } from "./verify.js";
 
 export const MANIFEST_NAME = ".lootden.json";
 /** The manifest's name before the rename to LootDen; still read, and replaced on the next write. */
@@ -35,6 +37,8 @@ export interface InstallOptions {
   report?: boolean;
   /** False keeps a single wrapper folder as it is instead of lifting its contents up. */
   hoist?: boolean;
+  /** The PC's download speed limit. */
+  limiter?: RateLimiter;
 }
 
 /** Resolves a user's argument to one game: exact id, exact title, then a unique partial title match. */
@@ -139,6 +143,7 @@ export async function installGame(api: GameServerClient, gameId: string, opts: I
       dest,
       expectedSize: file.size,
       signal: opts.signal,
+      limiter: opts.limiter,
       onProgress: (received, total) =>
         emit({ type: "download", file: file.path, index: file.index, count: game.files.length, received, total }),
     });
@@ -164,6 +169,8 @@ export async function installGame(api: GameServerClient, gameId: string, opts: I
 
   // An installer inside an archive only shows once it's unpacked, so check the files we ended up with too.
   const needsSetup = game.platform === "pc" ? (game.needsSetup ?? (await detectSetup(gameDir))) : null;
+  // The list Verify files checks against later. Not for scratch downloads.
+  if (opts.report !== false) await recordFiles(gameDir).catch((err: Error) => emit({ type: "warning", message: `Couldn't record the game's files for Verify: ${err.message}` }));
   await rm(path.join(gameDir, LEGACY_MANIFEST_NAME), { force: true });
   await writeFile(
     path.join(gameDir, MANIFEST_NAME),
