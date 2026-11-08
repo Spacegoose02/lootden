@@ -122,6 +122,9 @@ function Planner({ data, meId, onPlanned }: { data: GameNightList; meId: number 
   const [goalId, setGoalId] = useState<string | null>(data.goals[0]?.id ?? null);
   const [msg, setMsg] = useState<{ text: string; error?: boolean } | null>(null);
   const [spinning, setSpinning] = useState(false);
+  /** The game Surprise us landed on, until another one is picked. */
+  const [spun, setSpun] = useState<string | null>(null);
+  const [sharing, setSharing] = useState(false);
   useEffect(() => void api.users().then(setUsers, () => {}), []);
   useEffect(() => {
     setGame(null);
@@ -139,10 +142,25 @@ function Planner({ data, meId, onPlanned }: { data: GameNightList; meId: number 
       setGame(top[i++ % top.length]!);
       if (i > 14) {
         clearInterval(t);
-        setGame(top[Math.floor(Math.random() * top.length)]!);
+        const pick = top[Math.floor(Math.random() * top.length)]!;
+        setGame(pick);
+        setSpun(pick.id);
         setSpinning(false);
       }
     }, 110);
+  };
+
+  const share = async () => {
+    if (!game) return;
+    setSharing(true);
+    try {
+      await api.shareGamePick(game.id, players);
+      setMsg({ text: `Shared ${game.title} to the family chat 📣` });
+    } catch (e) {
+      setMsg({ text: (e as Error).message, error: true });
+    } finally {
+      setSharing(false);
+    }
   };
 
   const plan = async () => {
@@ -187,9 +205,16 @@ function Planner({ data, meId, onPlanned }: { data: GameNightList; meId: number 
         <>
           <div className="row-head">
             <h3>Games for {players.length === 1 ? "one" : `all ${players.length}`}</h3>
-            <button className="button small" onClick={surprise} disabled={spinning || !picks.length}>
-              🎰 Surprise us
-            </button>
+            <span className="game-night-spin">
+              {data.canShare && game && spun === game.id && !spinning && (
+                <button className="button small" onClick={() => void share()} disabled={sharing}>
+                  📣 Share to chat
+                </button>
+              )}
+              <button className="button small" onClick={surprise} disabled={spinning || !picks.length}>
+                🎰 Surprise us
+              </button>
+            </span>
           </div>
           {!picks.length && <p className="muted">No games to play together for this group yet. Mark co-op games on their page (Play together).</p>}
           <div className="game-night-picks">

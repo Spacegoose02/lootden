@@ -4780,6 +4780,11 @@ html[data-lootden-frame] .lightbox {
 .person-chip:focus-within {
   outline: 2px solid var(--accent, #8b5cf6);
 }
+.game-night-spin {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
 .game-night-picks {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));

@@ -25,6 +25,7 @@ export function gameNightRoutes(app: FastifyInstance, ctx: AppContext) {
       past: list.past.map(hide),
       goals: ctx.gameNights.goalsToCelebrate(),
       canPlan: admin,
+      canShare: admin && !!ctx.notifier.canChat(),
       feed: admin ? `/api/game-nights/feed/${ctx.gameNights.feedKey()}/game-nights.ics` : null,
     };
   });
@@ -41,6 +42,27 @@ export function gameNightRoutes(app: FastifyInstance, ctx: AppContext) {
     const night = fail(() => ctx.gameNights.create(p.user?.id ?? 0, req.body ?? {}));
     ctx.live.publish("playing");
     return night;
+  });
+
+  /** Shares a Surprise us pick into the family chat, through the chat webhook. */
+  app.post<{ Body: { gameId?: unknown; players?: unknown } }>("/api/game-nights/share-pick", async (req) => {
+    requireAdmin(req);
+    const game = typeof req.body?.gameId === "string" ? ctx.library.get(req.body.gameId, false) : undefined;
+    if (!game) throw new HttpProblem(404, "No such game");
+    const ids = Array.isArray(req.body?.players) ? req.body.players.map(Number) : [];
+    const names = ids.flatMap((id) => {
+      const u = ctx.users.byId(id);
+      return u ? [u.displayName || u.username] : [];
+    });
+    const who = names.length > 1 ? `${names.slice(0, -1).join(", ")} and ${names.at(-1)}` : names[0];
+    const base = (ctx.config.publicUrl ?? "").replace(/\/+$/, "");
+    const text = [`🎰 Surprise us picked ${game.title}${who ? ` for ${who}` : ""}!`, base ? `${base}/games/${encodeURIComponent(game.id)}` : ""].filter(Boolean).join("\n");
+    try {
+      await ctx.notifier.chat(text);
+    } catch (err) {
+      throw new HttpProblem(502, (err as Error).message);
+    }
+    return { ok: true };
   });
 
   app.delete<{ Params: { id: string } }>("/api/game-nights/:id", async (req) => {
