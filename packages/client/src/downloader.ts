@@ -3,6 +3,7 @@ import { mkdir, rename, stat, unlink } from "node:fs/promises";
 import path from "node:path";
 import { Readable, Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
+import type { RateLimiter } from "./throttle.js";
 
 export interface DownloadOptions {
   url: string;
@@ -11,6 +12,8 @@ export interface DownloadOptions {
   expectedSize: number;
   onProgress?: (receivedBytes: number, totalBytes: number) => void;
   signal?: AbortSignal;
+  /** The PC's download speed limit, shared by every download. */
+  limiter?: RateLimiter;
 }
 
 async function sizeOf(p: string): Promise<number | null> {
@@ -27,7 +30,7 @@ async function sizeOf(p: string): Promise<number | null> {
  * where it stopped. Returns false when the file was already complete.
  */
 export async function downloadFile(opts: DownloadOptions): Promise<boolean> {
-  const { url, headers, dest, expectedSize, onProgress, signal } = opts;
+  const { url, headers, dest, expectedSize, onProgress, signal, limiter } = opts;
   if ((await sizeOf(dest)) === expectedSize) return false;
 
   await mkdir(path.dirname(dest), { recursive: true });
@@ -58,12 +61,10 @@ export async function downloadFile(opts: DownloadOptions): Promise<boolean> {
         done(null, chunk);
       },
     });
-    await pipeline(
-      Readable.fromWeb(res.body as import("node:stream/web").ReadableStream),
-      meter,
-      createWriteStream(partPath, { flags: resumed ? "a" : "w" }),
-      { signal },
-    );
+    const source = Readable.fromWeb(res.body as import("node:stream/web").ReadableStream);
+    const sink = createWriteStream(partPath, { flags: resumed ? "a" : "w" });
+    if (limiter) await pipeline(source, limiter.stream(), meter, sink, { signal });
+    else await pipeline(source, meter, sink, { signal });
   }
 
   const finalSize = await sizeOf(partPath);

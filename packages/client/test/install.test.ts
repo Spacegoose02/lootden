@@ -9,6 +9,7 @@ import { buildApp, loadConfig, openDatabase } from "@lootden/server/lib";
 import { GameServerClient } from "../src/api.js";
 import { findSevenZip } from "../src/extractor.js";
 import { installGame, MANIFEST_NAME, pickGame } from "../src/installer.js";
+import { FILES_NAME } from "../src/verify.js";
 
 let work: string;
 let app: FastifyInstance;
@@ -58,7 +59,7 @@ describe("install end to end", () => {
     const dir = await installGame(api, game.id, { installDir: path.join(work, "client"), keepArchives: false, sevenZipPath: "" });
     assert.equal(path.basename(dir), "The Sims 4");
     const entries = (await readdir(dir)).sort();
-    assert.deepEqual(entries, [MANIFEST_NAME, "Game", "readme.txt"]);
+    assert.deepEqual(entries, [FILES_NAME, MANIFEST_NAME, "Game", "readme.txt"].sort());
     assert.equal(await readFile(path.join(dir, "Game", "TS4.exe"), "utf8"), "pretend exe");
     const manifest = JSON.parse(await readFile(path.join(dir, MANIFEST_NAME), "utf8"));
     assert.equal(manifest.gameId, game.id);

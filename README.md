@@ -17,6 +17,13 @@ installs games from it on any PC in the house.
 - Desktop app for Windows and Linux: download with resume, unpack zip/7z/rar, delete the
   archives, play, track play time, uninstall. Runs in the tray and updates itself from the
   server.
+- **Download queue, speed limit and overnight downloads** (desktop app, Profile, This computer):
+  downloads run one at a time (or two or three), can be moved to the top, paused and resumed, and
+  share a speed limit. A download window ("only between 23:00 and 07:00") holds them until then
+  and stops them when it ends; they resume where they stopped.
+- **Verify files and Repair**: a game's page checks every file against the list made when it was
+  installed, and downloads only the missing or damaged ones again. Games that came as archives are
+  unpacked to one side and just the broken files copied in, so settings and mods are left alone.
 - Installers and disc images: Inno Setup installers (most GOG games) are installed on the
   server while a download is imported. Others run once on a PC, then an admin can upload the
   installed folder so everyone else gets a ready-to-play download. The upload goes in 16 MB

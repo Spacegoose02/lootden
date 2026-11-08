@@ -69,6 +69,8 @@ export interface DesktopSettings {
   overlay?: "view-menu" | "guide" | "off";
   /** Back up other stores' games' saves (found through Ludusavi's list) after playing them. Off only when false. */
   storeSaves?: boolean;
+  /** Downloads on this PC: a speed limit in KB/s (0 is none), how many at once, and an optional daily window ("23:00" to "07:00"). */
+  downloads?: { limitKBps: number; maxAtOnce: number; window: { from: string; to: string } | null };
 }
 
 export function defaultSettings(): DesktopSettings {

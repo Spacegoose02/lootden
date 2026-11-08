@@ -44,6 +44,11 @@ import {
   findSevenZip,
   GameServerClient,
   installGame,
+  DownloadQueue,
+  RateLimiter,
+  clockMinutes,
+  repairGame,
+  verifyGame,
   launchAndTrack,
   listDrives,
   listProcesses,
@@ -130,6 +135,17 @@ const isDeepLink = (a: string) => PROTOCOLS.some((p) => a.startsWith(`${p}://`))
 let win: BrowserWindow | null = null;
 let settings: SettingsStore;
 const running = new Map<string, AbortController>();
+/** The PC's download speed limit, shared by every download (Profile, This computer, Downloads). */
+const limiter = new RateLimiter(() => Math.max(0, settings.get().downloads?.limitKBps ?? 0) * 1024);
+/** Downloads run in order: so many at once, and only in the download window when there is one. */
+const queue = new DownloadQueue({
+  maxConcurrent: () => settings.get().downloads?.maxAtOnce ?? 1,
+  window: () => settings.get().downloads?.window ?? null,
+  onChange: (items) => {
+    for (const i of items) if (i.state !== "running") send({ gameId: i.id, type: "queued", message: i.note ?? "Waiting for the downloads ahead of it", state: i.state });
+    send({ gameId: "downloads:queue", type: "queue", items });
+  },
+});
 let pendingDeepLink: string | null = process.argv.find(isDeepLink) ?? null;
 let tray: Tray | null = null;
 /** Set once the app is really quitting, so closing the window stops hiding it. */
@@ -1452,12 +1468,14 @@ function registerIpc(): void {
     running.set(gameId, controller);
     let last = 0;
     try {
-      const gameDir = await installGame(await client(), gameId, {
+      const ref = await gameRef(gameId);
+      const gameDir = (await queue.add(gameId, ref.title, async (queueSignal) => installGame(await client(), gameId, {
         installDir,
         keepArchives: s.keepArchives,
         sevenZipPath: await sevenZipPath(),
         device: os.hostname(),
-        signal: controller.signal,
+        signal: AbortSignal.any([controller.signal, queueSignal]),
+        limiter,
         onEvent: (ev: InstallEvent) => {
           if (ev.type === "download") {
             const now = Date.now();
@@ -1466,7 +1484,7 @@ function registerIpc(): void {
           }
           send({ gameId, ...(ev.type === "start" ? { type: "start", gameDir: ev.gameDir, totalBytes: ev.game.sizeBytes } : ev) });
         },
-      });
+      }))) as string;
       void cacheDetails([gameId]).catch(() => {});
       // A streaming PC gets the new game in Sunshine too.
       if (settings.get().sunshine) void sunshineSyncNow().catch(() => {});
@@ -1482,6 +1500,78 @@ function registerIpc(): void {
   ipcMain.handle("gm:cancel", (e, gameId: string) => {
     fromServer(e);
     running.get(gameId)?.abort();
+    queue.cancel(gameId);
+  });
+
+  // ---- Download queue, speed limit and window, verify and repair ----------------------------
+
+  ipcMain.handle("gm:queue", (e, action?: { id: string; do: "up" | "down" | "top" | "pause" | "resume" }) => {
+    fromServer(e);
+    if (action?.id) {
+      if (action.do === "pause") queue.pause(action.id);
+      else if (action.do === "resume") queue.resume(action.id);
+      else if (["up", "down", "top"].includes(action.do)) queue.move(action.id, action.do as "up" | "down" | "top");
+    }
+    return queue.list();
+  });
+
+  ipcMain.handle("gm:downloadSettings", (e, patch?: { limitKBps?: number; maxAtOnce?: number; window?: { from: string; to: string } | null }) => {
+    fromServer(e);
+    if (patch) {
+      const cur = settings.get().downloads ?? { limitKBps: 0, maxAtOnce: 1, window: null };
+      const limit = patch.limitKBps === undefined ? cur.limitKBps : Math.max(0, Math.min(10_000_000, Math.round(Number(patch.limitKBps) || 0)));
+      const max = patch.maxAtOnce === undefined ? cur.maxAtOnce : Math.max(1, Math.min(5, Math.round(Number(patch.maxAtOnce) || 1)));
+      let window = cur.window;
+      if (patch.window !== undefined) {
+        if (patch.window === null) window = null;
+        else {
+          if (clockMinutes(patch.window.from) === null || clockMinutes(patch.window.to) === null) throw new Error("Times look like 23:00");
+          window = { from: patch.window.from, to: patch.window.to };
+        }
+      }
+      settings.update({ downloads: { limitKBps: limit, maxAtOnce: max, window } });
+      queue.pump();
+    }
+    return settings.get().downloads ?? { limitKBps: 0, maxAtOnce: 1, window: null };
+  });
+
+  /** Verify files: checks an installed game against the list made when it was installed. */
+  ipcMain.handle("gm:verify", async (e, gameId: string) => {
+    fromServer(e);
+    const game = await findInstalled(gameId);
+    const api = await client().catch(() => null);
+    let last = 0;
+    return verifyGame(api, gameId, game.dir, (done, total) => {
+      if (Date.now() - last < 250 && done < total) return;
+      last = Date.now();
+      send({ gameId, type: "verify", done, total });
+    });
+  });
+
+  /** Repair: downloads the broken files again (or unpacks them to one side), under the speed limit. */
+  ipcMain.handle("gm:repair", async (e, gameId: string, files: string[]) => {
+    fromServer(e);
+    if (running.has(gameId)) throw new Error("Already busy with this game");
+    const game = await findInstalled(gameId);
+    const controller = new AbortController();
+    running.set(gameId, controller);
+    try {
+      let last = 0;
+      const n = await repairGame(await client(), gameId, game.dir, (Array.isArray(files) ? files : []).map(String), {
+        sevenZipPath: await sevenZipPath(),
+        limiter,
+        signal: controller.signal,
+        onProgress: (step, received, total) => {
+          if (Date.now() - last < 250) return;
+          last = Date.now();
+          send({ gameId, type: "repair", step, received: received ?? 0, total: total ?? 0 });
+        },
+      });
+      send({ gameId, type: "repaired", files: n });
+      return { repaired: n };
+    } finally {
+      running.delete(gameId);
+    }
   });
 
   ipcMain.handle("gm:play", async (e, gameId: string, actionId?: string | null) => {
