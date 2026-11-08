@@ -266,6 +266,13 @@ function Profiles({ say }: { say: Msg }) {
               <button className="ghost small" aria-expanded={browserFor === u.id} title="What they can open in the app's web browser" onClick={() => setBrowserFor(browserFor === u.id ? null : u.id)}>
                 Browser
               </button>
+              <button
+                className="ghost small"
+                title="For someone who lost their phone or passkey: clears their authenticator app and passkeys so their password works alone"
+                onClick={() => confirm(`Turn off two-step sign-in for ${u.username}?`) && act(() => api.resetMfa(u.id), "Two-step sign-in turned off")}
+              >
+                Reset 2-step
+              </button>
               <button className="ghost small" onClick={() => confirm(`Delete ${u.username}?`) && act(() => api.deleteUser(u.id), "Deleted")}>
                 Delete
               </button>

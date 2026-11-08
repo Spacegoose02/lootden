@@ -18,6 +18,7 @@ import { DownloadManager } from "./connectors/manager.js";
 import { downloadRoutes } from "./routes/downloads.js";
 import { newsRoutes } from "./routes/news.js";
 import { authRoutes } from "./routes/auth.js";
+import { pushRoutes } from "./routes/push.js";
 import { gameRoutes } from "./routes/games.js";
 import { userRoutes } from "./routes/users.js";
 import { UserRepo } from "./users/repo.js";
@@ -61,6 +62,8 @@ import { AddonRegistry } from "./addons/registry.js";
 import { StoreGameDetails } from "./addons/details.js";
 import { SteamSignIn } from "./addons/steam-signin.js";
 import { Vault } from "./auth/vault.js";
+import { MfaService } from "./auth/mfa.js";
+import { PushService } from "./alerts/webpush.js";
 import type { LibraryAddon } from "./addons/types.js";
 import { addonRoutes } from "./routes/addons.js";
 import { RobloxCatalog } from "./roblox/catalog.js";
@@ -206,7 +209,24 @@ export function buildContext(config: ServerConfig, db: Db, log: Log, opts: Build
     homeAssistant.changed();
   };
   const chat = new ChatLink(db, () => config.publicUrl ?? "", opts.fetchImpl, log, opts.chatSocket);
+  const push = new PushService(db, config.dataDir, () => config.publicUrl ?? "", opts.fetchImpl, log);
+  // The person who asked hears back on their phone.
+  requests.onDecided = (r) =>
+    void push.toUser(r.requestedBy.id, {
+      title: r.status === "declined" ? `Not this time: ${r.title}` : `${r.title} was approved`,
+      body: r.status === "declined" ? r.reason ?? null : "It's on the wanted list now.",
+      link: "/requests",
+      tag: `request-${r.id}`,
+    });
+  family.onTimeDecided = (t) =>
+    void push.toUser(t.userId, {
+      title: t.state === "approved" ? `You got ${t.minutes} more minutes` : "No extra time today",
+      body: t.note,
+      link: "/",
+      tag: `time-${t.id}`,
+    });
   notifier.onAlert = (a) => {
+    if (a.wanted) void push.toAdmins({ title: a.title, body: a.body, link: a.link, tag: a.kind });
     if (a.meta.request) void chat.requestMade(a.meta.request.id, a.meta.request.by, a.meta.request.title, a.meta.request.note);
     else if (a.meta.time) void chat.timeAsked(a.meta.time.id, a.meta.time.by, a.meta.time.minutes, a.meta.time.note);
     else if (a.wanted && a.kind !== "test") void chat.alert(a.title, a.body, a.link);
@@ -229,6 +249,8 @@ export function buildContext(config: ServerConfig, db: Db, log: Log, opts: Build
     updates,
     freeGames: new FreeGames(opts.fetchImpl, () => settings().itch.apiKey),
     auth: new AuthService(db, users, config),
+    mfa: new MfaService(db, vault),
+    push,
     oidc: new OidcService(config, users),
     metadata,
     calendar: new ReleaseCalendar(metadata, library, opts.fetchImpl),
@@ -342,6 +364,7 @@ export function buildApp(config: ServerConfig, db: Db, opts: BuildOptions = {}):
   app.get("/api/health", async (): Promise<HealthResponse> => ({ status: "ok", version: VERSION, apiVersion: API_VERSION }));
 
   authRoutes(app, ctx);
+  pushRoutes(app, ctx);
   userRoutes(app, ctx);
   gameRoutes(app, ctx);
   emulationRoutes(app, ctx, opts.ps2Dir ?? "");

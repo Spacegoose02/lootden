@@ -12,6 +12,8 @@ import { StreamingSetup } from "../components/Streaming";
 import { AchievementsGrid, HoloCard, RaccoonBuilder, useProgress } from "../components/Progress";
 import { PlayTimeCard } from "../components/PlayTime";
 import { BanditProfileCard } from "../components/Bandit";
+import { SignInSecurity } from "../components/SignInSecurity";
+import { PushToggle } from "../components/PushToggle";
 import { AchievementSummaryPanel } from "../components/Achievements";
 
 export function Profile() {
@@ -167,6 +169,10 @@ export function Profile() {
           </section>
 
           <GameLibraries admin={user.role === "admin"} />
+
+          <PushToggle admin={user.role === "admin"} />
+
+          <SignInSecurity />
 
           <section className="panel">
             <h2>Devices and tokens</h2>

@@ -137,13 +137,25 @@ export class RequestService {
     if (wish) this.wanted.setMonitored(wish.id, true);
     this.db.prepare("UPDATE game_requests SET state = 'approved', reason = NULL, wish_id = ?, decided_at = ? WHERE id = ?").run(wish?.id ?? null, now(), id);
     if (wish && this.downloads.prowlarr().configured) void this.wanted.search(wish.id).catch(() => null);
-    return this.get(id)!;
+    return this.decided(this.get(id)!);
+  }
+
+  /** Called when a request is approved or declined (push notifications listen). */
+  onDecided: ((r: GameRequest) => void) | null = null;
+
+  private decided(r: GameRequest): GameRequest {
+    try {
+      this.onDecided?.(r);
+    } catch {
+      /* a listener never stops the answer */
+    }
+    return r;
   }
 
   decline(id: number, reason: string | null): GameRequest {
     this.row(id);
     this.db.prepare("UPDATE game_requests SET state = 'declined', reason = ?, decided_at = ? WHERE id = ?").run(clip(reason, 300), now(), id);
-    return this.get(id)!;
+    return this.decided(this.get(id)!);
   }
 
   /** Withdraws a request: its own requester while nobody has decided, or an admin any time. Approved games stay on the wanted list. */

@@ -76,11 +76,11 @@ export class GameServerClient {
     return this.json<LibraryStats>("/api/library/rescan", { method: "POST" });
   }
   /** Exchanges a username and password for a personal API token for this device. */
-  async login(username: string, password: string, device: string): Promise<{ token: string; user: User }> {
+  async login(username: string, password: string, device: string, code?: string): Promise<{ token: string; user: User }> {
     const res = await fetch(`${this.base}/api/auth/login`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ username, password, client: true, device }),
+      body: JSON.stringify({ username, password, client: true, device, ...(code ? { code } : {}) }),
     });
     const body = (await res.json().catch(() => ({}))) as { token: string; user: User; error?: string };
     if (!res.ok) throw new ApiError(body.error ?? `Login failed with ${res.status}`, res.status);

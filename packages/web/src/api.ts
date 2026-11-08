@@ -177,6 +177,19 @@ export interface ReleaseRules {
   blockedIndexers: string[];
 }
 
+export interface PasskeyInfo {
+  id: string;
+  name: string;
+  createdAt: string;
+  lastUsedAt: string | null;
+}
+
+export interface MfaStatus {
+  totp: boolean;
+  passkeys: PasskeyInfo[];
+  recoveryLeft: number;
+}
+
 export type AlertKind = "released" | "found" | "grabbed" | "imported" | "updates" | "flagged" | "sources" | "failed" | "test";
 
 export interface Connectors {
@@ -562,7 +575,25 @@ export interface LinkCheck {
 export const api = {
   providers: () => call<AuthProviders>("GET", "/api/auth/providers"),
   setup: (username: string, password: string) => call<User>("POST", "/api/auth/setup", { username, password }),
-  login: (username: string, password: string) => call<{ user: User }>("POST", "/api/auth/login", { username, password }),
+  /** A session, or (two-step sign-in on) a ticket for the second step. */
+  login: (username: string, password: string) =>
+    call<{ user?: User; mfa?: { ticket: string; totp: boolean; passkey: boolean } }>("POST", "/api/auth/login", { username, password }),
+  loginCode: (ticket: string, code: string) => call<{ user: User }>("POST", "/api/auth/login/mfa", { ticket, code }),
+  passkeyOptions: (ticket?: string) => call<Record<string, unknown>>("POST", "/api/auth/passkey/options", { ticket }),
+  loginPasskey: (credential: unknown, ticket?: string) => call<{ user: User }>("POST", "/api/auth/passkey", { credential, ticket }),
+  security: () => call<MfaStatus>("GET", "/api/me/security"),
+  beginTotp: () => call<{ secret: string; uri: string }>("POST", "/api/me/security/totp"),
+  confirmTotp: (code: string) => call<{ recoveryCodes: string[] }>("POST", "/api/me/security/totp/confirm", { code }),
+  disableTotp: (code: string) => call<MfaStatus>("POST", "/api/me/security/totp/off", { code }),
+  newRecoveryCodes: (code: string) => call<{ recoveryCodes: string[] }>("POST", "/api/me/security/recovery", { code }),
+  passkeyRegistration: () => call<Record<string, unknown>>("POST", "/api/me/security/passkeys/options"),
+  addPasskey: (credential: unknown, name: string) => call<{ passkey: PasskeyInfo; recoveryCodes: string[] }>("POST", "/api/me/security/passkeys", { credential, name }),
+  removePasskey: (id: string) => call<MfaStatus>("DELETE", `/api/me/security/passkeys/${encodeURIComponent(id)}`),
+  resetMfa: (userId: number) => call("DELETE", `/api/users/${userId}/mfa`),
+  pushInfo: () => call<{ publicKey: string; devices: number }>("GET", "/api/push"),
+  pushSubscribe: (subscription: PushSubscriptionJSON) => call<{ devices: number }>("POST", "/api/push/subscribe", { subscription }),
+  pushUnsubscribe: (endpoint: string) => call<{ devices: number }>("POST", "/api/push/unsubscribe", { endpoint }),
+  pushTest: () => call<{ sent: number }>("POST", "/api/push/test"),
   logout: () => call("POST", "/api/auth/logout"),
   me: () => call<Me>("GET", "/api/me"),
   updateMe: (patch: { displayName?: string; avatar?: string }) => call<User>("PATCH", "/api/me", patch),

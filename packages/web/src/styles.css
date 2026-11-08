@@ -5334,3 +5334,8 @@ html[data-lootden-frame] .lightbox {
 .topbar-battery.low {
   color: #ff6b7d;
 }
+
+/* Two-step sign-in setup */
+.totp-setup { display: flex; gap: 1rem; flex-wrap: wrap; align-items: flex-start; }
+.totp-qr { width: 180px; height: 180px; background: #fff; border-radius: 8px; flex: none; }
+.totp-qr svg { width: 100%; height: 100%; display: block; }
