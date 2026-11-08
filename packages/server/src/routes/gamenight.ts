@@ -21,6 +21,8 @@ export function gameNightRoutes(app: FastifyInstance, ctx: AppContext) {
     const hide = <T extends { game: { id: string; title: string; coverUrl: string | null } | null }>(n: T): T =>
       p.kidMode && n.game && ctx.library.get(n.game.id, false)?.kidSafe !== true ? { ...n, game: { id: "", title: "A grown-up game", coverUrl: null } } : n;
     return {
+      // The day and time of each night are in this zone (the household's).
+      timeZone: ctx.family.timeZone(),
       upcoming: list.upcoming.map(hide),
       past: list.past.map(hide),
       goals: ctx.gameNights.goalsToCelebrate(),
@@ -63,6 +65,16 @@ export function gameNightRoutes(app: FastifyInstance, ctx: AppContext) {
       throw new HttpProblem(502, (err as Error).message);
     }
     return { ok: true };
+  });
+
+  /** Joining or leaving a night: an admin (or Dendrop's link, with an admin token) for anyone; anyone else for themselves. */
+  app.put<{ Params: { id: string; userId: string }; Body: { going?: unknown } }>("/api/game-nights/:id/players/:userId", async (req) => {
+    const p = requireUser(req);
+    const userId = Number(req.params.userId);
+    if (p.role !== "admin" && p.user?.id !== userId) throw new HttpProblem(403, "You can only change your own place");
+    const night = fail(() => ctx.gameNights.setPlayer(Number(req.params.id), userId, req.body?.going !== false));
+    ctx.live.publish("playing");
+    return night;
   });
 
   app.delete<{ Params: { id: string } }>("/api/game-nights/:id", async (req) => {

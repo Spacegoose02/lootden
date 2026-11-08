@@ -38,6 +38,11 @@ function fakeDendrop() {
           ],
         },
       ]);
+    if (/\/channels\/11\/messages\?limit=\d+$/.test(url) && method === "GET")
+      return json([
+        { id: 2, body: "dinner in 10", createdAt: "2026-01-01T18:01:00Z", deletedAt: null, keyVersion: null, author: { id: 4, username: "mom", displayName: "Mom" } },
+        { id: 1, body: "secret", createdAt: "2026-01-01T18:00:00Z", deletedAt: null, keyVersion: 2, author: { id: 4, username: "mom", displayName: "Mom" } },
+      ]);
     if (/\/channels\/\d+\/messages$/.test(url) && method === "POST") return json({ id: nextId++ });
     if (url.includes("/api/hooks/")) return new Response(null, { status: 204 });
     return json({ ok: true });
@@ -191,6 +196,24 @@ describe("Dendrop chat link", () => {
     const answers = posts(13);
     assert.equal(answers.length, 1);
     assert.match(answers[0].content, /🦝 Kid-safe tip: jump twice/, "kid-safe by default");
+    await app.close();
+  });
+
+  it("shows family chat in the in-game menu and lets grown-ups reply", async () => {
+    const { app, asAdmin, asKid, posts } = await setup();
+    await app.inject({ method: "PUT", url: "/api/chat", headers: asAdmin, payload: { enabled: true, url: DENDROP, botToken: "bot-token", familyChannelId: 11 } });
+    await new Promise((r) => setTimeout(r, 20));
+    const read = await app.inject({ method: "GET", url: "/api/chat/family", headers: asKid });
+    assert.equal(read.statusCode, 200, read.body);
+    const lines = read.json().messages ?? read.json();
+    assert.equal(lines.length, 1, "encrypted messages are left out");
+    assert.match(lines[0].text, /dinner in 10/);
+    assert.equal(lines[0].from, "Mom");
+    const kidSay = await app.inject({ method: "POST", url: "/api/chat/family", headers: asKid, payload: { text: "hi" } });
+    assert.equal(kidSay.statusCode, 403);
+    const say = await app.inject({ method: "POST", url: "/api/chat/family", headers: asAdmin, payload: { text: "brb" } });
+    assert.equal(say.statusCode, 200, say.body);
+    assert.ok(posts(11).some((p) => p.content === "🎮 Mom: brb"));
     await app.close();
   });
 });

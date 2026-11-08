@@ -144,7 +144,9 @@ installs games from it on any PC in the house.
   to play?" on game pages, requests with Approve and Decline buttons, kids' more-time asks answered
   with +15 or +30 from chat, Install on my PC buttons, new games, rare achievements and finished
   games posted to the family channel, alerts in a grown-ups channel, and Bandit answering in his
-  own channel. Under Settings, Chat.
+  own channel. The family channel also shows in the in-game menu (grown-ups can send quick
+  replies; kids read only), and game nights become Dendrop events whose RSVPs sync back to the
+  players list. Under Settings, Chat.
 - **Home Assistant**: sensors over MQTT (with discovery) for who's playing what, games, PCs online
   and downloads, under Settings, Home Assistant.
 - `lootden` command-line client and a Playnite plugin.

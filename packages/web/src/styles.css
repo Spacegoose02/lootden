@@ -5343,3 +5343,11 @@ html[data-lootden-frame] .lightbox {
 .totp-setup { display: flex; gap: 1rem; flex-wrap: wrap; align-items: flex-start; }
 .totp-qr { width: 180px; height: 180px; background: #fff; border-radius: 8px; flex: none; }
 .totp-qr svg { width: 100%; height: 100%; display: block; }
+
+/* Family chat in the in-game menu */
+.overlay-chat { margin-top: 0.75rem; border-top: 1px solid var(--border, #ffffff22); padding-top: 0.5rem; }
+.overlay-chat h3 { margin: 0 0 0.35rem; font-size: 0.95rem; }
+.overlay-chat-lines { max-height: 11rem; overflow-y: auto; margin-bottom: 0.5rem; }
+.overlay-chat-lines p { margin: 0.15rem 0; font-size: 0.9rem; overflow-wrap: anywhere; }
+.overlay-chat-lines p.mine strong { opacity: 0.75; }
+.overlay-chat form input { flex: 1; min-width: 0; }
