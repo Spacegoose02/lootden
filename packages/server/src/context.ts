@@ -51,6 +51,7 @@ import type { CompatService } from "./integrations/compat.js";
 import type { LudusaviManifest } from "./saves/ludusavi.js";
 import type { PriceService } from "./integrations/prices.js";
 import type { HomeAssistantBridge } from "./integrations/homeassistant.js";
+import type { ChatLink } from "./integrations/chat.js";
 
 /** Everything route modules need, built once in buildApp. */
 export interface AppContext {
@@ -122,6 +123,8 @@ export interface AppContext {
   prices: PriceService;
   /** Sensors for Home Assistant over MQTT. */
   homeAssistant: HomeAssistantBridge;
+  /** Dendrop, the family chat: posts, buttons and Bandit in a channel. */
+  chat: ChatLink;
   /** Bandit, the AI gaming helper. */
   helper: HelperService;
   timeToBeat: (providerId: string | null, title: string) => Promise<TimeToBeat | null>;

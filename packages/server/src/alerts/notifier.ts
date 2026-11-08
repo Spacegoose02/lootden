@@ -4,6 +4,14 @@ import type { FetchLike } from "../metadata/http.js";
 
 export type AlertKind = "released" | "found" | "grabbed" | "imported" | "updates" | "flagged" | "sources" | "requests" | "failed" | "deals" | "test";
 
+/** Extra details some alerts carry, so a chat bot can put buttons on them. */
+export interface AlertMeta {
+  /** A game request waiting for an answer. */
+  request?: { id: number; by: string; title: string; note: string | null };
+  /** A kid's ask for more time today. */
+  time?: { id: number; by: string; minutes: number; note: string | null };
+}
+
 export interface Alert {
   id: number;
   kind: AlertKind;
@@ -30,13 +38,21 @@ export class Notifier {
   /** Called after an alert is recorded. */
   onSent: () => void = () => {};
 
+  /** Called for every alert with whether its kind is switched on (the chat link listens). */
+  onAlert: ((a: { kind: AlertKind; title: string; body: string | null; link: string | null; wanted: boolean; meta: AlertMeta }) => void) | null = null;
+
   /** Records an alert and sends it on when that kind is switched on. Never throws. */
-  async send(kind: AlertKind, title: string, body: string | null = null, link: string | null = null): Promise<void> {
+  async send(kind: AlertKind, title: string, body: string | null = null, link: string | null = null, meta: AlertMeta = {}): Promise<void> {
     this.db.prepare("INSERT INTO notifications (kind, title, body, link, created_at) VALUES (?, ?, ?, ?, ?)").run(kind, title, body, link, now());
     this.db.prepare("DELETE FROM notifications WHERE id NOT IN (SELECT id FROM notifications ORDER BY id DESC LIMIT 200)").run();
     this.onSent();
     const s = this.settings();
     const wanted = kind === "test" || kind === "failed" || (s as unknown as Record<string, boolean>)[kind];
+    try {
+      this.onAlert?.({ kind, title, body, link, wanted: !!wanted, meta });
+    } catch {
+      /* a listener never stops the alert */
+    }
     if (!s.appriseUrl || !wanted) return;
     await this.apprise(title, body, link).catch((err: Error) => this.log.warn({ err: err.message }, "Apprise notification failed"));
   }

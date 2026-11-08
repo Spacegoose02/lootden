@@ -23,6 +23,9 @@ export interface Journal {
 export class JournalStore {
   constructor(private readonly db: Db) {}
 
+  /** Called when a game gets a new status (the chat link posts finished games). */
+  onStatus: ((userId: number, gameId: string, status: BacklogStatus) => void) | null = null;
+
   get(userId: number, gameId: string): Journal {
     const r = this.db.prepare("SELECT * FROM journal WHERE user_id = ? AND game_id = ?").get(userId, gameId) as
       | { status: string | null; rating: number | null; notes: string | null; updated_at: string }
@@ -41,6 +44,13 @@ export class JournalStore {
     if (status !== null && !BACKLOG_STATUSES.includes(status as BacklogStatus)) throw new Error(`Status is one of ${BACKLOG_STATUSES.join(", ")}`);
     const rating = patch.rating === undefined ? cur.rating : patch.rating === null ? null : Math.min(5, Math.max(1, Math.round(Number(patch.rating))));
     const notes = patch.notes === undefined ? cur.notes : String(patch.notes).slice(0, 20_000);
+    if (status !== cur.status && status) {
+      try {
+        this.onStatus?.(userId, gameId, status as BacklogStatus);
+      } catch {
+        /* listeners never stop a save */
+      }
+    }
     this.db
       .prepare(
         "INSERT INTO journal (user_id, game_id, status, rating, notes, updated_at) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(user_id, game_id) DO UPDATE SET status = excluded.status, rating = excluded.rating, notes = excluded.notes, updated_at = excluded.updated_at",

@@ -97,6 +97,7 @@ set `"allowUnverifiedUpdates": true` in the app's `settings.json` (in its user d
 | **News & apps** | News feeds, YouTube rows, desktop app builds for the Get the app page |
 | **Den Duty** | The link to Den Duty, the family's chore tracker: its address, home id and a **control** API token; which LootDen profile is which Den Duty kid; and the switches for time-outs that lock games, **Chores first** and game time from Den Duty's shop |
 | **PCs** | Every PC the desktop app runs on: on or off, who signed in last, what's playing, free space per drive, Sunshine and Moonlight, and **Wake** (Wake-on-LAN) |
+| **Chat (Dendrop)** | The link to [Dendrop](https://github.com/Spacegoose02/dendrop), the family chat: a webhook address, or Dendrop's address and a bot token; the family, grown-ups and Bandit channels; which grown-up's Bandit allowance chat answers use; and what LootDen posts (requests, more-time asks, alerts, new games, rare achievements, finished games) |
 
 ### Wake-on-LAN
 
@@ -119,6 +120,28 @@ to be true for it to arrive:
 
 The PC's MAC address is learnt the first time the app runs there; type another on the PC's
 card if it should wake a different network card.
+
+### Chat (Dendrop)
+
+**Settings, Server, Chat (Dendrop)** links the family's [Dendrop](https://github.com/Spacegoose02/dendrop)
+chat. Either works, or both:
+
+- **Webhook** (Dendrop, Server settings, Webhooks): text posts only. **Share to chat** on a
+  game's page, Surprise us and Game night, and alerts.
+- **Bot** (Dendrop, Server settings, Bots): Dendrop's address and the bot's token. LootDen
+  connects to the bot gateway (nothing needs to reach LootDen from outside) and adds buttons:
+  - game requests with **Approve** and **Decline**, and kids' more-time asks with **+15**,
+    **+30** and **Not now**, in the grown-ups channel. Only LootDen admins (matched by
+    Dendrop user name or email) or the Dendrop server's owner and admins can answer them;
+  - **Who wants to play?** on a game's page posts a looking-for-a-group message with **I'm in**
+    (kid-safe games in the family channel, others in the grown-ups one);
+  - **Install on my PC** on shares and new games sends the game to the PC that person used last;
+  - Bandit answers questions asked in his channel (switch on *reads messages* for the bot in
+    Dendrop), kid-safe unless switched off, counted against the grown-up profile you pick.
+
+The alert kinds switched on under Scanning & alerts also go to the grown-ups channel, so
+Dendrop's phone app pushes them. `/api/users` (admin token) includes each profile's sign-in
+subject, which Dendrop uses to match accounts that sign in through the same TinyAuth.
 
 ### Game night calendar feed
 

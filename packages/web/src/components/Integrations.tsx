@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { DECK_LABELS, PROTON_LABELS, type GameCompat, type SaveBackup } from "@lootden/shared";
-import { api, formatBytes, formatMoney, type HomeAssistantState, type WishPrices } from "../api";
+import { api, formatBytes, formatMoney, type ChatChannel, type ChatState, type HomeAssistantState, type WishPrices } from "../api";
+import { Toggle } from "./SettingsUi";
 import { bridgeError, desktop, type StoreSavesState } from "../desktop";
 
 /** ProtonDB and Steam Deck badges for a Steam game, linking to each. */
@@ -321,6 +322,130 @@ export function HomeAssistantSection({ say }: { say: (m: string, error?: boolean
             <>
               <button type="button" onClick={() => void api.testHomeAssistant().then((x) => (setS(x), say("Sent the sensors again.")), (e: Error) => say(e.message, true))}>
                 Send now
+              </button>
+              <button type="button" className="ghost" onClick={() => void save({ enabled: false })}>
+                Switch off
+              </button>
+            </>
+          )}
+        </div>
+      </form>
+    </section>
+  );
+}
+
+const CHAT_POSTS: Array<{ key: keyof ChatState["post"]; label: string; hint: string }> = [
+  { key: "requests", label: "Game requests", hint: "With Approve and Decline buttons, in the grown-ups channel" },
+  { key: "timeAsks", label: "More-time asks", hint: "+15, +30 or Not now, straight from chat" },
+  { key: "alerts", label: "Alerts", hint: "The kinds switched on under Scanning & alerts, in the grown-ups channel (Dendrop's phone app then pushes them)" },
+  { key: "newGames", label: "New games", hint: "With Install on my PC" },
+  { key: "achievements", label: "Rare achievements", hint: "Ones 10% of players or fewer have" },
+  { key: "finished", label: "Finished games", hint: "When someone marks a game Done or Completed 100%" },
+];
+
+/** Dendrop, the family's self-hosted chat: a webhook for posts, or a bot for buttons and Bandit. */
+export function ChatSection({ say }: { say: (m: string, error?: boolean) => void }) {
+  const [s, setS] = useState<ChatState | null>(null);
+  const [form, setForm] = useState<Partial<ChatState>>({});
+  const [channels, setChannels] = useState<ChatChannel[] | null>(null);
+  const [people, setPeople] = useState<Array<{ id: number; displayName: string }>>([]);
+  const loadChannels = () => api.chatChannels().then(setChannels, (e: Error) => (setChannels(null), say(e.message, true)));
+  useEffect(() => {
+    api.chat().then(
+      (x) => {
+        setS(x);
+        setForm(x);
+        if (x.hasBot) void loadChannels();
+      },
+      (e: Error) => say(e.message, true),
+    );
+    api.users().then((u) => setPeople(u.filter((p) => !p.kidMode)), () => setPeople([]));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  if (!s) return <p className="muted">Loading…</p>;
+  const save = (patch: Partial<ChatState>) =>
+    api.saveChat(patch).then(
+      (x) => {
+        setS(x);
+        setForm(x);
+        if (x.hasBot && !channels) void loadChannels();
+        say(x.enabled ? (x.hasBot ? (x.connected || !x.error ? "Saved. The bot is listening." : `Saved, but the bot isn't connected: ${x.error}`) : "Saved.") : "Saved.", !!(x.enabled && x.hasBot && x.error));
+      },
+      (e: Error) => say(e.message, true),
+    );
+  const text = (k: "url" | "botToken" | "webhookUrl", label: string, extra: Record<string, unknown> = {}) => (
+    <label className="field">
+      <span className="field-label">{label}</span>
+      <input value={String(form[k] ?? "")} onChange={(e) => setForm({ ...form, [k]: e.target.value })} {...extra} />
+    </label>
+  );
+  const channel = (k: "familyChannelId" | "grownupsChannelId" | "helperChannelId", label: string, none: string) => (
+    <label className="field">
+      <span className="field-label">{label}</span>
+      <select value={form[k] ?? ""} onChange={(e) => setForm({ ...form, [k]: e.target.value ? Number(e.target.value) : null })}>
+        <option value="">{none}</option>
+        {(channels ?? []).map((c) => (
+          <option key={c.id} value={c.id}>
+            {c.serverName} · #{c.name}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+  return (
+    <section className="panel">
+      <p className="muted small">
+        Link <a href="https://github.com/Spacegoose02/dendrop" target="_blank" rel="noreferrer">Dendrop</a>, the family chat. A <strong>webhook</strong> (Dendrop, Server settings, Webhooks) is enough for Share to chat and alerts. A <strong>bot</strong> (Server settings, Bots) adds buttons: approve requests, give more time, Install on my PC, I'm in, and Bandit answering in a channel (switch on <em>reads messages</em> for that).
+      </p>
+      <p className="small">
+        Status:{" "}
+        {!s.enabled ? <span className="muted">off</span> : s.hasBot ? (s.connected ? <strong className="good">bot connected</strong> : <strong className="error">bot not connected{s.error ? ` (${s.error})` : ""}</strong>) : <strong className="good">webhook</strong>}
+      </p>
+      <form
+        className="stack"
+        onSubmit={(e) => {
+          e.preventDefault();
+          void save({ ...form, enabled: true });
+        }}
+      >
+        {text("webhookUrl", "Webhook address", { placeholder: "https://chat.example.com/api/hooks/3/…", type: "password" })}
+        <div className="inline wrap">
+          {text("url", "Dendrop's address (for a bot)", { placeholder: "https://chat.example.com" })}
+          {text("botToken", "Bot token", { type: "password" })}
+        </div>
+        {channels && (
+          <>
+            <div className="inline wrap">
+              {channel("familyChannelId", "Family channel", "Pick one")}
+              {channel("grownupsChannelId", "Grown-ups channel", "Same as family")}
+            </div>
+            <div className="inline wrap">
+              {channel("helperChannelId", "Bandit's channel", "Off")}
+              <label className="field">
+                <span className="field-label">Bandit answers using</span>
+                <select value={form.helperUserId ?? ""} onChange={(e) => setForm({ ...form, helperUserId: e.target.value ? Number(e.target.value) : null })}>
+                  <option value="">Pick a grown-up's allowance</option>
+                  {people.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.displayName}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+            <Toggle checked={form.helperKidSafe ?? true} onChange={(v) => setForm({ ...form, helperKidSafe: v })} label="Kid-safe answers in chat" hint="Leave on when kids can read Bandit's channel" />
+          </>
+        )}
+        <h4>What LootDen posts</h4>
+        {CHAT_POSTS.map((p) => (
+          <Toggle key={p.key} checked={form.post?.[p.key] ?? true} onChange={(v) => setForm({ ...form, post: { ...(form.post ?? s.post), [p.key]: v } })} label={p.label} hint={p.hint} />
+        ))}
+        <div className="inline">
+          <button className="primary">{s.enabled ? "Save" : "Link Dendrop"}</button>
+          {s.enabled && (
+            <>
+              <button type="button" onClick={() => void api.testChat().then((r) => say(`Posted a test to ${r.posted.join(" and ")}.`), (e: Error) => say(e.message, true))}>
+                Send a test
               </button>
               <button type="button" className="ghost" onClick={() => void save({ enabled: false })}>
                 Switch off

@@ -1,5 +1,5 @@
 import { BackupsSection } from "../components/Backups";
-import { HomeAssistantSection } from "../components/Integrations";
+import { ChatSection, HomeAssistantSection } from "../components/Integrations";
 import { useEffect, useState, type ReactNode } from "react";
 import { Link, NavLink, Navigate, useNavigate, useParams } from "react-router-dom";
 import { KID_SITES, type BrowserPolicy, type GameSummary, type LibraryStats, type User } from "@lootden/shared";
@@ -37,6 +37,7 @@ const SECTIONS: Array<{ id: string; title: string; blurb: string }> = [
   { id: "services", title: "Sign-in & services", blurb: "SSO, metadata keys, itch.io, Nexus" },
   { id: "content", title: "News & apps", blurb: "Feeds, videos and app builds" },
   { id: "homeassistant", title: "Home Assistant", blurb: "Who's playing, as sensors over MQTT" },
+  { id: "chat", title: "Chat (Dendrop)", blurb: "Share to chat, request and more-time buttons, Bandit in a channel" },
   { id: "backups", title: "Backups", blurb: "Copies of the database, daily or now, and restoring one" },
 ];
 
@@ -50,7 +51,7 @@ const GROUPS: Array<{ id: string; title: string; admin: boolean; sections: strin
   { id: "library", title: "Library", admin: true, sections: ["library", "steam", "roblox"] },
   { id: "downloads", title: "Downloads", admin: true, sections: ["downloads", "wanted", "sources", "safety"] },
   { id: "family", title: "Family", admin: true, sections: ["denduty", "pcs", "helper"] },
-  { id: "server", title: "Server", admin: true, sections: ["services", "content", "homeassistant", "backups"] },
+  { id: "server", title: "Server", admin: true, sections: ["services", "content", "homeassistant", "chat", "backups"] },
 ];
 
 /** This PC only makes sense inside the desktop app. */
@@ -122,6 +123,7 @@ export function Settings() {
           {section === "content" && <ContentSection say={say} />}
           {section === "backups" && <BackupsSection say={say} />}
           {section === "homeassistant" && <HomeAssistantSection say={say} />}
+          {section === "chat" && <ChatSection say={say} />}
         </div>
       </div>
     </div>

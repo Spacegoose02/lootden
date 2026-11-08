@@ -124,7 +124,7 @@ export class RequestService {
       .prepare("INSERT INTO game_requests (user_id, title, title_key, url, image, steam_app_id, note, state, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?) RETURNING id")
       .get(userId, title, key, url, image && /^(https?:\/\/|\/)/i.test(image) ? image : null, steamAppId, clip(input.note, 500), now()) as { id: number };
     const made = this.get(r.id)!;
-    if (made.status !== "ready") await this.notifier.send("requests", `${name} asked for ${title}`, made.note, "/requests");
+    if (made.status !== "ready") await this.notifier.send("requests", `${name} asked for ${title}`, made.note, "/requests", { request: { id: made.id, by: name, title, note: made.note } });
     return made;
   }
 

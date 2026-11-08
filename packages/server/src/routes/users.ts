@@ -106,7 +106,8 @@ export function userRoutes(app: FastifyInstance, ctx: AppContext) {
 
   app.get("/api/users", async (req) => {
     requireAdmin(req);
-    return ctx.users.list().map(publicUser);
+    // The sign-in subject lets linked apps (Dendrop) match accounts that share a TinyAuth/OIDC sign-in.
+    return ctx.users.list().map((u) => ({ ...publicUser(u), oidcSubject: u.oidcSubject }));
   });
 
   app.post<{ Body: { username: string; password?: string; displayName?: string; email?: string; role?: Role; kidMode?: boolean } }>(

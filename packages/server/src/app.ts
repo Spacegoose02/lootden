@@ -86,6 +86,8 @@ import { CompatService } from "./integrations/compat.js";
 import { LudusaviManifest } from "./saves/ludusavi.js";
 import { PriceService } from "./integrations/prices.js";
 import { HomeAssistantBridge, type HouseState } from "./integrations/homeassistant.js";
+import { ChatLink, type SocketFactory } from "./integrations/chat.js";
+import { chatRoutes } from "./routes/chat.js";
 import { integrationRoutes } from "./routes/integrations.js";
 import { organizeRoutes } from "./routes/organize.js";
 import { presenceRoutes } from "./routes/presence.js";
@@ -135,6 +137,8 @@ export interface BuildOptions {
   resolveHost?: (host: string) => Promise<string[]>;
   /** Tests: Bandit's AI, so no request reaches a real provider. */
   helperAi?: HelperAi;
+  /** Tests: a stand-in for the WebSocket to Dendrop's bot gateway. */
+  chatSocket?: SocketFactory;
   /** Tests: Wake-on-LAN packets go here instead of the network. */
   wake?: WakeSender;
 }
@@ -201,6 +205,12 @@ export function buildContext(config: ServerConfig, db: Db, log: Log, opts: Build
     live.publish("playing");
     homeAssistant.changed();
   };
+  const chat = new ChatLink(db, () => config.publicUrl ?? "", opts.fetchImpl, log, opts.chatSocket);
+  notifier.onAlert = (a) => {
+    if (a.meta.request) void chat.requestMade(a.meta.request.id, a.meta.request.by, a.meta.request.title, a.meta.request.note);
+    else if (a.meta.time) void chat.timeAsked(a.meta.time.id, a.meta.time.by, a.meta.time.minutes, a.meta.time.note);
+    else if (a.wanted && a.kind !== "test") void chat.alert(a.title, a.body, a.link);
+  };
   const libraryRefresh = new LibraryRefresh(library, presence);
   libraryRefresh.onChange = () => live.publish("library");
   const denDuty = new DenDutyLink(db, vault, users, family, presence, opts.fetchImpl);
@@ -256,6 +266,7 @@ export function buildContext(config: ServerConfig, db: Db, log: Log, opts: Build
     ludusavi: new LudusaviManifest(config.dataDir, opts.fetchImpl),
     prices: new PriceService(db, wishlist, notifier, opts.fetchImpl),
     homeAssistant,
+    chat,
     helper: new HelperService(db, vault, config.anthropicApiKey, () => zonedParts(new Date(), family.timeZone()).date, opts.helperAi),
     shelves: new ShelfStore(db, library),
     timeToBeat: timeToBeat(metadata.igdb, new HowLongToBeat(opts.fetchImpl), () => settings().hltb.enabled !== false),
@@ -288,6 +299,8 @@ export function buildApp(config: ServerConfig, db: Db, opts: BuildOptions = {}):
       installed: (id) => installed.has(id),
     };
   };
+
+  linkChat(ctx);
 
   app.register(cookie);
   // Raw uploads: images for game artwork (buffered, small) and app files for the
@@ -360,6 +373,7 @@ export function buildApp(config: ServerConfig, db: Db, opts: BuildOptions = {}):
   gameNightRoutes(app, ctx);
   screenshotRoutes(app, ctx);
   helperRoutes(app, ctx);
+  chatRoutes(app, ctx);
 
   // TabStationToo for PS2 games in the browser, cross-origin isolated, unless an admin switched it off.
   const ps2Dir = opts.ps2Dir;
@@ -395,4 +409,60 @@ export function buildApp(config: ServerConfig, db: Db, opts: BuildOptions = {}):
   }
 
   return { app, ctx };
+}
+
+/** What Dendrop's bot can do in LootDen, and what LootDen posts there by itself. */
+function linkChat(ctx: AppContext): void {
+  const { chat } = ctx;
+  chat.hooks = {
+    users: () => ctx.users.list(),
+    approveRequest: async (id) => (await ctx.requests.approve(id)).title,
+    declineRequest: (id) => ctx.requests.decline(id, null).title,
+    decideTime: (id, approve, minutes) => ctx.family.decideTime(id, approve, minutes).name,
+    installForUser: (user, gameId) => {
+      const game = ctx.library.get(gameId, false);
+      if (!game || (user.kidMode && game.kidSafe !== true)) return "That game isn't available to you";
+      if (game.kind !== "game") return "Updates and DLC are applied from LootDen's Updates page";
+      // The PC this person used last, online ones first.
+      const pcs = ctx.presence.pcs().filter((pc) => ctx.presence.lastUserOf(pc.name) === user.id);
+      const pc = pcs.find((p) => p.online) ?? pcs[0];
+      if (!pc) return "LootDen doesn't know a PC of yours yet: sign in to LootDen's app on it first";
+      ctx.presence.send(pc.name, user.displayName, { kind: "install", gameId: game.id, title: game.title });
+      return pc.online ? `${game.title} is downloading on ${pc.name}` : `${game.title} will install when ${pc.name} next comes on`;
+    },
+    askHelper: async (asUserId, kidSafe, question, signal) => {
+      const user = ctx.users.list().find((u) => u.id === asUserId);
+      if (!user) return "The profile Bandit answers as is gone; pick another under Settings, Chat";
+      let text = "";
+      for await (const piece of await ctx.helper.chat({ ...user, displayName: "the family chat" }, [{ role: "user", content: question }], null, signal, { kidSafe })) text += piece;
+      return text.trim() || "Hmm, I don't have an answer for that one.";
+    },
+  };
+  ctx.achievements.onUnlocked = (userId, game, fresh) => {
+    const rare = fresh.filter((a) => a.rarity != null && a.rarity <= 10);
+    const user = ctx.users.list().find((u) => u.id === userId);
+    if (!rare.length || !user) return;
+    const kidSafe = ctx.library.list().some((g) => g.title.toLowerCase() === game.title.toLowerCase() && g.kidSafe === true);
+    void chat.achievements(user.displayName, user.kidMode, game.title, rare, kidSafe);
+  };
+  ctx.journal.onStatus = (userId, gameId, status) => {
+    if (status !== "done" && status !== "completed") return;
+    const user = ctx.users.list().find((u) => u.id === userId);
+    const game = ctx.library.get(gameId, false);
+    if (user && game) void chat.finished(user.displayName, { id: game.id, title: game.title, kidSafe: game.kidSafe }, status);
+  };
+  // New games: posted once their details have had a few minutes to arrive. The first scan only remembers.
+  let seen: Set<string> | null = null;
+  ctx.library.onScanned((games) => {
+    const ids = new Set(games.filter((g) => g.kind === "game").map((g) => g.id));
+    const fresh = seen ? [...ids].filter((id) => !seen!.has(id)) : [];
+    seen = ids;
+    if (!fresh.length || !chat.ready()) return;
+    setTimeout(() => {
+      for (const id of fresh.slice(0, 10)) {
+        const g = ctx.library.get(id, false);
+        if (g) void chat.newGame({ id: g.id, title: g.title, kidSafe: g.kidSafe });
+      }
+    }, 5 * 60_000).unref();
+  });
 }
