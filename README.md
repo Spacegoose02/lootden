@@ -21,9 +21,20 @@ installs games from it on any PC in the house.
   downloads run one at a time (or two or three), can be moved to the top, paused and resumed, and
   share a speed limit. A download window ("only between 23:00 and 07:00") holds them until then
   and stops them when it ends; they resume where they stopped.
+- **Copy games between PCs at home**: when another PC in the house has a game installed (at the
+  library's version), the app copies it from there instead of the server: faster on a home network,
+  already unpacked, and no load on the server. The server hands out a ticket for that one game, so
+  a PC only shares its LootDen games' own files. On by default; switch it off under Profile, This
+  computer. Windows asks once to let LootDen through the firewall (port 47631, private networks).
 - **Verify files and Repair**: a game's page checks every file against the list made when it was
   installed, and downloads only the missing or damaged ones again. Games that came as archives are
   unpacked to one side and just the broken files copied in, so settings and mods are left alone.
+- Windows games on Linux: the app downloads Proton-GE from GitHub (checked against its
+  SHA-512) and starts each Windows game through Proton or Wine with its own prefix. Pick a
+  build for the PC under Profile, This computer, or one for a single game on its page.
+- Add to Steam: puts the PC's LootDen games in Steam as non-Steam games with their covers,
+  so they show in Big Picture and the Steam Deck's Game Mode. Steam starts them through
+  `lootden://play/<id>`, so play time and limits still count.
 - Installers and disc images: Inno Setup installers (most GOG games) are installed on the
   server while a download is imported. Others run once on a PC, then an admin can upload the
   installed folder so everyone else gets a ready-to-play download. The upload goes in 16 MB
@@ -39,6 +50,12 @@ installs games from it on any PC in the house.
 - Profiles: local accounts, OIDC or forward-auth sign-in, kid profiles that only see
   kid-safe games, per-profile play time, backlog and journal.
 - Save backups to the server when a game closes, restored on another PC.
+- Install it as an app: on a phone or PC, Add to Home Screen or Install app in the browser
+  menu. Turn on notifications under Profile: admins get the bell's alerts, and everyone hears
+  when a game request or an ask for more time is answered (Web Push, no outside service).
+- Two-step sign-in: an authenticator app (with recovery codes) or passkeys under Profile.
+  Passkeys also sign you in without a password. `lootden login --code 123456` for the CLI; an
+  admin can reset someone who lost their phone from Settings, Users.
 - Bandit, an AI gaming helper (a raccoon, of course) in the corner of every page: tips and
   hints for the game you're looking at, with kid-safe answers on kid profiles that a parent
   switches on. Bring your own Anthropic API key; admins pick the model and set daily limits

@@ -5,6 +5,7 @@ import { api, formatBytes } from "../api";
 import { useAuth } from "../auth";
 import { bridgeError, desktop, useDesktopGame, type Drive, type GameBananaModView, type RecompLookView, type RecompModsView, type RecompSettingView, type RecompSetup } from "../desktop";
 import { VerifyFiles } from "./DownloadQueue";
+import { GameRunner } from "./LinuxSteam";
 import { LaunchOptionsPanel, PlayWithButtons, useLaunchOptions } from "./LaunchOptions";
 
 /** Install / play / uninstall panel shown inside the desktop app. */
@@ -32,11 +33,15 @@ export function DesktopInstall({ game, autoFocus }: { game: GameDetail; autoFocu
   }, [recompKey]);
   const readyRecomps = recomps.filter((r) => recompSetup?.find((x) => x.id === r.id)?.installed);
   /** Running and paused, followed from the app's events (waits and messages come in between). */
+  /** The PC at home this install is copying from, when it isn't the server. */
+  const [peerFrom, setPeerFrom] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
   const [paused, setPaused] = useState(false);
   useEffect(() => {
     const p = progress;
     if (!p) return;
+    if (p.type === "peer") setPeerFrom(p.device);
+    if (p.type === "done" || p.type === "error" || p.type === "cancelled") setPeerFrom(null);
     if (p.type === "playing") setRunning(true);
     if (p.type === "stopped" || p.type === "error") {
       setRunning(false);
@@ -156,6 +161,7 @@ export function DesktopInstall({ game, autoFocus }: { game: GameDetail; autoFocu
               {paused ? "▶ Resume" : "⏸ Pause game"}
             </button>
           )}
+          {pcGame && <GameRunner gameId={game.id} />}
           <button className="secondary" onClick={() => run(() => bridge.openFolder(game.id))}>
             Open folder
           </button>
@@ -245,11 +251,12 @@ export function DesktopInstall({ game, autoFocus }: { game: GameDetail; autoFocu
           <div className="meter">
             <div style={{ width: `${p.type === "extract" ? 100 : pct}%` }} />
             <span>
-              {p.type === "download" && `Downloading ${p.index + 1}/${p.count} · ${formatBytes(p.received)} of ${formatBytes(p.total)}`}
+              {p.type === "download" && `${peerFrom ? `Copying from ${peerFrom}` : "Downloading"} ${p.index + 1}/${p.count} · ${formatBytes(p.received)} of ${formatBytes(p.total)}`}
               {p.type === "extract" && `Unpacking ${p.archive}`}
               {p.type === "removed" && "Cleaning up archives"}
               {p.type === "start" && "Starting…"}
               {p.type === "queued" && p.message}
+              {p.type === "peer" && `Copying from ${p.device}…`}
               {p.type === "downloaded" && "Downloaded"}
             </span>
           </div>

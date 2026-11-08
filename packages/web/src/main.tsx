@@ -6,6 +6,9 @@ import { AuthProvider } from "./auth";
 import "./styles.css";
 import "./fx.css";
 import "./fun.css";
+import { registerServiceWorker } from "./pwa";
+
+registerServiceWorker();
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>

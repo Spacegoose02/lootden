@@ -44,6 +44,8 @@ import {
   findSevenZip,
   GameServerClient,
   installGame,
+  installFromPeer,
+  PeerShare,
   DownloadQueue,
   RateLimiter,
   clockMinutes,
@@ -85,6 +87,16 @@ import {
   trackRoblox,
   setRobloxFullscreen,
   uninstallGame,
+  addSteamShortcuts,
+  installedRunners,
+  installRunner,
+  listRunnerReleases,
+  listSteamShortcuts,
+  preparePrefix,
+  removeSteamShortcuts,
+  runnerCommand,
+  steamUsers,
+  WINE,
   applyUpdate,
   undoUpdate,
   UpdateMismatchError,
@@ -135,6 +147,28 @@ const isDeepLink = (a: string) => PROTOCOLS.some((p) => a.startsWith(`${p}://`))
 let win: BrowserWindow | null = null;
 let settings: SettingsStore;
 const running = new Map<string, AbortController>();
+/** LAN copies: this PC shares its installed LootDen games with the others in the house (on unless switched off). */
+let peerShare: PeerShare | null = null;
+async function applyPeerShare(): Promise<void> {
+  const want = settings.get().shareGames !== false;
+  if (!want && peerShare) {
+    await peerShare.stop();
+    peerShare = null;
+  } else if (want && !peerShare) {
+    const share = new PeerShare({
+      key: () => settings.get().peerKey ?? null,
+      gameDir: async (gameId) => (await findInstalled(gameId).catch(() => null))?.dir ?? null,
+      limiter,
+    });
+    try {
+      await share.start();
+      peerShare = share;
+    } catch (err) {
+      console.warn(`Couldn't share games on the network: ${(err as Error).message}`);
+    }
+  }
+  scheduleHeartbeat(1000);
+}
 /** The PC's download speed limit, shared by every download (Profile, This computer, Downloads). */
 const limiter = new RateLimiter(() => Math.max(0, settings.get().downloads?.limitKBps ?? 0) * 1024);
 /** Downloads run in order: so many at once, and only in the download window when there is one. */
@@ -765,8 +799,9 @@ async function heartbeat(): Promise<void> {
     const answer = await api.presence({
       device: os.hostname(),
       playing: playingNow,
-      pc: { ...(await pcReport(app.getVersion())), streamGames: settings.get().sunshine?.streamGames ?? [], copies: await copiesForPresence() },
+      pc: { ...(await pcReport(app.getVersion())), streamGames: settings.get().sunshine?.streamGames ?? [], copies: await copiesForPresence(), peerPort: peerShare?.port ?? null },
     });
+    if (answer.peerKey && answer.peerKey !== settings.get().peerKey) settings.update({ peerKey: answer.peerKey });
     for (const cmd of answer.commands) runCommand(cmd);
   } catch {
     // Offline, signed out or an older server: try again next time.
@@ -1095,6 +1130,15 @@ async function findInstalled(gameId: string) {
   const game = (await listInstalled(await searchDirs())).find((g) => g.gameId === gameId);
   if (!game) throw new Error("That game is not installed on this computer");
   return game;
+}
+
+/** Linux: how this game's .exe starts (its Proton build, the PC's default, or Wine), with its own prefix. */
+function linuxRunner(gameId: string): ((exe: string) => { cmd: string; args: string[]; env: Record<string, string> }) | undefined {
+  if (process.platform !== "linux") return undefined;
+  const r = settings.get().linuxRunner ?? { default: "", games: {} };
+  const choice = r.games[gameId] ?? r.default ?? "";
+  void preparePrefix(toolsDir(), gameId).catch(() => {});
+  return (exe) => runnerCommand(toolsDir(), choice || WINE, gameId, exe);
 }
 
 /** A path relative to dir when it's inside it, otherwise absolute (games installed elsewhere). */
@@ -1469,12 +1513,38 @@ function registerIpc(): void {
     let last = 0;
     try {
       const ref = await gameRef(gameId);
-      const gameDir = (await queue.add(gameId, ref.title, async (queueSignal) => installGame(await client(), gameId, {
+      const gameDir = (await queue.add(gameId, ref.title, async (queueSignal) => {
+        const api = await client();
+        const signal = AbortSignal.any([controller.signal, queueSignal]);
+        // Another PC at home with the game: copy it from there (faster, and already unpacked).
+        const source = await api.peerSource(gameId, os.hostname()).catch(() => null);
+        if (source) {
+          try {
+            return await installFromPeer(api, gameId, source, {
+              installDir,
+              device: os.hostname(),
+              signal,
+              limiter,
+              onEvent: (ev) => {
+                if (ev.type === "download") {
+                  const now = Date.now();
+                  if (now - last < 250 && ev.received < ev.total) return;
+                  last = now;
+                }
+                send({ gameId, ...(ev.type === "start" ? { type: "start", gameDir: ev.gameDir, totalBytes: ev.game.sizeBytes } : ev) });
+              },
+            });
+          } catch (err) {
+            if (signal.aborted) throw err;
+            send({ gameId, type: "warning", message: `Couldn't copy from ${source.device} (${(err as Error).message}); downloading from the server instead.` });
+          }
+        }
+        return installGame(api, gameId, {
         installDir,
         keepArchives: s.keepArchives,
         sevenZipPath: await sevenZipPath(),
         device: os.hostname(),
-        signal: AbortSignal.any([controller.signal, queueSignal]),
+        signal,
         limiter,
         onEvent: (ev: InstallEvent) => {
           if (ev.type === "download") {
@@ -1484,7 +1554,8 @@ function registerIpc(): void {
           }
           send({ gameId, ...(ev.type === "start" ? { type: "start", gameDir: ev.gameDir, totalBytes: ev.game.sizeBytes } : ev) });
         },
-      }))) as string;
+      });
+      })) as string;
       void cacheDetails([gameId]).catch(() => {});
       // A streaming PC gets the new game in Sunshine too.
       if (settings.get().sunshine) void sunshineSyncNow().catch(() => {});
@@ -1515,9 +1586,13 @@ function registerIpc(): void {
     return queue.list();
   });
 
-  ipcMain.handle("gm:downloadSettings", (e, patch?: { limitKBps?: number; maxAtOnce?: number; window?: { from: string; to: string } | null }) => {
+  ipcMain.handle("gm:downloadSettings", async (e, patch?: { limitKBps?: number; maxAtOnce?: number; window?: { from: string; to: string } | null; shareGames?: boolean }) => {
     fromServer(e);
-    if (patch) {
+    if (patch && typeof patch.shareGames === "boolean") {
+      settings.update({ shareGames: patch.shareGames });
+      await applyPeerShare();
+    }
+    if (patch && (patch.limitKBps !== undefined || patch.maxAtOnce !== undefined || patch.window !== undefined)) {
       const cur = settings.get().downloads ?? { limitKBps: 0, maxAtOnce: 1, window: null };
       const limit = patch.limitKBps === undefined ? cur.limitKBps : Math.max(0, Math.min(10_000_000, Math.round(Number(patch.limitKBps) || 0)));
       const max = patch.maxAtOnce === undefined ? cur.maxAtOnce : Math.max(1, Math.min(5, Math.round(Number(patch.maxAtOnce) || 1)));
@@ -1532,7 +1607,7 @@ function registerIpc(): void {
       settings.update({ downloads: { limitKBps: limit, maxAtOnce: max, window } });
       queue.pump();
     }
-    return settings.get().downloads ?? { limitKBps: 0, maxAtOnce: 1, window: null };
+    return { ...(settings.get().downloads ?? { limitKBps: 0, maxAtOnce: 1, window: null }), shareGames: settings.get().shareGames !== false, sharing: !!peerShare, sharingNow: peerShare?.busy() ?? 0 };
   });
 
   /** Verify files: checks an installed game against the list made when it was installed. */
@@ -1577,6 +1652,97 @@ function registerIpc(): void {
   ipcMain.handle("gm:play", async (e, gameId: string, actionId?: string | null) => {
     fromServer(e);
     return play(gameId, typeof actionId === "string" ? actionId : undefined);
+  });
+
+  // ---- Windows games on Linux: Proton-GE builds and Wine, per game --------------------------
+
+  ipcMain.handle("gm:runners", async (e) => {
+    fromServer(e);
+    const r = settings.get().linuxRunner ?? { default: "", games: {} };
+    return { platform: process.platform, installed: await installedRunners(toolsDir()), default: r.default, games: r.games };
+  });
+  ipcMain.handle("gm:runnerReleases", async (e) => {
+    fromServer(e);
+    return listRunnerReleases();
+  });
+  ipcMain.handle("gm:installRunner", async (e, name: string) => {
+    fromServer(e);
+    if (process.platform !== "linux") throw new Error("Proton is for Linux PCs");
+    const release = (await listRunnerReleases()).find((x) => x.name === name);
+    if (!release) throw new Error("That Proton-GE release isn't on GitHub any more");
+    let last = 0;
+    const installed = await installRunner(toolsDir(), release, {
+      onProgress: (received, total) => {
+        if (Date.now() - last < 250 && received < total) return;
+        last = Date.now();
+        send({ gameId: "runner", type: "runner", name, received, total });
+      },
+    });
+    const r = settings.get().linuxRunner ?? { default: "", games: {} };
+    // The first Proton installed becomes the one games use.
+    if (!r.default) settings.update({ linuxRunner: { ...r, default: installed } });
+    return installed;
+  });
+  ipcMain.handle("gm:setRunner", async (e, patch: { gameId?: string; runner: string | null }) => {
+    fromServer(e);
+    const r = settings.get().linuxRunner ?? { default: "", games: {} };
+    const runner = patch.runner === null ? null : String(patch.runner);
+    if (runner && runner !== WINE && !(await installedRunners(toolsDir())).includes(runner)) throw new Error("That Proton build isn't installed");
+    if (patch.gameId) {
+      const games = { ...r.games };
+      if (runner === null) delete games[patch.gameId];
+      else games[patch.gameId] = runner;
+      settings.update({ linuxRunner: { ...r, games } });
+    } else settings.update({ linuxRunner: { ...r, default: runner ?? "" } });
+    return settings.get().linuxRunner;
+  });
+
+  // ---- Add to Steam (non-Steam games for Big Picture and the Steam Deck) ----------------------
+
+  const steamUser = async () => {
+    const users = await steamUsers();
+    const want = settings.get().steamUser;
+    return users.find((u) => u.id === want) ?? users[0] ?? null;
+  };
+  ipcMain.handle("gm:steam:status", async (e) => {
+    fromServer(e);
+    const users = await steamUsers();
+    const user = await steamUser();
+    return { users: users.map((u) => u.id), user: user?.id ?? null, added: user ? [...(await listSteamShortcuts(user)).keys()] : [] };
+  });
+  ipcMain.handle("gm:steam:add", async (e, ids?: string[], userId?: string) => {
+    fromServer(e);
+    if (userId) settings.update({ steamUser: String(userId) });
+    const user = await steamUser();
+    if (!user) throw new Error("Steam hasn't been signed in on this PC");
+    const games = (await playableGames()).filter((g) => !ids?.length || ids.includes(g.gameId));
+    const api = await client().catch(() => null);
+    const appPath = process.env.APPIMAGE ?? process.env.PORTABLE_EXECUTABLE_FILE ?? process.execPath;
+    const picture = async (url: string | null | undefined) => {
+      if (!url || !api) return undefined;
+      try {
+        const res = await fetch(/^https?:/.test(url) ? url : api.urlFor(url), { headers: /^https?:/.test(url) ? {} : api.headers() });
+        if (!res.ok) return undefined;
+        const type = res.headers.get("content-type") ?? "";
+        const ext = /png/.test(type) ? ("png" as const) : /jpe?g/.test(type) ? ("jpg" as const) : null;
+        return ext ? { data: Buffer.from(await res.arrayBuffer()), ext } : undefined;
+      } catch {
+        return undefined;
+      }
+    };
+    const shortcuts = [];
+    for (const g of games) {
+      const d = api ? await api.getGame(g.gameId).catch(() => null) : null;
+      shortcuts.push({ gameId: g.gameId, title: g.title, appPath, art: { cover: await picture(d?.coverUrl), hero: await picture(d?.backgroundUrl) } });
+    }
+    const n = await addSteamShortcuts(user, shortcuts);
+    return { added: n, restartSteam: true };
+  });
+  ipcMain.handle("gm:steam:remove", async (e, ids?: string[]) => {
+    fromServer(e);
+    const user = await steamUser();
+    if (!user) return { removed: 0 };
+    return { removed: await removeSteamShortcuts(user, ids?.length ? ids : undefined) };
   });
 
   /** Games between Play and running: a second press while the first is still starting. */
@@ -1646,7 +1812,7 @@ function registerIpc(): void {
     send({ gameId, type: "playing", action: action?.name });
     const session = action
       ? launchActionAndTrack(action, { gameDir: home, watchDirs: [game.dir], signal: stop.signal, onStep: (step) => step.type === "wait" && send({ gameId, type: "prepare", message: `Waiting ${step.seconds} s…` }) })
-      : launchAndTrack(game.dir, exe!, process.platform, stop.signal, { watchDirs: [home] });
+      : launchAndTrack(game.dir, exe!, process.platform, stop.signal, { watchDirs: [home], runner: linuxRunner(gameId) });
     void session.then(
       async (total) => {
         unwatch();
@@ -2984,6 +3150,7 @@ app.userAgentFallback = app.userAgentFallback.replace(/ (?:Electron|LootDen|@loo
 void app.whenReady().then(async () => {
   settings = new SettingsStore(path.join(app.getPath("userData"), "settings.json"));
   registerIpc();
+  void applyPeerShare();
   truckMods = new TruckMods({ settings: () => settings, client, send, fromServer }, () => (existsSync(bundled7za()) ? bundled7za() : ""));
   truckMods.registerIpc();
   new TruckModList(

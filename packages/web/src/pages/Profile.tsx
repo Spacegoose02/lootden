@@ -13,6 +13,9 @@ import { AchievementsGrid, HoloCard, RaccoonBuilder, useProgress } from "../comp
 import { PlayTimeCard } from "../components/PlayTime";
 import { BanditProfileCard } from "../components/Bandit";
 import { DownloadQueuePanel } from "../components/DownloadQueue";
+import { LinuxRunners, SteamShortcuts } from "../components/LinuxSteam";
+import { SignInSecurity } from "../components/SignInSecurity";
+import { PushToggle } from "../components/PushToggle";
 import { AchievementSummaryPanel } from "../components/Achievements";
 
 export function Profile() {
@@ -169,6 +172,10 @@ export function Profile() {
 
           <GameLibraries admin={user.role === "admin"} />
 
+          <PushToggle admin={user.role === "admin"} />
+
+          <SignInSecurity />
+
           <section className="panel">
             <h2>Devices and tokens</h2>
             <p className="muted small">Each computer signed in with the LootDen app or <code>lootden login</code> gets its own token. Revoke one to sign that device out.</p>
@@ -278,6 +285,8 @@ export function ThisComputer() {
       </ul>
       {installed.length === 0 && <p className="muted">No games installed on this computer yet.</p>}
       <DownloadQueuePanel />
+      <LinuxRunners />
+      <SteamShortcuts />
       <StoreScan />
       <StreamingSetup />
       <AppOptions />

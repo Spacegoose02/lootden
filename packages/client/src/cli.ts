@@ -144,13 +144,22 @@ async function main(argv: string[]): Promise<void> {
   switch (command) {
     case "login": {
       const username = positional[0];
-      if (!username) throw new Error("Usage: lootden login <username> [--server http://tower:8080]");
+      if (!username) throw new Error("Usage: lootden login <username> [--server http://tower:8080] [--code 123456]");
       if (typeof flags.server === "string") {
         config.serverUrl = flags.server;
         await saveConfigValue("serverUrl", flags.server);
       }
       const password = typeof flags.password === "string" ? flags.password : await askHidden("Password: ");
-      const { token, user } = await new GameServerClient(config).login(username, password, os.hostname());
+      const server = new GameServerClient(config);
+      let session: Awaited<ReturnType<GameServerClient["login"]>>;
+      try {
+        session = await server.login(username, password, os.hostname(), typeof flags.code === "string" ? flags.code : undefined);
+      } catch (err) {
+        // Two-step sign-in: ask for the authenticator code and try once more.
+        if (typeof flags.code === "string" || !/two-step/.test((err as Error).message)) throw err;
+        session = await server.login(username, password, os.hostname(), await askHidden("Code from your authenticator app: "));
+      }
+      const { token, user } = session;
       await saveConfigValue("apiToken", token);
       console.log(`Signed in as ${user.displayName} (${user.role}). Token saved to ${configPath()}`);
       return;

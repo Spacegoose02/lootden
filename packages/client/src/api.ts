@@ -1,4 +1,4 @@
-import type { ActivityEvent, Allowance, PresenceAnswer, PresenceReport, GameDetail, PlayLimits, GameSummary, RecompInfo, HealthResponse, LibraryStats, SaveBackup, TruckGame, TruckMod, User } from "@lootden/shared";
+import type { ActivityEvent, Allowance, PeerSource, PresenceAnswer, PresenceReport, GameDetail, PlayLimits, GameSummary, RecompInfo, HealthResponse, LibraryStats, SaveBackup, TruckGame, TruckMod, User } from "@lootden/shared";
 import type { ClientConfig } from "./config.js";
 
 /** A library game's saves, or another store's game's (store:<addon>:<id>). */
@@ -76,11 +76,11 @@ export class GameServerClient {
     return this.json<LibraryStats>("/api/library/rescan", { method: "POST" });
   }
   /** Exchanges a username and password for a personal API token for this device. */
-  async login(username: string, password: string, device: string): Promise<{ token: string; user: User }> {
+  async login(username: string, password: string, device: string, code?: string): Promise<{ token: string; user: User }> {
     const res = await fetch(`${this.base}/api/auth/login`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ username, password, client: true, device }),
+      body: JSON.stringify({ username, password, client: true, device, ...(code ? { code } : {}) }),
     });
     const body = (await res.json().catch(() => ({}))) as { token: string; user: User; error?: string };
     if (!res.ok) throw new ApiError(body.error ?? `Login failed with ${res.status}`, res.status);
@@ -104,6 +104,15 @@ export class GameServerClient {
   /** The heartbeat: what runs on this PC. The answer carries parents' messages for it (404 on older servers). */
   presence(report: PresenceReport) {
     return this.json<PresenceAnswer>("/api/me/presence", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(report) });
+  }
+  /** LAN copies: a PC in the house that shares this game, with a ticket (null when none can). */
+  async peerSource(gameId: string, device: string): Promise<PeerSource | null> {
+    try {
+      return await this.json<PeerSource>(`/api/games/${encodeURIComponent(gameId)}/peer-source`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ device }) });
+    } catch (err) {
+      if (err instanceof ApiError && (err.status === 404 || err.status === 400)) return null;
+      throw err;
+    }
   }
   /** Today's play time and limits for the person this token belongs to (404 on servers from before limits). */
   allowance() {

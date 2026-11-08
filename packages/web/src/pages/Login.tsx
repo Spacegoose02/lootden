@@ -4,6 +4,7 @@ import type { AuthProviders } from "@lootden/shared";
 import { api } from "../api";
 import { useAuth } from "../auth";
 import { BrandLogo } from "../components/BrandLogo";
+import { getPasskey, passkeysWork } from "../passkeys";
 
 export function Login() {
   const [providers, setProviders] = useState<AuthProviders | null>(null);
@@ -15,6 +16,9 @@ export function Login() {
   // Signing in with a code from a device that's signed in already (Profile, Link another device).
   const [withCode, setWithCode] = useState(false);
   const [code, setCode] = useState("");
+  // Two-step sign-in: the password was right, now a code or a passkey.
+  const [mfa, setMfa] = useState<{ ticket: string; totp: boolean; passkey: boolean } | null>(null);
+  const [otp, setOtp] = useState("");
   const { refresh } = useAuth();
   const navigate = useNavigate();
 
@@ -29,11 +33,34 @@ export function Login() {
     try {
       if (providers?.setupRequired) await api.setup(username, password);
       else if (withCode) await api.redeemPairingCode(code);
-      else await api.login(username, password);
+      else if (mfa) await api.loginCode(mfa.ticket, otp);
+      else {
+        const r = await api.login(username, password);
+        if (r.mfa) {
+          setMfa(r.mfa);
+          setOtp("");
+          return;
+        }
+      }
       await refresh();
       navigate("/");
     } catch (err) {
       setError((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const passkey = async () => {
+    setBusy(true);
+    setError("");
+    try {
+      await api.loginPasskey(await getPasskey(await api.passkeyOptions(mfa?.ticket)), mfa?.ticket);
+      await refresh();
+      navigate("/");
+    } catch (err) {
+      const e = err as Error;
+      setError(e.name === "NotAllowedError" ? "The passkey sign-in was cancelled" : e.message);
     } finally {
       setBusy(false);
     }
@@ -47,7 +74,17 @@ export function Login() {
         <h1>{setup ? "Create the admin account" : "LootDen"}</h1>
         {setup && <p className="muted">This is the first start. The account you create here manages the library and other profiles.</p>}
         {error && <p className="error">{error}</p>}
-        {withCode ? (
+        {mfa ? (
+          <>
+            <p className="muted small">
+              {mfa.totp ? "Enter the code from your authenticator app, or one of your recovery codes." : "Use your passkey, or enter one of your recovery codes."}
+            </p>
+            <label>
+              Code
+              <input autoFocus autoComplete="one-time-code" inputMode={mfa.totp ? "numeric" : "text"} spellCheck={false} value={otp} onChange={(e) => setOtp(e.target.value)} required={!mfa.passkey} />
+            </label>
+          </>
+        ) : withCode ? (
           <>
             <p className="muted small">On a device where you're signed in, open Profile and choose Link another device.</p>
             <label>
@@ -79,9 +116,19 @@ export function Login() {
           </>
         )}
         <button className="primary" disabled={busy}>
-          {setup ? "Create admin" : "Sign in"}
+          {setup ? "Create admin" : mfa ? "Continue" : "Sign in"}
         </button>
-        {!setup && providers?.pairing && (
+        {!setup && passkeysWork() && (!mfa || mfa.passkey) && !withCode && (
+          <button type="button" className="secondary" disabled={busy} onClick={() => void passkey()}>
+            {mfa ? "Use my passkey" : "Sign in with a passkey"}
+          </button>
+        )}
+        {mfa && (
+          <button type="button" className="ghost" onClick={() => (setMfa(null), setError(""))}>
+            Back
+          </button>
+        )}
+        {!setup && !mfa && providers?.pairing && (
           <button type="button" className="ghost" onClick={() => (setWithCode((v) => !v), setError(""))}>
             {withCode ? "Sign in with a password" : "Sign in with a code"}
           </button>

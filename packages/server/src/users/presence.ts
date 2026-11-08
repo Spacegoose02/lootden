@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHmac, randomBytes, randomUUID } from "node:crypto";
 import dgram from "node:dgram";
 import {
   cleanMac,
@@ -11,6 +11,7 @@ import {
   type PcDisk,
   type PcCopy,
   type PcInfo,
+  type PeerSource,
   type PlaySource,
   type PresenceAnswer,
   type PresenceReport,
@@ -40,6 +41,8 @@ interface PcRow {
   moonlight: number;
   stream_games: string;
   copies: string;
+  peer_port: number | null;
+  peer_key: string | null;
   last_seen: string;
   last_user: number | null;
 }
@@ -138,11 +141,12 @@ export class PresenceService {
       }
     }
     this.savePc(device, userId, input.pc);
+    const peerKey = this.peerKey(device);
     if (changed) this.onChange();
     // Messages and closes go stale in ten minutes; Send to PC waits a day for the PC to come on.
     const queue = (this.commands.get(device) ?? []).filter((c) => t - c.at < (c.kind === "install" || c.kind === "refresh-copy" ? 86400_000 : 10 * 60_000));
     this.commands.delete(device);
-    return { commands: queue.map(({ at: _at, ...c }) => c as PcCommand), nextInSeconds: PRESENCE_INTERVAL_SECONDS };
+    return { commands: queue.map(({ at: _at, ...c }) => c as PcCommand), nextInSeconds: PRESENCE_INTERVAL_SECONDS, peerKey };
   }
 
   /** Drops games from PCs that went quiet (switched off, app closed, network gone). */
@@ -308,6 +312,47 @@ export class PresenceService {
         new Date(this.clock()).toISOString(),
         userId,
       );
+    if (pc && "peerPort" in pc) {
+      const port = Number(pc.peerPort);
+      this.db.prepare("UPDATE pcs SET peer_port = ? WHERE name = ?").run(Number.isInteger(port) && port >= 1024 && port <= 65535 ? port : null, name);
+    }
+  }
+
+  /** The key a PC checks LAN copy tickets with; made on its first heartbeat. */
+  private peerKey(name: string): string {
+    const row = this.db.prepare("SELECT peer_key FROM pcs WHERE name = ?").get(name) as { peer_key: string | null } | undefined;
+    if (row?.peer_key) return row.peer_key;
+    const key = randomBytes(32).toString("base64url");
+    this.db.prepare("UPDATE pcs SET peer_key = ? WHERE name = ?").run(key, name);
+    return key;
+  }
+
+  /**
+   * LAN copies: another PC that's on, shares games, and has this game at the library's version
+   * (or any version when the library doesn't know one), with a ticket for it. Null when none.
+   */
+  peerSource(gameId: string, askingDevice: string, version: string | null, hours = 6): PeerSource | null {
+    const cutoff = this.clock() - PRESENCE_TIMEOUT_SECONDS * 1000;
+    const rows = this.db.prepare("SELECT * FROM pcs WHERE peer_port IS NOT NULL AND peer_key IS NOT NULL").all() as unknown as PcRow[];
+    const want = version?.trim().toLowerCase() || null;
+    const candidates = rows
+      .filter((r) => r.name !== askingDevice && Date.parse(r.last_seen) >= cutoff)
+      .map((r) => ({ r, copy: json<PcCopy[]>(r.copies, []).find((c) => c.gameId === gameId) }))
+      .filter(({ copy }) => copy && !copy.fromExe && (!want || copy.version.trim().toLowerCase() === want))
+      // Nobody playing on it first: copying slows a game down.
+      .sort((a, b) => Number(this.busy(a.r.name)) - Number(this.busy(b.r.name)));
+    const pick = candidates[0];
+    if (!pick) return null;
+    const addresses = json<string[]>(pick.r.addresses, []);
+    if (!addresses.length) return null;
+    const payload = Buffer.from(JSON.stringify({ g: gameId, d: askingDevice, exp: Math.floor(this.clock() / 1000) + hours * 3600 })).toString("base64url");
+    const sig = createHmac("sha256", Buffer.from(pick.r.peer_key!, "base64url")).update(payload).digest("base64url");
+    return { device: pick.r.name, urls: addresses.map((a) => `http://${a}:${pick.r.peer_port}`), ticket: `${payload}.${sig}`, version: pick.copy!.version };
+  }
+
+  private busy(device: string): boolean {
+    for (const l of this.live.values()) if (l.device === device) return true;
+    return false;
   }
 
   pcs(): PcInfo[] {
