@@ -52,6 +52,8 @@ import type { CompatService } from "./integrations/compat.js";
 import type { LudusaviManifest } from "./saves/ludusavi.js";
 import type { PriceService } from "./integrations/prices.js";
 import type { HomeAssistantBridge } from "./integrations/homeassistant.js";
+import type { MfaService } from "./auth/mfa.js";
+import type { PushService } from "./alerts/webpush.js";
 import type { ChatLink } from "./integrations/chat.js";
 
 /** Everything route modules need, built once in buildApp. */
@@ -61,6 +63,10 @@ export interface AppContext {
   library: Library;
   users: UserRepo;
   auth: AuthService;
+  /** Authenticator apps, recovery codes and passkeys. */
+  mfa: MfaService;
+  /** Web Push to installed apps and browsers. */
+  push: PushService;
   oidc: OidcService;
   metadata: MetadataService;
   news: NewsService;

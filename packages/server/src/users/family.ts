@@ -191,8 +191,17 @@ export class FamilyService {
     this.db
       .prepare(`UPDATE time_requests SET state = ?, decided_at = ?${m !== null && approve ? ", minutes = ?" : ""} WHERE id = ?`)
       .run(...([approve ? "approved" : "declined", now(), ...(m !== null && approve ? [m] : []), id] as Array<string | number>));
-    return this.timeRequests(null).find((t) => t.id === id) ?? this.timeRequests(row.user_id).find((t) => t.id === id)!;
+    const done = this.timeRequests(null).find((t) => t.id === id) ?? this.timeRequests(row.user_id).find((t) => t.id === id)!;
+    try {
+      this.onTimeDecided?.(done);
+    } catch {
+      /* a listener never stops the answer */
+    }
+    return done;
   }
+
+  /** Called when an ask for more time is answered (push notifications listen). */
+  onTimeDecided: ((t: TimeRequest) => void) | null = null;
 
   /** Admin: bonus time for today without being asked. */
   giveTime(userId: number, minutes: number): TimeRequest {

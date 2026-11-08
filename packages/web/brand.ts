@@ -30,6 +30,7 @@ export function brandFiles() {
     favicon: find(["favicon.svg", "favicon.png", "favicon.ico"]) ?? logo,
     touch: find(["apple-touch-icon.png", "icon.png"]),
     mascot: find(["mascot.png", "mascot.webp", "mascot.svg"]),
+    icon: find(["icon.png"]),
   };
   // Served at /brand/<kind><ext>.
   const urls = Object.fromEntries(Object.entries(files).map(([k, f]) => [k, f ? `/brand/${k}${path.extname(f)}` : null])) as Record<keyof typeof files, string | null>;
@@ -45,9 +46,19 @@ export function brandPlugin(): Plugin {
     transformIndexHtml: () =>
       [
         urls.favicon && { tag: "link", attrs: { rel: "icon", type: TYPES[path.extname(urls.favicon)], href: urls.favicon }, injectTo: "head" as const },
-        urls.touch && { tag: "link", attrs: { rel: "apple-touch-icon", href: urls.touch }, injectTo: "head" as const },
+        { tag: "link", attrs: { rel: "apple-touch-icon", href: urls.touch ?? "/apple-touch-icon.png" }, injectTo: "head" as const },
+        { tag: "link", attrs: { rel: "manifest", href: "/manifest.webmanifest" }, injectTo: "head" as const },
+        { tag: "meta", attrs: { name: "apple-mobile-web-app-capable", content: "yes" }, injectTo: "head" as const },
+        { tag: "meta", attrs: { name: "mobile-web-app-capable", content: "yes" }, injectTo: "head" as const },
       ].filter((t) => !!t),
     configureServer(server) {
+      server.middlewares.use((req, res, next) => {
+        if (req.url === "/manifest.webmanifest") {
+          res.setHeader("Content-Type", "application/manifest+json");
+          return res.end(manifest(files, urls));
+        }
+        next();
+      });
       server.middlewares.use((req, res, next) => {
         const kind = req.url?.match(/^\/brand\/(\w+)\./)?.[1];
         const file = kind ? files[kind] : null;
@@ -57,9 +68,56 @@ export function brandPlugin(): Plugin {
       });
     },
     generateBundle() {
+      this.emitFile({ type: "asset", fileName: "manifest.webmanifest", source: manifest(files, urls) });
       for (const [kind, file] of Object.entries(files)) {
         if (file) this.emitFile({ type: "asset", fileName: `brand/${kind}${path.extname(file)}`, source: readFileSync(file) });
       }
     },
   };
+}
+
+/**
+ * The web app manifest, so phones and PCs can install LootDen as an app. The raccoon's
+ * PNG icons come from public/; your own logo and icon.png from brand/ are used instead.
+ */
+function manifest(files: ReturnType<typeof brandFiles>["files"], urls: ReturnType<typeof brandFiles>["urls"]): string {
+  const icons = isBuiltIn(files.logo)
+    ? [
+        { src: "/icon-192.png", sizes: "192x192", type: "image/png" },
+        { src: "/icon-512.png", sizes: "512x512", type: "image/png" },
+        { src: "/icon-maskable-512.png", sizes: "512x512", type: "image/png", purpose: "maskable" },
+      ]
+    : [
+        // brand/icon.png (a big square PNG) is what installed apps use; it's scaled down for the 192 slot.
+        ...(files.icon ? [{ src: "/brand/icon.png", sizes: pngSize(files.icon) === "512x512" ? "192x192 512x512" : pngSize(files.icon), type: "image/png" }] : []),
+        ...(urls.touch && files.touch ? [{ src: urls.touch, sizes: pngSize(files.touch), type: "image/png" }] : []),
+        ...(urls.logo && files.logo ? [{ src: urls.logo, sizes: path.extname(files.logo) === ".png" ? pngSize(files.logo) : "any", type: TYPES[path.extname(urls.logo)] }] : []),
+      ];
+  return JSON.stringify(
+    {
+      name: "LootDen",
+      short_name: "LootDen",
+      description: "The family game library",
+      id: "/",
+      start_url: "/",
+      scope: "/",
+      display: "standalone",
+      background_color: "#120c24",
+      theme_color: "#120c24",
+      icons,
+      shortcuts: [
+        { name: "Library", url: "/" },
+        { name: "Requests", url: "/requests" },
+        { name: "Profile", url: "/profile" },
+      ],
+    },
+    null,
+    2,
+  );
+}
+
+/** "WxH" from a PNG's header. */
+function pngSize(file: string): string {
+  const b = readFileSync(file);
+  return b.length > 24 && b.toString("latin1", 1, 4) === "PNG" ? `${b.readUInt32BE(16)}x${b.readUInt32BE(20)}` : "any";
 }

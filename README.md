@@ -50,6 +50,12 @@ installs games from it on any PC in the house.
 - Profiles: local accounts, OIDC or forward-auth sign-in, kid profiles that only see
   kid-safe games, per-profile play time, backlog and journal.
 - Save backups to the server when a game closes, restored on another PC.
+- Install it as an app: on a phone or PC, Add to Home Screen or Install app in the browser
+  menu. Turn on notifications under Profile: admins get the bell's alerts, and everyone hears
+  when a game request or an ask for more time is answered (Web Push, no outside service).
+- Two-step sign-in: an authenticator app (with recovery codes) or passkeys under Profile.
+  Passkeys also sign you in without a password. `lootden login --code 123456` for the CLI; an
+  admin can reset someone who lost their phone from Settings, Users.
 - Bandit, an AI gaming helper (a raccoon, of course) in the corner of every page: tips and
   hints for the game you're looking at, with kid-safe answers on kid profiles that a parent
   switches on. Bring your own Anthropic API key; admins pick the model and set daily limits

@@ -4,7 +4,7 @@ import { verifyPassword } from "../auth/crypto.js";
 import { isAppNonce } from "../auth/oidc.js";
 import { SESSION_COOKIE } from "../auth/service.js";
 import { PairingCodes } from "../auth/pairing.js";
-import { HttpProblem, requirePerson, type AppContext } from "../context.js";
+import { HttpProblem, requireAdmin, requirePerson, type AppContext } from "../context.js";
 import { publicUser, type UserRecord } from "../users/repo.js";
 
 const FAIL_WINDOW_MS = 15 * 60_000;
@@ -43,8 +43,8 @@ export function authRoutes(app: FastifyInstance, ctx: AppContext) {
    * Password login. Browsers get a session cookie; clients pass {client: true, device}
    * and get a personal API token back instead.
    */
-  app.post<{ Body: { username: string; password: string; client?: boolean; device?: string } }>("/api/auth/login", async (req, reply) => {
-    const { username = "", password = "", client, device } = req.body ?? ({} as never);
+  app.post<{ Body: { username: string; password: string; client?: boolean; device?: string; code?: string } }>("/api/auth/login", async (req, reply) => {
+    const { username = "", password = "", client, device, code } = req.body ?? ({} as never);
     const key = `${req.ip}|${String(username).toLowerCase()}`;
     const at = Date.now();
     if (failures.size > 10_000) for (const [k, v] of failures) if (at - v.since >= FAIL_WINDOW_MS) failures.delete(k);
@@ -58,6 +58,18 @@ export function authRoutes(app: FastifyInstance, ctx: AppContext) {
     // Unknown names take as long as wrong passwords, so timing doesn't reveal which accounts exist.
     const ok = await verifyPassword(String(password), user?.passwordHash ?? DUMMY_HASH);
     if (!user || !ok) throw new HttpProblem(401, "Wrong username or password");
+    // Two-step sign-in: a code in the same request (the CLI), or a ticket for the second step (browsers).
+    const second = ctx.mfa.required(user.id);
+    if (second) {
+      if (code) {
+        if (!ctx.mfa.checkCode(user.id, String(code))) throw new HttpProblem(401, "That code isn't right");
+      } else if (client) {
+        throw new HttpProblem(401, "This account uses two-step sign-in; add the 6-digit code from your authenticator app (--code)");
+      } else {
+        failures.delete(key);
+        return { mfa: { ticket: ctx.mfa.issueTicket(user.id), ...second } };
+      }
+    }
     failures.delete(key);
     if (client) {
       const { token } = ctx.auth.createApiToken(user.id, device || "LootDen client");
@@ -65,6 +77,120 @@ export function authRoutes(app: FastifyInstance, ctx: AppContext) {
     }
     startSession(req, reply, user);
     return { user: publicUser(user) };
+  });
+
+  // ---- Two-step sign-in: the second step, and passkeys -----------------------------------
+
+  /** The host name passkeys are tied to: the address the browser is on. */
+  const rpId = (req: FastifyRequest) => req.hostname.replace(/:\d+$/, "").replace(/^\[|\]$/g, "");
+
+  app.post<{ Body: { ticket?: string; code?: string } }>("/api/auth/login/mfa", async (req, reply) => {
+    const { ticket = "", code = "" } = req.body ?? {};
+    const userId = ctx.mfa.ticketUser(String(ticket));
+    if (userId === null) throw new HttpProblem(401, "Sign-in timed out; enter your password again");
+    const key = `${req.ip}|mfa|${userId}`;
+    const at = Date.now();
+    const f = failures.get(key);
+    const entry = f && at - f.since < FAIL_WINDOW_MS ? f : { count: 0, since: at };
+    if (entry.count >= MAX_FAILS) throw new HttpProblem(429, "Too many wrong codes; wait 15 minutes");
+    entry.count++;
+    failures.set(key, entry);
+    const user = ctx.users.byId(userId);
+    if (!user || !ctx.mfa.checkCode(userId, String(code))) throw new HttpProblem(401, "That code isn't right");
+    failures.delete(key);
+    ctx.mfa.endTicket(String(ticket));
+    startSession(req, reply, user);
+    return { user: publicUser(user) };
+  });
+
+  /** Options for a passkey sign-in: after a password (with its ticket), or on its own. */
+  app.post<{ Body: { ticket?: string } }>("/api/auth/passkey/options", async (req) => {
+    const ticket = req.body?.ticket;
+    const userId = ticket ? ctx.mfa.ticketUser(String(ticket)) : null;
+    if (ticket && userId === null) throw new HttpProblem(401, "Sign-in timed out; enter your password again");
+    return ctx.mfa.assertionOptions(userId, rpId(req));
+  });
+
+  app.post<{ Body: { ticket?: string; credential?: unknown } }>("/api/auth/passkey", async (req, reply) => {
+    const ticket = req.body?.ticket;
+    let userId: number;
+    try {
+      userId = ctx.mfa.usePasskey(req.body?.credential as never, rpId(req));
+    } catch (err) {
+      throw new HttpProblem(401, (err as Error).message);
+    }
+    if (ticket) {
+      if (ctx.mfa.ticketUser(String(ticket)) !== userId) throw new HttpProblem(401, "That passkey belongs to someone else");
+      ctx.mfa.endTicket(String(ticket));
+    }
+    const user = ctx.users.byId(userId);
+    if (!user) throw new HttpProblem(401, "That account is gone");
+    startSession(req, reply, user);
+    return { user: publicUser(user) };
+  });
+
+  // ---- My sign-in security (Profile) --------------------------------------------------
+
+  app.get("/api/me/security", async (req) => ctx.mfa.status(requirePerson(req).id));
+
+  app.post("/api/me/security/totp", async (req) => {
+    const me = requirePerson(req);
+    return ctx.mfa.beginTotp(me.id, me.username);
+  });
+
+  app.post<{ Body: { code?: string } }>("/api/me/security/totp/confirm", async (req) => {
+    const me = requirePerson(req);
+    try {
+      return { recoveryCodes: ctx.mfa.confirmTotp(me.id, String(req.body?.code ?? "")) };
+    } catch (err) {
+      throw new HttpProblem(400, (err as Error).message);
+    }
+  });
+
+  /** Turning it off, or new recovery codes, takes a current code so a borrowed session can't. */
+  app.post<{ Body: { code?: string } }>("/api/me/security/totp/off", async (req) => {
+    const me = requirePerson(req);
+    if (!ctx.mfa.checkCode(me.id, String(req.body?.code ?? ""))) throw new HttpProblem(403, "That code isn't right");
+    ctx.mfa.disableTotp(me.id);
+    return ctx.mfa.status(me.id);
+  });
+
+  app.post<{ Body: { code?: string } }>("/api/me/security/recovery", async (req) => {
+    const me = requirePerson(req);
+    const s = ctx.mfa.status(me.id);
+    if (!s.totp && !s.passkeys.length) throw new HttpProblem(400, "Turn on two-step sign-in first");
+    if (s.totp && !ctx.mfa.checkCode(me.id, String(req.body?.code ?? ""))) throw new HttpProblem(403, "That code isn't right");
+    return { recoveryCodes: ctx.mfa.newRecoveryCodes(me.id) };
+  });
+
+  app.post("/api/me/security/passkeys/options", async (req) => {
+    const me = requirePerson(req);
+    return ctx.mfa.registrationOptions({ id: me.id, username: me.username, displayName: me.displayName }, rpId(req));
+  });
+
+  app.post<{ Body: { credential?: unknown; name?: string } }>("/api/me/security/passkeys", async (req) => {
+    const me = requirePerson(req);
+    const fresh = !ctx.mfa.required(me.id);
+    try {
+      const key = ctx.mfa.addPasskey(me.id, req.body?.credential as never, rpId(req), String(req.body?.name ?? ""));
+      // The first passkey turns on two-step sign-in, so it comes with recovery codes.
+      return { passkey: key, recoveryCodes: fresh && !ctx.mfa.status(me.id).recoveryLeft ? ctx.mfa.newRecoveryCodes(me.id) : [] };
+    } catch (err) {
+      throw new HttpProblem(400, (err as Error).message);
+    }
+  });
+
+  app.delete<{ Params: { id: string } }>("/api/me/security/passkeys/:id", async (req) => {
+    const me = requirePerson(req);
+    if (!ctx.mfa.removePasskey(me.id, req.params.id)) throw new HttpProblem(404, "No such passkey");
+    return ctx.mfa.status(me.id);
+  });
+
+  /** An admin clears a locked-out person's authenticator app and passkeys. */
+  app.delete<{ Params: { id: string } }>("/api/users/:id/mfa", async (req) => {
+    requireAdmin(req);
+    ctx.mfa.reset(Number(req.params.id));
+    return { ok: true };
   });
 
   // ---- Pairing codes: sign a new device in from one that's signed in already ----------------

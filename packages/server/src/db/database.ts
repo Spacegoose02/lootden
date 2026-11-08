@@ -777,6 +777,39 @@ export const MIGRATIONS: string[] = [
     files TEXT NOT NULL DEFAULT '[]',
     stamp TEXT NOT NULL DEFAULT '',
     checked_at TEXT NOT NULL
+  `,
+  `
+  -- Two-step sign-in: an authenticator app (secret encrypted with the server's key), one-time
+  -- recovery codes (hashed), and passkeys.
+  CREATE TABLE user_mfa (
+    user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    totp_secret TEXT,
+    totp_pending TEXT,
+    totp_step INTEGER NOT NULL DEFAULT -1,
+    recovery TEXT NOT NULL DEFAULT '[]'
+  );
+  CREATE TABLE passkeys (
+    id TEXT PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    public_key TEXT NOT NULL,
+    alg INTEGER NOT NULL,
+    sign_count INTEGER NOT NULL DEFAULT 0,
+    rp_id TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    last_used_at TEXT
+  );
+  CREATE INDEX passkeys_user ON passkeys(user_id);
+  `,
+  `
+  -- Web Push: browsers (the installed app on phones, or a desktop browser) that turned notifications on.
+  CREATE TABLE push_subscriptions (
+    endpoint TEXT PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    p256dh TEXT NOT NULL,
+    auth TEXT NOT NULL,
+    user_agent TEXT,
+    created_at TEXT NOT NULL
   );
   `,
 ];
