@@ -67,7 +67,6 @@ const SYNC_SCRIPT = String.raw`
   var status = document.getElementById("sync");
   var say = function (t) { status.textContent = t; if (t) setTimeout(function () { if (status.textContent === t) status.textContent = ""; }, 4000); };
   var KEY = "lootden-save-" + cfg.gameId;
-  if (!cfg.savePath) return;
 
   var CRC = (function () { var t = new Uint32Array(256); for (var n = 0; n < 256; n++) { var c = n; for (var k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
   function crc32(d) { var c = 0xffffffff; for (var i = 0; i < d.length; i++) c = CRC[(c ^ d[i]) & 0xff] ^ (c >>> 8); return (c ^ 0xffffffff) >>> 0; }
@@ -148,6 +147,35 @@ const SYNC_SCRIPT = String.raw`
       say("Saved to your profile");
     } catch (e) { lastCrc = null; say("Save upload failed: " + e.message); }
   }
+
+  // Save states: the emulator's Save State and Load State buttons keep one cloud slot per
+  // player and game (the last ten are kept), so a state saved on the laptop loads on the TV.
+  var STATE = "state:browser";
+  window.EJS_onSaveState = async function (e) {
+    var state = e && e.state;
+    if (!state || !state.length) return;
+    try {
+      var res = await fetch("/api/games/" + cfg.gameId + "/saves?device=Browser&runner=" + STATE, { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/octet-stream" }, body: zipOne("state.bin", state) });
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      say("State saved to your profile");
+    } catch (err) { say("Couldn't save the state: " + err.message); }
+  };
+  window.EJS_onLoadState = async function () {
+    try {
+      var list = await (await fetch("/api/games/" + cfg.gameId + "/saves", { credentials: "same-origin" })).json();
+      var latest = list && list.filter(function (b) { return b.runner === STATE; })[0];
+      if (!latest) { say("No saved state yet"); return; }
+      var buf = await (await fetch("/api/games/" + cfg.gameId + "/saves/" + latest.id, { credentials: "same-origin" })).arrayBuffer();
+      var data = await unzipOne(buf, "state.bin");
+      var g = gm();
+      if (!data || !g || !g.loadState) throw new Error("the state couldn't be read");
+      g.loadState(data);
+      say("Loaded the state from " + new Date(latest.createdAt).toLocaleString());
+    } catch (err) { say("Couldn't load the state: " + err.message); }
+  };
+
+  // In-game saves only sync for systems with a known save file layout.
+  if (!cfg.savePath) return;
 
   window.EJS_onGameStart = function () {
     restore().then(function () { if (lastCrc === null) { var d = readSave(); if (d) lastCrc = crc32(d); } });
