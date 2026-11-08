@@ -5,6 +5,7 @@ import { api } from "../api";
 import { useAuth } from "../auth";
 import { BrandLogo } from "../components/BrandLogo";
 import { getPasskey, passkeysWork } from "../passkeys";
+import { t } from "../i18n";
 
 export function Login() {
   const [providers, setProviders] = useState<AuthProviders | null>(null);
@@ -71,7 +72,7 @@ export function Login() {
     <div className="login">
       <form className="panel login-panel" onSubmit={submit}>
         {__BRAND__.mascot ? <img className="login-mascot" src={__BRAND__.mascot} alt="" width={160} height={160} /> : <BrandLogo size={88} />}
-        <h1>{setup ? "Create the admin account" : "LootDen"}</h1>
+        <h1>{setup ? t("Create the admin account") : "LootDen"}</h1>
         {setup && <p className="muted">This is the first start. The account you create here manages the library and other profiles.</p>}
         {error && <p className="error">{error}</p>}
         {mfa ? (
@@ -116,11 +117,11 @@ export function Login() {
           </>
         )}
         <button className="primary" disabled={busy}>
-          {setup ? "Create admin" : mfa ? "Continue" : "Sign in"}
+          {setup ? t("Create admin") : mfa ? t("Continue") : t("Sign in")}
         </button>
         {!setup && passkeysWork() && (!mfa || mfa.passkey) && !withCode && (
           <button type="button" className="secondary" disabled={busy} onClick={() => void passkey()}>
-            {mfa ? "Use my passkey" : "Sign in with a passkey"}
+            {mfa ? t("Use my passkey") : t("Sign in with a passkey")}
           </button>
         )}
         {mfa && (
@@ -130,7 +131,7 @@ export function Login() {
         )}
         {!setup && !mfa && providers?.pairing && (
           <button type="button" className="ghost" onClick={() => (setWithCode((v) => !v), setError(""))}>
-            {withCode ? "Sign in with a password" : "Sign in with a code"}
+            {withCode ? t("Sign in with a password") : t("Sign in with a code")}
           </button>
         )}
         {!setup && providers?.oidc.enabled && (
