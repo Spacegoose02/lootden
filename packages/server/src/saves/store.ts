@@ -49,7 +49,7 @@ export class SaveStore {
   /** Every game this player has backups for, newest first. */
   latestPerGame(userId: number): SaveBackup[] {
     const rows = this.db
-      .prepare("SELECT * FROM saves WHERE id IN (SELECT MAX(id) FROM saves WHERE user_id = ? GROUP BY game_id) ORDER BY created_at DESC")
+      .prepare("SELECT * FROM saves WHERE id IN (SELECT MAX(id) FROM saves WHERE user_id = ? AND (runner IS NULL OR runner NOT LIKE 'state:%') GROUP BY game_id) ORDER BY created_at DESC")
       .all(userId) as unknown as SaveRow[];
     return rows.map(toBackup);
   }

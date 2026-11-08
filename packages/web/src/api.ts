@@ -35,6 +35,9 @@ import type {
   EmulatorInfo,
   Platform,
   ServerBiosFile,
+  RomCheck,
+  RomCheckProgress,
+  RomDat,
   GameDetail,
   GameInfo,
   GameListing,
@@ -588,6 +591,13 @@ export const api = {
   uploadBios: (file: File, emulator?: string) =>
     upload<ServerBiosFile>("PUT", `/api/emulation/bios/${encodeURIComponent(file.name)}${emulator ? `?emulator=${emulator}` : ""}`, file, "application/octet-stream"),
   deleteBios: (name: string) => call("DELETE", `/api/emulation/bios/${encodeURIComponent(name)}`),
+  /** No-Intro and Redump DATs, and how far a "check all" got. */
+  romDats: () => call<{ dats: RomDat[]; progress: RomCheckProgress }>("GET", "/api/emulation/dats"),
+  uploadDat: (file: File) => upload<RomDat>("POST", "/api/emulation/dats", file, "application/octet-stream"),
+  deleteDat: (id: number) => call("DELETE", `/api/emulation/dats/${id}`),
+  checkAllRoms: () => call<RomCheckProgress>("POST", "/api/emulation/rom-check"),
+  romCheck: (id: string) => call<RomCheck | null>("GET", `/api/games/${id}/rom-check`),
+  checkRom: (id: string) => call<RomCheck>("POST", `/api/games/${id}/rom-check`),
   /** LootDen's own recomps and the ones an admin added by GitHub link. */
   recomps: () => call<{ builtIn: RecompInfo[]; added: RecompInfo[] }>("GET", "/api/recomps"),
   addRecomp: (body: { repo: string; platform: string; titles: string[]; name?: string; game?: string }) => call<RecompInfo>("POST", "/api/recomps", body),

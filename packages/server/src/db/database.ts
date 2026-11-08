@@ -744,6 +744,35 @@ export const MIGRATIONS: string[] = [
   -- the tall library cover; clearing them lets the next sync fill them in again.
   UPDATE wishlist SET image = NULL WHERE image LIKE 'https://cdn.cloudflare.steamstatic.com/steam/apps/%/header.jpg';
   `,
+  `
+  -- No-Intro and Redump DATs for checking emulated games' ROMs, and what each check found.
+  CREATE TABLE rom_dats (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL UNIQUE,
+    version TEXT,
+    uploaded_at TEXT NOT NULL
+  );
+  CREATE TABLE rom_dat_roms (
+    dat_id INTEGER NOT NULL REFERENCES rom_dats(id) ON DELETE CASCADE,
+    game TEXT NOT NULL,
+    rom TEXT NOT NULL,
+    size INTEGER NOT NULL,
+    crc TEXT,
+    sha1 TEXT
+  );
+  CREATE INDEX rom_dat_roms_sha1 ON rom_dat_roms(sha1);
+  CREATE INDEX rom_dat_roms_crc ON rom_dat_roms(crc, size);
+  CREATE INDEX rom_dat_roms_dat ON rom_dat_roms(dat_id);
+  CREATE TABLE rom_checks (
+    game_id TEXT PRIMARY KEY,
+    status TEXT NOT NULL,
+    matched TEXT,
+    dat TEXT,
+    files TEXT NOT NULL DEFAULT '[]',
+    stamp TEXT NOT NULL DEFAULT '',
+    checked_at TEXT NOT NULL
+  );
+  `,
 ];
 
 export function openDatabase(file: string): Db {

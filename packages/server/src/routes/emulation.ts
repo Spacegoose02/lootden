@@ -5,6 +5,7 @@ import type { FastifyInstance, FastifyRequest } from "fastify";
 import { EMULATORS, PLATFORMS, platformFor, recompInfo, RECOMPS, type RecompArch, type RecompOs } from "@lootden/shared";
 import { HttpProblem, requireAdmin, requireUser, type AppContext } from "../context.js";
 import { browserPlayable, playPage } from "../emulation/browser-play.js";
+import { MAX_DAT_BYTES } from "../emulation/romcheck.js";
 import { addCustomRecomp, customRecomps, removeCustomRecomp } from "../emulation/recomps.js";
 import { ps2BrowserStatus, ps2PlayUrl, saveEmulationSettings, type EmulationSettings } from "../emulation/ps2-web.js";
 
@@ -142,5 +143,71 @@ export function emulationRoutes(app: FastifyInstance, ctx: AppContext, ps2Dir: s
     requireAdmin(req);
     if (!(await ctx.bios.remove(req.params.name))) throw new HttpProblem(404, "No such BIOS file");
     return { ok: true };
+  });
+
+  // ---- ROM checks: No-Intro and Redump DATs ------------------------------------------
+
+  app.get("/api/emulation/dats", async (req) => {
+    requireUser(req);
+    return { dats: ctx.roms.dats(), progress: ctx.roms.status() };
+  });
+
+  // Body: the DAT's XML (text/xml or application/octet-stream).
+  app.post("/api/emulation/dats", { bodyLimit: MAX_DAT_BYTES }, async (req) => {
+    requireAdmin(req);
+    const body = req.body;
+    let xml: string;
+    if (typeof body === "string") xml = body;
+    else if (Buffer.isBuffer(body)) xml = body.toString("utf8");
+    else if (body && typeof (body as Readable).pipe === "function") {
+      const parts: Buffer[] = [];
+      let size = 0;
+      for await (const c of body as Readable) {
+        size += (c as Buffer).length;
+        if (size > MAX_DAT_BYTES) throw new HttpProblem(413, "That DAT is too big");
+        parts.push(c as Buffer);
+      }
+      xml = Buffer.concat(parts).toString("utf8");
+    } else throw new HttpProblem(400, "Send the DAT file's XML");
+    if (/^PK\x03\x04/.test(xml.slice(0, 4))) throw new HttpProblem(400, "Unzip the DAT first and upload the .dat file inside");
+    try {
+      return ctx.roms.addDat(xml);
+    } catch (err) {
+      throw new HttpProblem(400, (err as Error).message);
+    }
+  });
+
+  app.delete<{ Params: { id: string } }>("/api/emulation/dats/:id", async (req) => {
+    requireAdmin(req);
+    if (!ctx.roms.removeDat(Number(req.params.id))) throw new HttpProblem(404, "No such DAT");
+    return { ok: true };
+  });
+
+  /** Checks every emulated game in the background; GET /api/emulation/dats shows how far it got. */
+  app.post("/api/emulation/rom-check", async (req) => {
+    requireAdmin(req);
+    if (!ctx.roms.dats().length) throw new HttpProblem(400, "Upload a No-Intro or Redump DAT first");
+    const games = ctx.library.list({}).flatMap((g) => (g.platform === "pc" ? [] : [ctx.library.get(g.id, false)!].filter(Boolean)));
+    return ctx.roms.checkAll(games);
+  });
+
+  app.get<{ Params: { id: string } }>("/api/games/:id/rom-check", async (req) => {
+    const user = requireUser(req);
+    const game = ctx.library.get(req.params.id, false);
+    if (!game || (user.kidMode && game.kidSafe !== true)) throw new HttpProblem(404, "Game not found");
+    return ctx.roms.result(game.id);
+  });
+
+  app.post<{ Params: { id: string } }>("/api/games/:id/rom-check", async (req) => {
+    requireAdmin(req);
+    const game = ctx.library.get(req.params.id, false);
+    if (!game) throw new HttpProblem(404, "Game not found");
+    if (game.platform === "pc") throw new HttpProblem(400, "ROM checks are for emulated games");
+    if (!ctx.roms.dats().length) throw new HttpProblem(400, "Upload a No-Intro or Redump DAT first");
+    try {
+      return await ctx.roms.check(game, true);
+    } catch (err) {
+      throw new HttpProblem(400, `Couldn't read the game's files: ${(err as Error).message}`);
+    }
   });
 }

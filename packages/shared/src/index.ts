@@ -19,6 +19,7 @@ export * from "./recomps.js";
 export * from "./roblox.js";
 export * from "./truckmods.js";
 export * from "./truckmodlist.js";
+export * from "./romcheck.js";
 
 export const API_VERSION = 1;
 
