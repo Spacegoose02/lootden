@@ -70,6 +70,14 @@ describe("game night", () => {
     const reset = (await app.inject({ method: "POST", url: "/api/game-nights/feed/reset", headers: mom.headers })).json() as { feed: string };
     assert.equal((await app.inject({ url: admin.feed })).statusCode, 404, "an old address stops working");
     assert.equal((await app.inject({ url: reset.feed })).statusCode, 200);
+    // Joining and leaving (Dendrop's RSVPs come in this way, with an admin token).
+    const seat = (who: { headers: Record<string, string> }, userId: number, going: boolean) =>
+      app.inject({ method: "PUT", url: `/api/game-nights/${night.id}/players/${userId}`, headers: who.headers, payload: { going } });
+    assert.equal((await seat(kid, mom.id, false)).statusCode, 403, "kids only change their own place");
+    assert.deepEqual(((await seat(kid, kid.id, false)).json() as GameNight).players.map((p) => p.name), ["Mama"]);
+    assert.equal((await seat(mom, mom.id, false)).statusCode, 400, "the last player can't leave");
+    assert.deepEqual(((await seat(mom, kid.id, true)).json() as GameNight).players.map((p) => p.name), ["Mama", "Lily"]);
+    assert.equal(((await app.inject({ url: "/api/game-nights", headers: kid.headers })).json() as { timeZone: string }).timeZone.length > 0, true);
     assert.equal((await app.inject({ method: "DELETE", url: `/api/game-nights/${night.id}`, headers: mom.headers })).statusCode, 200);
   });
 
