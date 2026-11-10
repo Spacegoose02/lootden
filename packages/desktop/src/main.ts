@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { existsSync } from "node:fs";
+import { appendFileSync, existsSync, renameSync, statSync } from "node:fs";
 import { mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -889,13 +889,29 @@ let overlayGameWindow = 0;
 const padWatch = new PadWatcher(
   () => settings.get().overlay ?? "view-menu",
   () => toggleOverlay(),
-  (msg) => console.warn(msg),
+  (msg) => overlayLog(msg),
 );
+
+/**
+ * What the in-game menu did, in overlay.log next to the settings (kept under 256 KB), so a menu
+ * that doesn't come up can be traced on the PC where it happens.
+ */
+function overlayLog(msg: string): void {
+  try {
+    const file = path.join(app.getPath("userData"), "overlay.log");
+    if (existsSync(file) && statSync(file).size > 256 * 1024) renameSync(file, `${file}.old`);
+    appendFileSync(file, `${new Date().toISOString()} ${msg}\n`);
+  } catch {
+    // Logging is best effort.
+  }
+}
 
 /** The watcher only runs while something is being played, so it costs nothing the rest of the time. */
 function updatePadWatch(): void {
   const busy = playing.size > 0 || nowRunning.size > 0 || lastPlayingNow.length > 0;
-  if (busy && (settings.get().overlay ?? "view-menu") !== "off") padWatch.start();
+  const want = busy && (settings.get().overlay ?? "view-menu") !== "off";
+  if (want !== padWatch.running) overlayLog(want ? `controller watcher on (combo: ${settings.get().overlay ?? "view-menu"})` : "controller watcher off");
+  if (want) padWatch.start();
   else padWatch.stop();
 }
 
@@ -919,6 +935,10 @@ function toggleOverlay(): void {
   padWatch.focusWindow(mine);
   win.webContents.focus();
   win.webContents.send("gm:overlay", overlayState(true));
+  overlayLog(`menu opened; LootDen window ${mine}, game window ${overlayGameWindow || "unknown"}`);
+  setTimeout(() => {
+    if (win && !win.isDestroyed()) overlayLog(`menu ${overlayOpen ? "open" : "closed"}; LootDen ${win.isFocused() ? "has" : "doesn't have"} focus, visible: ${win.isVisible()}, minimized: ${win.isMinimized()}`);
+  }, 500);
 }
 
 /** A window's HWND as a number, for the controller helper. */
@@ -937,6 +957,7 @@ function closeOverlay(backToGame: boolean): void {
   overlayGameWindow = 0;
   if (!backToGame) return;
   // In the Xbox full screen experience minimize does nothing, so the game has to be put in front.
+  overlayLog(`menu closed; back to game window ${game || "unknown"}`);
   padWatch.focusWindow(game);
   win.minimize();
 }

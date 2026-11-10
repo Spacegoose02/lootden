@@ -28,10 +28,11 @@ export function comboHeld(combo: OverlayCombo, buttons: number): boolean {
 }
 
 /**
- * Polls XInput's four pads 30 times a second and prints the buttons held (all pads together) and
- * the window in front whenever the buttons change. XInputGetStateEx (ordinal 100) also reports
- * the Xbox button; older Windows without it falls back to XInputGetState. Lines on stdin of the
- * form "focus <hwnd>" bring that window to the front.
+ * Polls XInput's four pads 30 times a second and prints the buttons held (all pads together), the
+ * window in front and its program whenever the buttons change. XInputGetStateEx (ordinal 100) also
+ * reports the Xbox button; older Windows without it falls back to XInputGetState. Lines on stdin of
+ * the form "focus <hwnd>" bring that window to the front and answer "focus <hwnd> <how> <front now>
+ * <its program>", where how is the step that worked or "refused".
  */
 const XINPUT_SCRIPT = String.raw`
 $ErrorActionPreference = 'Stop'
@@ -49,19 +50,41 @@ public static class LootDenPad {
   [DllImport("user32.dll")] static extern bool IsWindow(IntPtr h);
   [DllImport("user32.dll")] static extern bool IsIconic(IntPtr h);
   [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr h, IntPtr pid);
+  [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
   [DllImport("user32.dll")] static extern bool AttachThreadInput(uint from, uint to, bool attach);
+  [DllImport("user32.dll")] static extern void keybd_event(byte vk, byte scan, uint flags, UIntPtr extra);
+  [DllImport("user32.dll")] static extern void SwitchToThisWindow(IntPtr h, bool altTab);
   [DllImport("kernel32.dll")] static extern uint GetCurrentThreadId();
   static bool ex = true;
-  // Windows only lets the app in front hand the front to another window, so this joins the
-  // input of the window in front for a moment, which lets SetForegroundWindow through.
-  public static void Focus(IntPtr h) {
-    if (h == IntPtr.Zero || !IsWindow(h)) return;
+  static readonly object outLock = new object();
+  public static void Say(string line) { lock (outLock) { Console.Out.WriteLine(line); Console.Out.Flush(); } }
+  // The program that owns a window, for the log ("?" when it can't be read).
+  public static string Owner(IntPtr h) {
+    try { uint pid; GetWindowThreadProcessId(h, out pid); return pid == 0 ? "-" : System.Diagnostics.Process.GetProcessById((int)pid).ProcessName.Replace(' ', '_'); }
+    catch (Exception) { return "?"; }
+  }
+  // Windows only lets the app in front hand the front to another window. Each step is tried only
+  // when the one before didn't do it: a plain request, then joining the input of the window in
+  // front, then an Alt tap (which lifts the foreground lock), then the Alt+Tab switcher's call.
+  public static string Focus(IntPtr h) {
+    if (h == IntPtr.Zero || !IsWindow(h)) return "gone";
     if (IsIconic(h)) ShowWindow(h, 9);
+    BringWindowToTop(h);
+    if (SetForegroundWindow(h) && GetForegroundWindow() == h) return "plain";
     uint me = GetCurrentThreadId();
     uint fg = GetWindowThreadProcessId(GetForegroundWindow(), IntPtr.Zero);
     bool joined = fg != 0 && fg != me && AttachThreadInput(me, fg, true);
     try { BringWindowToTop(h); SetForegroundWindow(h); }
     finally { if (joined) AttachThreadInput(me, fg, false); }
+    if (GetForegroundWindow() == h) return "joined";
+    keybd_event(0x12, 0, 0, UIntPtr.Zero);
+    keybd_event(0x12, 0, 2, UIntPtr.Zero);
+    SetForegroundWindow(h);
+    System.Threading.Thread.Sleep(30);
+    if (GetForegroundWindow() == h) return "alt";
+    SwitchToThisWindow(h, true);
+    System.Threading.Thread.Sleep(60);
+    return GetForegroundWindow() == h ? "switch" : "refused";
   }
   public static void Listen() {
     var t = new System.Threading.Thread(() => {
@@ -70,7 +93,10 @@ public static class LootDenPad {
         var parts = line.Trim().Split(' ');
         long h;
         if (parts.Length == 2 && parts[0] == "focus" && long.TryParse(parts[1], out h)) {
-          try { Focus(new IntPtr(h)); } catch (Exception) { }
+          string how;
+          try { how = Focus(new IntPtr(h)); } catch (Exception e) { how = "error:" + e.GetType().Name; }
+          IntPtr now = GetForegroundWindow();
+          Say("focus " + h + " " + how + " " + now.ToInt64() + " " + Owner(now));
         }
       }
       Environment.Exit(0);
@@ -91,20 +117,21 @@ public static class LootDenPad {
 }
 '@
 [LootDenPad]::Listen()
+[LootDenPad]::Say("ready")
 $last = -1
 while ($true) {
   $b = [LootDenPad]::Held()
-  if ($b -ne $last) { [Console]::Out.WriteLine("$b " + [LootDenPad]::GetForegroundWindow().ToInt64()); [Console]::Out.Flush(); $last = $b }
+  if ($b -ne $last) { $w = [LootDenPad]::GetForegroundWindow(); [LootDenPad]::Say("$b " + $w.ToInt64() + " " + [LootDenPad]::Owner($w)); $last = $b }
   Start-Sleep -Milliseconds 33
 }
 `;
 
-/** One line from the Windows helper: the buttons held and, from newer helpers, the window in front. */
-export function parseHelperLine(line: string): [buttons: number | null, foreground: number | null] {
-  const [b, w] = line.trim().split(/\s+/);
+/** One line from the Windows helper: the buttons held and the window in front (and its program). */
+export function parseHelperLine(line: string): [buttons: number | null, foreground: number | null, program: string | null] {
+  const [b, w, p] = line.trim().split(/\s+/);
   const buttons = b ? Number(b) : NaN;
   const fg = w ? Number(w) : NaN;
-  return [Number.isInteger(buttons) ? buttons : null, Number.isSafeInteger(fg) ? fg : null];
+  return [Number.isInteger(buttons) ? buttons : null, Number.isSafeInteger(fg) ? fg : null, p || null];
 }
 
 /** Linux joystick events (struct js_event): button numbers on the xpad driver. */
@@ -122,6 +149,7 @@ export class PadWatcher {
   private foreground = 0;
   /** The window that was in front when the combo fired: the game, usually. */
   private comboWindow = 0;
+  private foregroundProgram: string | null = null;
 
   constructor(
     private readonly combo: () => OverlayCombo,
@@ -176,6 +204,7 @@ export class PadWatcher {
     if (!this.fired && now - this.heldSince >= 350) {
       this.fired = true;
       this.comboWindow = this.foreground;
+      this.log(`combo held; in front: window ${this.foreground} (${this.foregroundProgram ?? "unknown"})`);
       this.onCombo();
     }
   }
@@ -192,14 +221,21 @@ export class PadWatcher {
       buf += d;
       let nl;
       while ((nl = buf.indexOf("\n")) >= 0) {
-        const [n, fg] = parseHelperLine(buf.slice(0, nl));
+        const line = buf.slice(0, nl).trim();
         buf = buf.slice(nl + 1);
+        if (line === "ready" || line.startsWith("focus ")) {
+          this.log(`controller helper: ${line}`);
+          continue;
+        }
+        const [n, fg, prog] = parseHelperLine(line);
         if (n !== null) this.buttons = n;
         if (fg !== null) this.foreground = fg;
+        if (prog) this.foregroundProgram = prog;
       }
     });
     child.stderr?.on("data", (d: Buffer) => this.log(`controller watcher: ${String(d).trim().slice(0, 200)}`));
-    child.on("exit", () => {
+    child.on("exit", (code) => {
+      this.log(`controller helper stopped (${code})`);
       if (this.child === child) this.child = null;
     });
   }
