@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { readdir, stat } from "node:fs/promises";
 import path from "node:path";
-import { archiveKindOf, packageInfo, PC_PLATFORM, platformFor, romTitle, setupKindOf, versionFromFiles, type GameFile, type GameSummary } from "@lootden/shared";
+import { ANDROID_PLATFORM, archiveKindOf, packageInfo, PC_PLATFORM, platformFor, romTitle, setupKindOf, versionFromFiles, type GameFile, type GameSummary } from "@lootden/shared";
 
 /** What the scanner knows from disk alone; the library adds database and metadata fields. */
 export type ScannedGame = Pick<
@@ -66,6 +66,8 @@ async function walk(root: string, rel = ""): Promise<GameFile[]> {
 
 /** Top-level folders that hold emulated systems instead of being a game. */
 export const EMULATION_FOLDERS = /^(emulation|roms)$/i;
+/** A top-level Android folder holds Android games (APKs), as Emulation/android does. */
+export const ANDROID_FOLDERS = /^(android|apks?)$/i;
 /** Top-level folders whose entries are all updates (or DLC) for other games. */
 export const UPDATE_FOLDERS = /^(updates|patches)$/i;
 export const DLC_FOLDERS = /^dlcs?$/i;
@@ -120,6 +122,10 @@ export async function scanLibrary(gamesDir: string): Promise<ScannedGame[]> {
       games.push(...(await scanEmulation(gamesDir, entry.name)));
       continue;
     }
+    if (entry.isDirectory() && ANDROID_FOLDERS.test(entry.name)) {
+      games.push(...(await scanSystem(gamesDir, entry.name, ANDROID_PLATFORM)));
+      continue;
+    }
     if (entry.isDirectory() && (UPDATE_FOLDERS.test(entry.name) || DLC_FOLDERS.test(entry.name))) {
       const hint = UPDATE_FOLDERS.test(entry.name) ? "update" : "dlc";
       for (const inner of await readdir(path.join(gamesDir, entry.name), { withFileTypes: true }).catch(() => [])) {
@@ -141,14 +147,19 @@ async function scanEmulation(gamesDir: string, folder: string): Promise<ScannedG
   const systems = await readdir(path.join(gamesDir, folder), { withFileTypes: true }).catch(() => []);
   for (const system of systems) {
     if (!system.isDirectory() || IGNORED.test(system.name) || /^(bios|system|firmware)$/i.test(system.name)) continue;
-    const platform = platformFor(system.name).id;
-    const dir = `${folder}/${system.name}`;
-    const entries = await readdir(path.join(gamesDir, dir), { withFileTypes: true }).catch(() => []);
-    for (const entry of entries) {
-      if (IGNORED.test(entry.name)) continue;
-      const game = await scanEntry(gamesDir, `${dir}/${entry.name}`, entry.isDirectory(), platform);
-      if (game) games.push(game);
-    }
+    games.push(...(await scanSystem(gamesDir, `${folder}/${system.name}`, platformFor(system.name).id)));
+  }
+  return games;
+}
+
+/** One system's folder: every file or folder inside is one game. */
+async function scanSystem(gamesDir: string, dir: string, platform: string): Promise<ScannedGame[]> {
+  const games: ScannedGame[] = [];
+  const entries = await readdir(path.join(gamesDir, dir), { withFileTypes: true }).catch(() => []);
+  for (const entry of entries) {
+    if (IGNORED.test(entry.name)) continue;
+    const game = await scanEntry(gamesDir, `${dir}/${entry.name}`, entry.isDirectory(), platform);
+    if (game) games.push(game);
   }
   return games;
 }

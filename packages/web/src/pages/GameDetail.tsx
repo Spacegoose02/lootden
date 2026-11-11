@@ -4,7 +4,7 @@ import { StreamButton } from "../components/Streaming";
 import { EarnersAdmin, EarnLockBanner } from "../components/EarnLock";
 import { useEffect, useState, type CSSProperties } from "react";
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { browserRomFile, platformFor, truckGameFor, type GameDetail as Game } from "@lootden/shared";
+import { ANDROID_PLATFORM, browserRomFile, platformFor, truckGameFor, type GameDetail as Game } from "@lootden/shared";
 import { api, formatBytes, type ApiError, type Candidate, type Ps2BrowserStatus } from "../api";
 import { useAuth } from "../auth";
 import { Badges } from "../components/Badges";
@@ -123,7 +123,7 @@ export function GameDetail() {
           <Badges game={game} />
           {me?.user && !isAddon && <EarnLockBanner gameId={game.id} />}
           {game.platform === "pc" && <CompatBadges steamAppId={game.metadata?.steamAppId} />}
-          {game.platform !== "pc" && !isAddon && <RomBadge gameId={game.id} isAdmin={me?.role === "admin"} />}
+          {game.platform !== "pc" && game.platform !== ANDROID_PLATFORM && !isAddon && <RomBadge gameId={game.id} isAdmin={me?.role === "admin"} />}
           {me?.user && !isAddon && <ShelfButton gameId={game.id} />}
           {me?.user && !isAddon && <MarkButtons gameKey={game.id} />}
           {me?.user && !isAddon && <SendToPcButton gameId={game.id} title={game.title} sizeBytes={game.sizeBytes} platform={game.platform} />}
@@ -156,6 +156,13 @@ export function GameDetail() {
               <p className="muted small">
                 {game.platform === "pc" ? "" : "Opens the LootDen Android app on this game. "}
                 No app yet? It's on <Link to="/apps">Get the app</Link>.
+              </p>
+            </div>
+          ) : game.platform === ANDROID_PLATFORM ? (
+            <div className="install panel">
+              <p className="muted small">
+                An Android game: it installs on an Android handheld or phone with the LootDen Android app (<Link to="/apps">Get the app</Link>). Send it to one, or
+                open this page on the handheld.
               </p>
             </div>
           ) : (

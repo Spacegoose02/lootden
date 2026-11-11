@@ -14,10 +14,12 @@
     <uses-permission
         android:name="android.permission.READ_EXTERNAL_STORAGE"
         android:maxSdkVersion="32" />
-    <!-- Installing its own updates, downloaded from the LootDen server. -->
+    <!-- Installing its own updates and Android games from the LootDen server. -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!-- Uninstalling an Android game LootDen installed (Android still asks the player). -->
+    <uses-permission android:name="android.permission.REQUEST_DELETE_PACKAGES" />
     <uses-permission android:name="android.permission.VIBRATE" />
-    <!-- Finding the emulators to start games with (Android 11 and later hide other apps otherwise). -->
+    <!-- Finding the emulators to start games with, and the games and apps on the On this handheld page (Android 11 and later hide other apps otherwise). -->
     <uses-permission
         android:name="android.permission.QUERY_ALL_PACKAGES"
         tools:ignore="QueryAllPackagesPermission" />

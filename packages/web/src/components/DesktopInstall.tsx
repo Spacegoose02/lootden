@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { EMULATORS, platformFor, recompsFor, RECOMP_LOOKS, type GameDetail, type RecompInfo } from "@lootden/shared";
+import { Link, useNavigate } from "react-router-dom";
+import { ANDROID_PLATFORM, EMULATORS, platformFor, recompsFor, RECOMP_LOOKS, type GameDetail, type RecompInfo } from "@lootden/shared";
 import { api, formatBytes } from "../api";
 import { useAuth } from "../auth";
 import { androidApp, bridgeError, desktop, useDesktopGame, type AndroidEmulatorChoice, type Drive, type GameBananaModView, type RecompLookView, type RecompModsView, type RecompSettingView, type RecompSetup } from "../desktop";
@@ -19,6 +19,8 @@ export function DesktopInstall({ game, autoFocus }: { game: GameDetail; autoFocu
   const [busy, setBusy] = useState(false);
   const button = useRef<HTMLButtonElement>(null);
   const pcGame = (installed?.platform ?? "pc") === "pc";
+  /** An Android game (an APK), which the Android app installs and opens like any other app. */
+  const apkGame = game.platform === ANDROID_PLATFORM;
   const launch = useLaunchOptions(installed && pcGame ? `lootden:${game.id}` : null);
   /** Recomps that play this console game, and which are set up on this PC. */
   const [added, setAdded] = useState<RecompInfo[]>([]);
@@ -74,6 +76,19 @@ export function DesktopInstall({ game, autoFocus }: { game: GameDetail; autoFocu
 
   if (!desktop) return null;
   const bridge = desktop;
+  if (!androidApp && apkGame) {
+    return (
+      <div className="install panel">
+        <p>
+          <strong>This is an Android game.</strong> It installs on an Android handheld or phone with the LootDen Android app: send it there, or open this page in
+          the app.
+        </p>
+        <p className="muted small">
+          The Android app is on <Link to="/apps">Get the app</Link>.
+        </p>
+      </div>
+    );
+  }
   if (androidApp && game.platform === "pc") {
     return (
       <div className="install panel">
@@ -159,10 +174,10 @@ export function DesktopInstall({ game, autoFocus }: { game: GameDetail; autoFocu
     return (
       <div className="install panel">
         <div className="inline">
-          {(pcGame || emulatorName || running) && <button ref={button} className="primary" disabled={busy || running} onClick={() => run(() => bridge.play(game.id))}>
+          {(pcGame || apkGame || emulatorName || running) && <button ref={button} className="primary" disabled={busy || running} onClick={() => run(() => bridge.play(game.id))}>
             {running ? (paused ? "Paused" : "Playing…") : emulatorName ? `▶ Play in ${emulatorName}` : launch.state?.profile?.defaultAction ? `▶ Play with ${launch.state.profile.actions.find((a) => a.id === launch.state!.profile!.defaultAction)?.name ?? "mods"}` : "▶ Play"}
           </button>}
-          {!pcGame && !emulatorName && !running && !recomps.length && <span className="muted small">LootDen has no emulator for {platformFor(game.platform).name} yet.</span>}
+          {!pcGame && !apkGame && !emulatorName && !running && !recomps.length && <span className="muted small">LootDen has no emulator for {platformFor(game.platform).name} yet.</span>}
           {!running && <PlayWithButtons profile={launch.state?.profile ?? null} disabled={busy} onPlay={(id) => void run(() => bridge.play(game.id, id))} />}
           {!running &&
             bridge.recomps &&
@@ -297,7 +312,11 @@ export function DesktopInstall({ game, autoFocus }: { game: GameDetail; autoFocu
       )}
       {p?.type === "cancelled" && <p className="muted small">Cancelled. Installing again resumes where it stopped.</p>}
       {error && p?.type !== "cancelled" && <p className="error small">{error}</p>}
-      <p className="muted small">Archives are unpacked and removed automatically once the download finishes.</p>
+      <p className="muted small">
+        {apkGame
+          ? "Android's installer asks you to confirm, then the game is on this handheld's home screen and under Library, On this handheld."
+          : "Archives are unpacked and removed automatically once the download finishes."}
+      </p>
     </div>
   );
 }

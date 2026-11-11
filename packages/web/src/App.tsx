@@ -7,6 +7,7 @@ import { Layout } from "./components/Layout";
 import { installSpatialNavigation } from "./gamepad";
 import { Apps } from "./pages/Apps";
 import { Browser } from "./pages/Browser";
+import { DeviceApps } from "./pages/DeviceApps";
 import { Wishlist } from "./pages/Wishlist";
 import { Requests } from "./pages/Requests";
 import { Calendar } from "./pages/Calendar";
@@ -76,6 +77,7 @@ export function App() {
         <Route path="downloads" element={<Downloads />} />
         <Route path="apps" element={<Apps />} />
         <Route path="browser" element={<Browser />} />
+        <Route path="handheld" element={<DeviceApps />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>

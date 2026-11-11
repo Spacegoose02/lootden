@@ -69,3 +69,40 @@ describe("the Android app's bridge", () => {
     assert.deepEqual(methods.filter((m) => !appCore.includes(`"${m}" ->`)), []);
   });
 });
+
+describe("Android games on the server", () => {
+  it("are APKs in Emulation/android or a top-level Android folder", async () => {
+    const { mkdtemp, mkdir, writeFile, rm } = await import("node:fs/promises");
+    const { tmpdir } = await import("node:os");
+    const path = await import("node:path");
+    const { scanLibrary } = await import("../src/catalog/scanner.js");
+    const root = await mkdtemp(path.join(tmpdir(), "lootden-android-"));
+    try {
+      await mkdir(path.join(root, "Emulation", "android"), { recursive: true });
+      await writeFile(path.join(root, "Emulation", "android", "Stardew Valley.apk"), "apk");
+      await mkdir(path.join(root, "Android", "Dead Cells"), { recursive: true });
+      await writeFile(path.join(root, "Android", "Dead Cells", "base.apk"), "apk");
+      await writeFile(path.join(root, "Android", "Dead Cells", "split_config.arm64_v8a.apk"), "apk");
+      await writeFile(path.join(root, "Android", "Dead Cells", "main.1.com.playdigious.deadcells.mobile.obb"), "obb");
+      const games = await scanLibrary(root);
+      assert.deepEqual(
+        games.map((g) => [g.title, g.platform, g.fileCount]),
+        [
+          ["Dead Cells", "android", 3],
+          ["Stardew Valley", "android", 1],
+        ],
+      );
+      assert.ok(games.every((g) => g.files.every((f) => !f.archive)), "APKs are installed as they are, not unpacked");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("are a platform with no emulator, which the Android app installs itself", () => {
+    const android = PLATFORMS.find((p) => p.id === "android")!;
+    assert.equal(android.emulator, null);
+    const apps = readFileSync(new URL("../../../android/app/src/main/java/app/lootden/android/AndroidApps.kt", import.meta.url), "utf8");
+    const exts = [...(apps.match(/APK_PLATFORM = Platform\(PLATFORM, "Android", listOf\(([^)]*)\)\)/)?.[1] ?? "").matchAll(/"([^"]+)"/g)].map((m) => m[1]);
+    assert.deepEqual(exts, android.extensions);
+  });
+});
