@@ -322,6 +322,8 @@ export interface DesktopBridge {
   enableTruckTextSaves?(game: TruckGame): Promise<boolean>;
   /** The built-in web browser, over LootDen, on its start page or a web page (newer apps only). */
   openBrowser?(url?: string): Promise<void>;
+  /** Android (apps from 0.34): plays a PS2 game in the browser player on a secure, isolated page of the app's own. */
+  playInBrowser?(gameId: string): Promise<void>;
   /** This PC's store scanner settings, and adding a folder to it through the folder picker (newer apps only). */
   storeScan?(patch?: { disabled?: string[]; folders?: string[] }): Promise<StoreScanSettings>;
   /** Game streaming on this PC: Sunshine (host) and Moonlight (player). Apps from before 0.24 lack these. */
@@ -406,7 +408,8 @@ export interface AndroidEmulatorChoice {
   using: string | null;
   /** RetroArch's core for the system, when RetroArch plays it. */
   core: string | null;
-  options: Array<{ id: string; name: string; installed: boolean; store: string | null }>;
+  /** package and version say which build is on the handheld (apps from 0.34). */
+  options: Array<{ id: string; name: string; installed: boolean; store: string | null; package?: string | null; version?: string | null }>;
 }
 
 // Desktop apps from before the rename to LootDen expose the bridge as window.gameManager.

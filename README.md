@@ -331,7 +331,7 @@ same web UI, full screen and in landscape, with the controller navigation descri
 - **Console games** install to `ROMs/<system>/<game>` on internal storage or an SD card (the app
   asks for All files access the first time, so emulators can open what it downloads) and play
   in the emulator picked under Settings, You, This handheld. LootDen picks the best one
-  installed: DuckStation for PS1, NetherSX2/AetherSX2 for PS2, PPSSPP, Dolphin, melonDS, Flycast
+  installed: DuckStation for PS1, ARMSX2 or NetherSX2/AetherSX2 for PS2, PPSSPP, Dolphin, melonDS, Flycast
   or Redream, and RetroArch for everything else (download each core once in RetroArch's Online
   Updater). With none installed, Android asks which app to open the game with.
 - **Saves**: RetroArch battery saves go up to the server when you come back to LootDen and come

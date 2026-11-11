@@ -139,6 +139,7 @@ class AppCore private constructor(val context: Context) {
         "setAndroidEmulator" -> { prefs.setEmulator(a.str(0)!!, a.str(1)); emulators.overview() }
         "openStore" -> { openStore(a.str(0)!!); null }
         "openBrowser" -> { openBrowser(a.str(0)); null }
+        "playInBrowser" -> { Ps2PlayerActivity.open(context, this, a.str(0)!!); null }
         "offlineTheme" -> { prefs.theme = a.optJSONObject(0)?.let { t -> JSONObject().also { o -> t.keys().forEach { k -> t.optString(k).takeIf { v -> v.length < 64 }?.let { v -> o.put(k, v) } } }.toString() }; null }
         else -> throw IllegalArgumentException("The Android app doesn't do $method yet")
     }

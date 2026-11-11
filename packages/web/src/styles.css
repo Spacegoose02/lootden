@@ -459,6 +459,9 @@ main {
 .badge-muted {
   color: var(--muted);
 }
+.badge-installed {
+  border-color: var(--good, #59ff9a);
+}
 
 /* ---------- Home hero ------------------------------------------------------ */
 
