@@ -343,6 +343,10 @@ same web UI, full screen and in landscape, with the controller navigation descri
 - **PC games** can't run on Android: they stream. With Sunshine on the gaming PC (Settings,
   You, This computer there) and Moonlight on the handheld, 📺 Stream on a PC game's page wakes
   the PC if it's off and opens Moonlight.
+- **Web browser**: Browser in the menu opens the desktop app's built-in browser, with tabs,
+  bookmarks, the controller pointer and the same browser rules (kid-safe mode, blocked sites).
+  Links from news and game pages open there too, or in Android's browser if you pick that under
+  Settings. Magnet, torrent and NZB links go to the server's downloads, like on the desktop.
 - The app updates itself from Get the app, like the desktop app.
 
 Without the app, LootDen in Chrome on Android still browses the library, plays the browser

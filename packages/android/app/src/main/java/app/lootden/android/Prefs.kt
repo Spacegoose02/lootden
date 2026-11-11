@@ -38,6 +38,33 @@ class Prefs(private val context: Context) {
         sp.edit().putString("restored", all.toString()).apply()
     }
 
+    private fun str(key: String) = sp.getString(key, null)
+    private fun putStr(key: String, v: String?) = sp.edit().apply { if (v == null) remove(key) else putString(key, v) }.apply()
+
+    /** The browser's own bookmarks as JSON, or null for the starting set. */
+    var browserBookmarks: String?
+        get() = str("browserBookmarks")
+        set(v) = putStr("browserBookmarks", v)
+
+    var browserSearch: String
+        get() = str("browserSearch")?.takeIf { it in BrowserRules.SEARCH_ENGINES } ?: "google"
+        set(v) = putStr("browserSearch", v)
+
+    /** Where links from LootDen's pages open: "auto" or "on" (the built-in browser) or "off" (Android's). */
+    var browserLinks: String
+        get() = str("browserLinks")?.takeIf { it in setOf("auto", "on", "off") } ?: "auto"
+        set(v) = putStr("browserLinks", v)
+
+    /** The last browser rules from the server, for when it can't be reached. */
+    var browserPolicy: String?
+        get() = str("browserPolicy")
+        set(v) = putStr("browserPolicy", v)
+
+    /** The web UI's colours, so the browser's toolbar matches the theme. */
+    var theme: String?
+        get() = str("theme")
+        set(v) = putStr("theme", v)
+
     /** The name this device shows under on the PCs page and Now Playing. */
     val deviceName: String
         get() = Settings.Global.getString(context.contentResolver, Settings.Global.DEVICE_NAME)?.takeIf { it.isNotBlank() }

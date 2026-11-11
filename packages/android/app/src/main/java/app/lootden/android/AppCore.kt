@@ -138,11 +138,14 @@ class AppCore private constructor(val context: Context) {
         "androidEmulators" -> emulators.overview()
         "setAndroidEmulator" -> { prefs.setEmulator(a.str(0)!!, a.str(1)); emulators.overview() }
         "openStore" -> { openStore(a.str(0)!!); null }
+        "openBrowser" -> { openBrowser(a.str(0)); null }
+        "offlineTheme" -> { prefs.theme = a.optJSONObject(0)?.let { t -> JSONObject().also { o -> t.keys().forEach { k -> t.optString(k).takeIf { v -> v.length < 64 }?.let { v -> o.put(k, v) } } }.toString() }; null }
         else -> throw IllegalArgumentException("The Android app doesn't do $method yet")
     }
 
     private fun appSettings(patch: JSONObject?): JSONObject {
         if (patch != null && patch.has("autoUpdate")) prefs.autoUpdate = patch.getBoolean("autoUpdate")
+        patch?.optString("browserLinks")?.takeIf { it in setOf("auto", "on", "off") }?.let { prefs.browserLinks = it }
         return JSONObject()
             .put("closeToTray", false)
             .put("autoUpdate", prefs.autoUpdate)
@@ -150,6 +153,7 @@ class AppCore private constructor(val context: Context) {
             .put("trayAvailable", false)
             .put("loginItemSupported", false)
             .put("handheldActive", true)
+            .put("browserLinks", prefs.browserLinks)
     }
 
     private fun play(gameId: String): JSONObject {
@@ -209,6 +213,15 @@ class AppCore private constructor(val context: Context) {
     }
 
     /** The emulator's (or Moonlight's) store page: Google Play when there is one, else the web. */
+    /** LootDen's own browser, at a page when one is given (a new tab when it's already open). */
+    fun openBrowser(url: String?) = ui {
+        val from = activity ?: return@ui
+        from.startActivity(Intent(from, BrowserActivity::class.java).apply {
+            addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            if (url != null && BrowserRules.isBrowsable(url)) putExtra(BrowserActivity.EXTRA_URL, url)
+        })
+    }
+
     fun openStore(pkg: String) = ui {
         val market = Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=$pkg")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         runCatching { context.startActivity(market) }.onFailure {

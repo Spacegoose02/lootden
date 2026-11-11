@@ -163,6 +163,11 @@ class MainActivity : Activity() {
         }
     }
 
+    /** A page of the server's, from the browser (its Downloads button). */
+    fun openPath(path: String) {
+        if (origin.isNotEmpty()) web.loadUrl(origin + path)
+    }
+
     fun changeServer() {
         core.prefs.serverUrl = ""
         web.loadUrl("file:///android_asset/connect.html")
@@ -231,12 +236,14 @@ class MainActivity : Activity() {
     }
 
     private inner class Chrome : WebChromeClient() {
-        /** Links that open a new window (news, trailers, store pages) go to the browser. */
+        /** Links that open a new window (news, trailers, store pages) go to LootDen's browser, or Android's when chosen. */
         override fun onCreateWindow(view: WebView, isDialog: Boolean, isUserGesture: Boolean, resultMsg: Message): Boolean {
             val catcher = WebView(this@MainActivity)
             catcher.webViewClient = object : WebViewClient() {
                 override fun shouldOverrideUrlLoading(v: WebView, request: WebResourceRequest): Boolean {
-                    runCatching { startActivity(Intent(Intent.ACTION_VIEW, request.url)) }
+                    val url = request.url.toString()
+                    if (core.prefs.browserLinks != "off" && BrowserRules.isBrowsable(url)) core.openBrowser(url)
+                    else runCatching { startActivity(Intent(Intent.ACTION_VIEW, request.url)) }
                     return true
                 }
             }

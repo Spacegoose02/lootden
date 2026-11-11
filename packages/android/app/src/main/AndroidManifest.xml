@@ -59,6 +59,15 @@
             </intent-filter>
         </activity>
 
+        <!-- LootDen's built-in web browser: the desktop app's toolbar over tabs of its own. -->
+        <activity
+            android:name=".BrowserActivity"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboard|keyboardHidden|navigation|uiMode|density"
+            android:exported="false"
+            android:launchMode="singleTop"
+            android:screenOrientation="userLandscape"
+            android:windowSoftInputMode="adjustResize" />
+
         <!-- Hands ROMs to standalone emulators, and the downloaded update to the package installer. -->
         <provider
             android:name="androidx.core.content.FileProvider"
