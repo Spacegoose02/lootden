@@ -26,6 +26,7 @@ import { TruckModsPanel } from "../components/TruckMods";
 import { TruckModListPanel } from "../components/TruckModList";
 import { bridgeError, desktop, type LocalGameCopy } from "../desktop";
 import { LocalGame } from "../components/LocalGame";
+import { androidBrowser } from "../android";
 import { launchStoreGame, storeKey, useStoreGames } from "../components/StoreGameCard";
 import { KindBadge, UpdateActions, useInstalled, versionLabel } from "../components/UpdateActions";
 import type { GameSummary } from "@lootden/shared";
@@ -125,7 +126,7 @@ export function GameDetail() {
           {game.platform !== "pc" && !isAddon && <RomBadge gameId={game.id} isAdmin={me?.role === "admin"} />}
           {me?.user && !isAddon && <ShelfButton gameId={game.id} />}
           {me?.user && !isAddon && <MarkButtons gameKey={game.id} />}
-          {me?.user && !isAddon && game.platform === "pc" && <SendToPcButton gameId={game.id} title={game.title} sizeBytes={game.sizeBytes} />}
+          {me?.user && !isAddon && <SendToPcButton gameId={game.id} title={game.title} sizeBytes={game.sizeBytes} platform={game.platform} />}
           {me?.user && !isAddon && <ChatButtons gameId={game.id} />}
           {!isAddon && game.platform === "pc" && <StreamButton gameId={game.id} title={game.title} />}
           <AlsoOnStores gameId={game.id} />
@@ -143,6 +144,20 @@ export function GameDetail() {
             </div>
           ) : desktop ? (
             <DesktopInstall game={game} autoFocus={params.get("install") === "1" || document.documentElement.dataset.nav === "pad"} />
+          ) : androidBrowser ? (
+            <div className="install panel">
+              {game.platform === "pc" ? (
+                <p className="muted small">PC games can't run on Android. Stream it from a PC with Moonlight, through the LootDen Android app.</p>
+              ) : (
+                <a className="button primary" href={`lootden://install/${game.id}`}>
+                  {t("Install on this handheld")}
+                </a>
+              )}
+              <p className="muted small">
+                {game.platform === "pc" ? "" : "Opens the LootDen Android app on this game. "}
+                No app yet? It's on <Link to="/apps">Get the app</Link>.
+              </p>
+            </div>
           ) : (
           <div className="install panel">
             <a className="button primary" href={`lootden://install/${game.id}`}>

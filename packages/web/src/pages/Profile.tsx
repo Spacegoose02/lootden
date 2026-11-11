@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { AppOptions } from "../components/AppOptions";
+import { AndroidEmulators } from "../components/AndroidEmulators";
 import { Link } from "react-router-dom";
 import type { ApiTokenInfo, GameSummary, UserGameState } from "@lootden/shared";
 import { api, avatarUrl, formatPlaytime } from "../api";
@@ -250,7 +251,9 @@ export function ThisComputer() {
   if (!info) return null;
   return (
     <section className="panel">
-      <h2>This computer ({info.hostname})</h2>
+      <h2>
+        {info.platform === "android" ? "This handheld" : "This computer"} ({info.hostname})
+      </h2>
       {error && <p className="error">{error}</p>}
       <div className="inline">
         <span>
@@ -288,6 +291,7 @@ export function ThisComputer() {
       <LinuxRunners />
       <SteamShortcuts />
       <StoreScan />
+      <AndroidEmulators />
       <StreamingSetup />
       <AppOptions />
     </section>

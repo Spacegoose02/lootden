@@ -62,6 +62,10 @@ export function presenceRoutes(app: FastifyInstance, ctx: AppContext) {
     const game = ctx.library.get(String(req.body?.gameId ?? ""), false);
     if (!game || (p.kidMode && game.kidSafe !== true)) throw new HttpProblem(404, "No such game");
     if (game.kind !== "game") throw new HttpProblem(400, "Updates and DLC are applied from the Updates page");
+    // The Android app plays console games in emulators; PC games stream to it instead.
+    if (game.platform === "pc" && ctx.presence.pcs().find((pc) => pc.name === req.params.device)?.platform === "android") {
+      throw new HttpProblem(400, `${req.params.device} is an Android handheld: PC games can't run there. Stream it with Moonlight instead.`);
+    }
     return fail(() => ctx.presence.send(req.params.device, p.user?.displayName ?? "A grown-up", { kind: "install", gameId: game.id, title: game.title }));
   });
 
@@ -87,7 +91,7 @@ export function presenceRoutes(app: FastifyInstance, ctx: AppContext) {
     return ctx.presence
       .pcs()
       .filter((pc) => p.role === "admin" || (p.user && ctx.presence.lastUserOf(pc.name) === p.user.id))
-      .map((pc) => ({ name: pc.name, online: pc.online, lastUser: pc.lastUser, freeBytes: pc.disks.reduce((n, d) => Math.max(n, d.freeBytes), 0) }));
+      .map((pc) => ({ name: pc.name, online: pc.online, lastUser: pc.lastUser, freeBytes: pc.disks.reduce((n, d) => Math.max(n, d.freeBytes), 0), platform: pc.platform }));
   });
 
   /** Game streaming: PCs that have this game in Sunshine. `from` leaves the asking PC out. */

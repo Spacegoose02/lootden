@@ -16,6 +16,7 @@ describe("the rename to LootDen", () => {
     for (const n of ["lootden.exe", "lootden-cli-win-x64.zip", "gm.exe", "gm-win-x64.zip"]) assert.equal(describeFile(n).kind, "Command-line client", n);
     assert.equal(describeFile("lootden-cli-linux-x64.tar.gz").platform, "linux");
     assert.equal(describeFile("LootDen-Setup-0.7.0.exe").kind, "Desktop app (installer)");
+    assert.deepEqual(describeFile("LootDen-0.32.0.apk"), { platform: "android", kind: "Android app" });
   });
 
   it("draws a raccoon for every seed, the same one each time", () => {

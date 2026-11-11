@@ -505,7 +505,7 @@ export interface ClientFile {
   name: string;
   size: number;
   modifiedAt: string;
-  platform: "windows" | "linux" | "playnite" | "other";
+  platform: "windows" | "linux" | "android" | "playnite" | "other";
   kind: string;
 }
 
@@ -898,7 +898,7 @@ export const api = {
   planGameNight: (n: { title?: string; date: string; time: string; players: number[]; gameId?: string | null; note?: string; goalId?: string | null }) => call<GameNight>("POST", "/api/game-nights", n),
   cancelGameNight: (id: number) => call("DELETE", `/api/game-nights/${id}`),
   resetGameNightFeed: () => call<{ feed: string }>("POST", "/api/game-nights/feed/reset"),
-  pcTargets: () => call<Array<{ name: string; online: boolean; lastUser: string | null; freeBytes: number }>>("GET", "/api/pcs/targets"),
+  pcTargets: () => call<Array<{ name: string; online: boolean; lastUser: string | null; freeBytes: number; platform: string | null }>>("GET", "/api/pcs/targets"),
   libraryRefresh: () => call<{ candidates: RefreshCandidate[]; jobs: RefreshJob[] }>("GET", "/api/library/refresh"),
   refreshFromPc: (gameId: string, device: string) => call<RefreshJob>("POST", `/api/games/${encodeURIComponent(gameId)}/refresh`, { device }),
   sendToPc: (device: string, gameId: string) => call("POST", `/api/pcs/${encodeURIComponent(device)}/install`, { gameId }),

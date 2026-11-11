@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <!-- Games can be on internal storage or an SD card, so any path the app can read. -->
+    <root-path name="root" path="." />
+    <cache-path name="cache" path="." />
+</paths>
