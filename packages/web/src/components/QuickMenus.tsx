@@ -111,6 +111,7 @@ function QuickMenu({ onClose }: { onClose: () => void }) {
       <Item onClick={go("/")}>Home</Item>
       <Item onClick={go("/library?tab=installed")}>Installed games</Item>
       <Item onClick={go("/library")}>Library</Item>
+      {desktop?.deviceApps && <Item onClick={go("/handheld")}>Android games and apps</Item>}
       {admin && <Item onClick={go("/downloads")}>Downloads</Item>}
       <Item
         onClick={() => {

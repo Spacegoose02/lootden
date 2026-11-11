@@ -9,7 +9,7 @@ const API = "https://api.thegamesdb.net/v1";
 /** TheGamesDB platform ids for LootDen's platforms. */
 const PLATFORMS: Record<string, number> = {
   pc: 1, nes: 7, snes: 6, n64: 3, gb: 4, gbc: 41, gba: 5, nds: 8, gamecube: 2, wii: 9,
-  genesis: 18, saturn: 17, dreamcast: 16, ps1: 10, ps2: 11, ps3: 12, psp: 13, xbox: 14,
+  genesis: 18, saturn: 17, dreamcast: 16, ps1: 10, ps2: 11, ps3: 12, psp: 13, xbox: 14, android: 4916,
 };
 
 interface TgdbGame {

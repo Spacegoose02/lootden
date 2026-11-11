@@ -156,6 +156,8 @@ export function Layout() {
       pages: [
         { to: "/library", label: "Games" },
         { to: "/emulation", label: "Emulation" },
+        // The Android app: Android games and apps installed on the handheld itself.
+        ...(desktop?.deviceApps ? [{ to: "/handheld", label: "On this handheld" }] : []),
         { to: "/updates", label: "Updates" },
         // Inside the desktop app the page is still there (Profile links to it for the Playnite extension), just not in the menu.
         ...(desktop ? [] : [{ to: "/apps", label: "Get the app" }]),

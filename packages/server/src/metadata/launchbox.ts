@@ -18,7 +18,7 @@ const PLATFORMS: Record<string, string> = {
   pc: "Windows", nes: "Nintendo Entertainment System", snes: "Super Nintendo Entertainment System", n64: "Nintendo 64",
   gb: "Nintendo Game Boy", gbc: "Nintendo Game Boy Color", gba: "Nintendo Game Boy Advance", nds: "Nintendo DS",
   gamecube: "Nintendo GameCube", wii: "Nintendo Wii", genesis: "Sega Genesis", saturn: "Sega Saturn", dreamcast: "Sega Dreamcast",
-  ps1: "Sony Playstation", ps2: "Sony Playstation 2", ps3: "Sony Playstation 3", psp: "Sony PSP", xbox: "Microsoft Xbox",
+  ps1: "Sony Playstation", ps2: "Sony Playstation 2", ps3: "Sony Playstation 3", psp: "Sony PSP", xbox: "Microsoft Xbox", android: "Android",
 };
 const COVER_TYPES = ["Box - Front", "Box - Front - Reconstructed", "Fanart - Box - Front"];
 const SHOT_TYPES = ["Screenshot - Gameplay", "Screenshot - Game Title", "Fanart - Background"];

@@ -42,6 +42,7 @@ class AppCore private constructor(val context: Context) {
     val saves = Saves(this)
     val presence = Presence(this)
     val updater = Updater(this)
+    val apps = AndroidApps(this)
     val io = Executors.newCachedThreadPool()
     private val main = Handler(Looper.getMainLooper())
 
@@ -122,7 +123,7 @@ class AppCore private constructor(val context: Context) {
         "drives" -> JSONArray(drives())
         "chooseFolder" -> activity?.pickFolder()
         "setInstallDir" -> a.str(0)!!.also { prefs.installDir = it }
-        "installed" -> library.forPage()
+        "installed" -> { apps.forgetRemoved(); library.forPage() }
         "install" -> installer.install(a.str(0)!!, a.str(1))
         "cancel" -> installer.cancel(a.str(0)!!).let { null }
         "play" -> play(a.str(0)!!)
@@ -140,6 +141,13 @@ class AppCore private constructor(val context: Context) {
         "openStore" -> { openStore(a.str(0)!!); null }
         "openBrowser" -> { openBrowser(a.str(0)); null }
         "playInBrowser" -> { Ps2PlayerActivity.open(context, this, a.str(0)!!); null }
+        "deviceApps" -> apps.list()
+        "setDeviceAppKind" -> apps.setKind(a.str(0)!!, a.str(1))
+        "launchApp" -> { apps.launch(a.str(0)!!); null }
+        "appDetails" -> { apps.openSettings(a.str(0)!!); null }
+        "uninstallApp" -> { apps.uninstallPackage(a.str(0)!!); null }
+        "storeGames" -> apps.storeGames()
+        "launchStore" -> { launchStore(a.str(0)!!); null }
         "offlineTheme" -> { prefs.theme = a.optJSONObject(0)?.let { t -> JSONObject().also { o -> t.keys().forEach { k -> t.optString(k).takeIf { v -> v.length < 64 }?.let { v -> o.put(k, v) } } }.toString() }; null }
         else -> throw IllegalArgumentException("The Android app doesn't do $method yet")
     }
@@ -166,11 +174,13 @@ class AppCore private constructor(val context: Context) {
         val retro = emu?.id == "retroarch"
         if (retro) runCatching { saves.restore(gameId, rom) }
         val before = if (retro) saves.snapshot(rom) else emptyMap()
-        val started = emulators.launch(platform, rom)
+        val android = platform == AndroidApps.PLATFORM
+        if (android) apps.launch(g.optString("package"))
+        val started = if (android) null else emulators.launch(platform, rom)
         session = Session(gameId, g.optString("title", gameId), platform, rom, started?.id, System.currentTimeMillis(), before)
         emit(JSONObject().put("gameId", gameId).put("type", "playing"))
         io.execute { runCatching { presence.beat() } }
-        return JSONObject().put("executable", started?.name ?: "Open with")
+        return JSONObject().put("executable", started?.name ?: if (android) g.optString("title", "the game") else "Open with")
     }
 
     /** The player came back to LootDen: the game's session is over. */
@@ -197,6 +207,8 @@ class AppCore private constructor(val context: Context) {
         val dir = File(g.optString("dir"))
         // Only the game's own folder, never a ROMs folder someone pointed the record at.
         if (dir.isDirectory && dir.parentFile?.name == g.optString("platform")) dir.deleteRecursively()
+        // An Android game: Android asks the player to confirm removing the app itself.
+        g.optString("package").takeIf { it.isNotEmpty() && g.optString("platform") == AndroidApps.PLATFORM && apps.isInstalled(it) }?.let { apps.uninstallPackage(it) }
         library.remove(gameId)
         server.activity(gameId, prefs.deviceName, "uninstalled")
         return true
@@ -211,6 +223,18 @@ class AppCore private constructor(val context: Context) {
         val launch = context.packageManager.getLaunchIntentForPackage(pkg) ?: throw IllegalStateException("Couldn't open Moonlight")
         ui { context.startActivity(launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
         return JSONObject().put("opened", "moonlight")
+    }
+
+    /** A store game's Play: Android games on this handheld (android-app://), else the link's own app. */
+    private fun launchStore(url: String) {
+        if (url.startsWith(AndroidApps.SCHEME)) return apps.launch(url)
+        if (!Regex("^[a-z][a-z0-9+.-]*:", RegexOption.IGNORE_CASE).containsMatchIn(url) || url.startsWith("javascript:", true) || url.startsWith("file:", true) || url.startsWith("intent:", true)) {
+            throw IllegalArgumentException("That isn't a link LootDen can open")
+        }
+        ui {
+            runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+                .onFailure { notice("No app on this handheld opens that game", url.substringBefore(':')) }
+        }
     }
 
     /** The emulator's (or Moonlight's) store page: Google Play when there is one, else the web. */

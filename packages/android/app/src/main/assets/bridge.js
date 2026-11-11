@@ -40,6 +40,7 @@
     "info", "drives", "chooseFolder", "setInstallDir", "installed", "install", "cancel", "play", "uninstall", "openFolder",
     "changeServer", "toggleFullscreen", "appSettings", "appUpdate", "quit", "streaming", "streamGame",
     "androidEmulators", "setAndroidEmulator", "openStore", "openBrowser", "offlineTheme", "playInBrowser",
+    "deviceApps", "setDeviceAppKind", "launchApp", "appDetails", "uninstallApp", "storeGames", "launchStore",
   ];
   const bridge = {
     version: 1,

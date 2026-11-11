@@ -10,7 +10,8 @@ type Target = { name: string; online: boolean; lastUser: string | null; freeByte
  */
 export function SendToPcButton({ gameId, title, sizeBytes, platform }: { gameId: string; title: string; sizeBytes: number; platform: string }) {
   const [all, setTargets] = useState<Target[] | null>(null);
-  const targets = all?.filter((t) => platform !== "pc" || t.platform !== "android") ?? null;
+  // PC games only go to PCs, Android games (APKs) only to Android handhelds.
+  const targets = all?.filter((t) => (platform === "pc" ? t.platform !== "android" : platform === "android" ? t.platform === "android" : true)) ?? null;
   const handhelds = targets?.some((t) => t.platform === "android") ?? false;
   const [open, setOpen] = useState(false);
   const [note, setNote] = useState<{ text: string; error?: boolean } | null>(null);

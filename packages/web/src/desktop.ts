@@ -242,6 +242,25 @@ export interface LocalGameCopy {
   cover: string | null;
 }
 
+/** An app with a home screen icon on the Android handheld (the Android app's On this handheld page). */
+export interface DeviceApp {
+  package: string;
+  label: string;
+  /** In Games: the player's choice, else what Android says (detectedGame). */
+  game: boolean;
+  detectedGame: boolean;
+  /** Came with the handheld (Settings, Camera), not installed later. */
+  system: boolean;
+  version: string | null;
+  installedAt: string | null;
+  updatedAt: string | null;
+  sizeBytes: number;
+  /** The LootDen game it was installed from, when LootDen installed it. */
+  gameId: string | null;
+  /** A data: URL. */
+  icon: string | null;
+}
+
 /** A screenshot found on this PC: a token stands in for its path. */
 export interface LocalShot {
   token: string;
@@ -296,6 +315,13 @@ export interface DesktopBridge {
   localGame?(gameId: string): Promise<LocalGameCopy | null>;
   /** Library add-ons: store games installed on this PC, and starting one through its launcher (apps from 0.14.0). */
   storeGames?(): Promise<LocalStoreGame[]>;
+  /** Android app: the games and apps on this handheld (On this handheld), opening one, and sorting it into Games or Apps. */
+  deviceApps?(): Promise<DeviceApp[]>;
+  setDeviceAppKind?(pkg: string, kind: "game" | "app" | null): Promise<DeviceApp[]>;
+  launchApp?(pkg: string): Promise<void>;
+  /** Android's own page for the app: storage, permissions, uninstall. */
+  appDetails?(pkg: string): Promise<void>;
+  uninstallApp?(pkg: string): Promise<void>;
   /** A game's screenshots already on this PC (Steam's and Xbox Game Bar's), sharing one to the family wall, and opening one (newer apps only). */
   localScreenshots?(q: { steamAppId?: string | null; title: string }): Promise<LocalShot[]>;
   shareLocalScreenshot?(token: string, gameId?: string | null, title?: string | null): Promise<void>;

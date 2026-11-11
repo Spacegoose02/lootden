@@ -140,7 +140,8 @@ or folder inside a system's folder is one game, shown in the **Emulation** secti
 ```
 
 System folders: `ps1` (or `psx`), `ps2`, `ps3`, `xbox`, `psp`, `nes`, `snes`, `n64`, `gb`,
-`gbc`, `gba`, `nds`, `gamecube`, `wii`, `genesis` (or `megadrive`), `saturn`, `dreamcast`.
+`gbc`, `gba`, `nds`, `gamecube`, `wii`, `genesis` (or `megadrive`), `saturn`, `dreamcast`,
+`android`.
 
 - **Desktop app:** **Emulation, Emulators and BIOS** sets up RetroArch, DuckStation,
   PCSX2, RPCS3 and xemu from their official releases. BIOS files must come from consoles
@@ -151,6 +152,30 @@ System folders: `ps1` (or `psx`), `ps2`, `ps3`, `xbox`, `psp`, `nes`, `snes`, `n
   PS1 and PSP play in the browser with EmulatorJS, sharing saves with the desktop app.
   Set `LOOTDEN_EMULATORJS_DATA` to a self-hosted copy of EmulatorJS's `data/` folder to
   avoid its CDN.
+
+## Android games
+
+Android games are APKs, in `Emulation/android` or a top-level `Android` folder. One file or
+folder per game:
+
+```
+/games/Android/
+  Stardew Valley.apk
+  Dead Cells/base.apk + split_config.arm64_v8a.apk + main.1.com.playdigious.deadcells.mobile.obb
+  Minecraft.xapk
+```
+
+- **LootDen Android app:** **Install** downloads the game, unpacks `.xapk` and `.apks`
+  bundles, copies `.obb` data to `Android/obb/<package>`, and hands the APKs (split APKs
+  together) to Android's installer, which asks you to confirm. The first time, Android asks
+  to allow LootDen to install apps. **Play** opens the game and counts play time;
+  **Uninstall** asks Android to remove it.
+- **Library, On this handheld** (Android app only) lists every Android game and app
+  installed on the handheld, from LootDen or not, to open from LootDen. Games are what
+  Android files under Games; move anything between Games and Apps from its ⋯ menu.
+  Installed Android games also show in the library's other-stores view as **Android**, with
+  covers looked up by name.
+- PCs can't install Android games; **Send to** offers your Android handhelds.
 
 ## Imports from the download tools
 

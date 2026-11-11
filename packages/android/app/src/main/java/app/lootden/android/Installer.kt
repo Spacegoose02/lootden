@@ -45,7 +45,8 @@ class Installer(private val app: AppCore) {
         val platformId = game.optString("platform", "pc")
         if (platformId == "pc") throw IllegalStateException("PC games can't run on Android. Use Stream to play it from a PC with Moonlight, or Send to PC.")
         if (game.optString("kind", "game") != "game") throw IllegalStateException("Updates and DLC are for PC games")
-        val platform = platformById(platformId) ?: throw IllegalStateException("LootDen can't play ${platformId.uppercase()} games on Android yet")
+        val platform = (if (platformId == AndroidApps.PLATFORM) AndroidApps.APK_PLATFORM else platformById(platformId))
+            ?: throw IllegalStateException("LootDen can't play ${platformId.uppercase()} games on Android yet")
         app.requireStorage()
 
         val root = File(dirArg?.takeIf { it.isNotBlank() } ?: app.prefs.installDir)
@@ -93,6 +94,14 @@ class Installer(private val app: AppCore) {
             removed += rel
         }
         if (removed.isNotEmpty()) app.emit(JSONObject().put("gameId", gameId).put("type", "removed").put("files", org.json.JSONArray(removed)))
+
+        // Android games are APKs: Android's package installer puts them on the handheld.
+        if (platform.id == AndroidApps.PLATFORM) {
+            app.library.put(app.apps.finishInstall(gameId, game, gameDir))
+            app.server.activity(gameId, app.prefs.deviceName, "installed")
+            app.emit(JSONObject().put("gameId", gameId).put("type", "done").put("gameDir", gameDir.path))
+            return JSONObject().put("gameDir", gameDir.path)
+        }
 
         val all = gameDir.walkTopDown().filter { it.isFile && !it.name.endsWith(".part") }.map { it.relativeTo(gameDir).path.replace('\\', '/') }.toList()
         val rom = pickRom(all, platform) ?: all.maxByOrNull { File(gameDir, it).length() }

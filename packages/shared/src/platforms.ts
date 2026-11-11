@@ -52,10 +52,15 @@ export const PLATFORMS: Platform[] = [
   p({ id: "genesis", name: "Sega Genesis", short: "Genesis", aliases: ["megadrive", "md"], coverAspect: 0.7, color: "#1f1f1f", emulator: "retroarch", extensions: ["md", "gen", "smd", "bin", "zip", "7z"], igdb: 29, rawg: 167, browserCore: "segaMD" }),
   p({ id: "saturn", name: "Sega Saturn", short: "Saturn", aliases: ["ss"], coverAspect: 0.7, color: "#4a6fb5", emulator: "retroarch", extensions: ["m3u", "cue", "chd"], igdb: 32, rawg: 107, browserCore: "segaSaturn" }),
   p({ id: "dreamcast", name: "Dreamcast", short: "DC", aliases: ["dc"], coverAspect: 1, color: "#f26522", emulator: "retroarch", extensions: ["m3u", "gdi", "chd", "cdi"], igdb: 23, rawg: 106 }),
+  // Android games as APKs (split APKs and .obb data in the game's folder), installed and opened by the LootDen Android app.
+  p({ id: "android", name: "Android", short: "Android", aliases: ["apk", "apks"], coverAspect: 3 / 4, color: "#3ddc84", emulator: null, extensions: ["apk", "xapk", "apks"], igdb: 34, rawg: 21 }),
 ];
 
 /** The PC platform: the default for anything outside Emulation/. */
 export const PC_PLATFORM = "pc";
+
+/** Android games: APKs the LootDen Android app installs on the handheld itself, no emulator. */
+export const ANDROID_PLATFORM = "android";
 
 /** Finds a platform by id or folder alias; unknown folders become their own basic platform. */
 export function platformFor(folder: string): Platform {

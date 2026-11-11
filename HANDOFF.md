@@ -18,7 +18,7 @@ installs games from it. Owner: Spacegoose02. Repository: `Spacegoose02/lootden` 
 | `packages/client` | Download, unpack, install and play logic, shared by the desktop app and the `lootden` CLI. `prepare.ts` installs and uploads installer games |
 | `packages/web` | React UI. `gamepad.ts` is all controller and arrow-key navigation, `theme.ts` the themes |
 | `packages/desktop` | Electron app: `main.ts` (windows, tray, IPC, start with Windows, full screen), `preload.ts` (the bridge the web UI calls) |
-| `packages/android` | Android app (Kotlin, Gradle, not an npm workspace): a full-screen WebView of the web UI with the same `window.lootden` bridge (`assets/bridge.js`, `AppCore.kt`). Installs console games, starts emulators (`Emulators.kt`, whose platforms a server test keeps in step with `packages/shared`), RetroArch save sync, heartbeat. Built by CI and the release workflow |
+| `packages/android` | Android app (Kotlin, Gradle, not an npm workspace): a full-screen WebView of the web UI with the same `window.lootden` bridge (`assets/bridge.js`, `AppCore.kt`). Installs console games, starts emulators (`Emulators.kt`, whose platforms a server test keeps in step with `packages/shared`), RetroArch save sync, heartbeat. `AndroidApps.kt` installs Android games (APKs, platform `android`) through PackageInstaller and lists the handheld's own games and apps for the web UI's On this handheld page (`/handheld`) and as the "Android" store. Built by CI and the release workflow |
 | `playnite/` | Playnite library extension (C#) |
 | `brand/` | Logos. See [brand/README.md](brand/README.md) |
 | `docs/` | `CONFIGURATION.md` (every setting) and `LIBRARY.md` (games folder layout) |
