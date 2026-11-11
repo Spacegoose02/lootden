@@ -20,6 +20,31 @@ val keystoreProps = Properties().apply {
 fun signingValue(env: String, prop: String): String? = System.getenv(env)?.takeIf { it.isNotBlank() } ?: keystoreProps.getProperty(prop)
 val storePath = signingValue("LOOTDEN_ANDROID_KEYSTORE", "storeFile")
 
+// The built-in browser's toolbar, start page and blocked page are the desktop app's own, copied in.
+abstract class DesktopPages : DefaultTask() {
+    @get:InputFiles
+    abstract val pages: ConfigurableFileCollection
+
+    @get:OutputDirectory
+    abstract val out: DirectoryProperty
+
+    @TaskAction
+    fun copy() {
+        val dir = out.get().asFile
+        dir.deleteRecursively()
+        dir.mkdirs()
+        pages.forEach { it.copyTo(dir.resolve(it.name), overwrite = true) }
+    }
+}
+
+val desktopPages = tasks.register<DesktopPages>("desktopPages") {
+    pages.from(rootDir.resolve("../desktop/setup/browser.html"), rootDir.resolve("../desktop/setup/blocked.html"))
+}
+
+androidComponents {
+    onVariants { variant -> variant.sources.assets?.addGeneratedSourceDirectory(desktopPages, DesktopPages::out) }
+}
+
 android {
     namespace = "app.lootden.android"
     compileSdk = 35

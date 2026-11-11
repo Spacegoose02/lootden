@@ -39,7 +39,7 @@
   const METHODS = [
     "info", "drives", "chooseFolder", "setInstallDir", "installed", "install", "cancel", "play", "uninstall", "openFolder",
     "changeServer", "toggleFullscreen", "appSettings", "appUpdate", "quit", "streaming", "streamGame",
-    "androidEmulators", "setAndroidEmulator", "openStore",
+    "androidEmulators", "setAndroidEmulator", "openStore", "openBrowser", "offlineTheme",
   ];
   const bridge = {
     version: 1,

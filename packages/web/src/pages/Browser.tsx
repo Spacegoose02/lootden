@@ -20,7 +20,7 @@ export function Browser() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.state]);
 
-  if (!desktop?.openBrowser) return <p className="muted center">The web browser is part of the LootDen desktop app. Update the app to use it.</p>;
+  if (!desktop?.openBrowser) return <p className="muted center">The web browser is part of the LootDen app. Update the app to use it.</p>;
   return (
     <div className="browser-page">
       <h1>Web browser</h1>
