@@ -24,7 +24,7 @@ import { GameAchievementsPanel, GameSessionsPanel } from "../components/Achievem
 import { LocalScreenshots } from "../components/LocalScreenshots";
 import { TruckModsPanel } from "../components/TruckMods";
 import { TruckModListPanel } from "../components/TruckModList";
-import { bridgeError, desktop, type LocalGameCopy } from "../desktop";
+import { androidApp, bridgeError, desktop, type LocalGameCopy } from "../desktop";
 import { LocalGame } from "../components/LocalGame";
 import { androidBrowser } from "../android";
 import { launchStoreGame, storeKey, useStoreGames } from "../components/StoreGameCard";
@@ -582,12 +582,52 @@ function PlayInBrowserButton({ game }: { game: Game }) {
   // Switched off or not in this image: nothing to offer. Only a missing BIOS is worth a word.
   if (!status || !status.enabled || !status.installed) return null;
   if (!status.available) return <p className="muted small">PS2 in the browser: {status.reason}</p>;
+  // The Android app opens it on a secure page of its own, since the server is usually plain http.
+  if (androidApp && desktop?.playInBrowser) return <AndroidPs2Button gameId={game.id} />;
+  // The emulator's threads need a cross-origin isolated page, which browsers only allow over https
+  // (or on localhost). Over http it would only stop with a confusing "service worker" message.
+  if (!window.isSecureContext)
+    return (
+      <p className="muted small">
+        PS2 in the browser needs LootDen opened over https, and this address is plain http, so the browser won't run the emulator.{" "}
+        {androidApp
+          ? "Update the LootDen app to play it in the app's own player, or install ARMSX2 and use Install above."
+          : "Use the desktop app, or open LootDen through an https address."}
+      </p>
+    );
   return (
     <div className="inline">
       <a className="button primary" href={`/play/${game.id}`}>
         ▶ Play in the browser (experimental)
       </a>
       <span className="muted small">Needs a fast PC with Chrome or Edge. Memory card saves stay in this browser; the desktop app plays PS2 best.</span>
+    </div>
+  );
+}
+
+function AndroidPs2Button({ gameId }: { gameId: string }) {
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const start = async () => {
+    setError("");
+    setBusy(true);
+    try {
+      await desktop!.playInBrowser!(gameId);
+    } catch (e) {
+      setError(bridgeError(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div>
+      <div className="inline">
+        <button className="primary" disabled={busy} onClick={() => void start()}>
+          ▶ Play in the browser player (experimental)
+        </button>
+        <span className="muted small">Slower than ARMSX2 on this handheld. Memory card saves stay on the handheld; press back twice to quit.</span>
+      </div>
+      {error && <p className="error small">{error}</p>}
     </div>
   );
 }

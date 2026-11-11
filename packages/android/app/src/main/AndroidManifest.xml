@@ -68,6 +68,14 @@
             android:screenOrientation="userLandscape"
             android:windowSoftInputMode="adjustResize" />
 
+        <!-- PS2 games in the browser player, as a secure, cross-origin isolated page (see the class). -->
+        <activity
+            android:name=".Ps2PlayerActivity"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboard|keyboardHidden|navigation|uiMode|density"
+            android:exported="false"
+            android:screenOrientation="userLandscape"
+            android:theme="@style/Theme.LootDen" />
+
         <!-- Hands ROMs to standalone emulators, and the downloaded update to the package installer. -->
         <provider
             android:name="androidx.core.content.FileProvider"

@@ -109,12 +109,16 @@ export function DesktopInstall({ game, autoFocus }: { game: GameDetail; autoFocu
     : game.platform !== "pc"
       ? EMULATORS.find((e) => e.id === platformFor(game.platform).emulator)?.name
       : undefined;
+  // PS2 through RetroArch (its Play! core) runs few games: point at ARMSX2, which plays far more.
+  const armsx2 = androidEmu?.options.find((o) => o.id === "armsx2");
   const androidHint = androidEmu
-    ? androidEmu.using === "RetroArch" && androidEmu.core
+    ? game.platform === "ps2" && armsx2 && !armsx2.installed && (androidEmu.using === "RetroArch" || !androidEmu.using)
+      ? `For PS2, get ARMSX2 from Google Play (Profile, This handheld has a button): it plays far more PS2 games than ${androidEmu.using ? "RetroArch's Play! core" : "anything else"}, and LootDen starts games in it once it's installed.`
+      : androidEmu.using === "RetroArch" && androidEmu.core
       ? `Plays in RetroArch with its ${androidEmu.core} core: get it once in RetroArch's Main Menu, Online Updater, Core Downloader. Saves follow you to your PCs.`
       : androidEmu.using
         ? null
-        : `No emulator for ${androidEmu.name} found on this handheld, so Android asks which app to open it with. Pick one under Settings, You, This computer.`
+        : `No emulator for ${androidEmu.name} found on this handheld, so Android asks which app to open it with. Pick one under Profile, This handheld.`
     : null;
   const downloading = busy && p?.type === "download";
   const pct = downloading ? (p.received / Math.max(1, p.total)) * 100 : 0;

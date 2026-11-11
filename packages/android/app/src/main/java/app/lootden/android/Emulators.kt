@@ -71,6 +71,8 @@ data class Emulator(
     val extra: String? = null,
     /** Its Google Play listing, when it has one. */
     val store: String? = packages.first(),
+    /** Other names the game screen has had in other builds of the app, tried after [activity]. */
+    val otherActivities: List<String> = emptyList(),
 )
 
 /** RetroArch cores per platform, by their Android file name (<core>_libretro_android.so). */
@@ -98,6 +100,12 @@ val RETROARCH_CORES = mapOf(
  */
 val EMULATORS = listOf(
     Emulator("duckstation", "DuckStation", listOf("com.github.stenzek.duckstation"), Handoff.EXTRA, listOf("ps1"), "com.github.stenzek.duckstation.EmulationActivity", "bootPath"),
+    // ARMSX2 (PCSX2 for ARM): Google Play's build is come.nanodata.armsx2, GitHub's com.armsx2. Its game
+    // screen opens a disc from ACTION_VIEW on MainActivity, which older builds kept in kr.co.iefriends.pcsx2.
+    Emulator(
+        "armsx2", "ARMSX2", listOf("come.nanodata.armsx2", "com.armsx2", "com.armsx2.debug"), Handoff.VIEW, listOf("ps2"), "com.armsx2.MainActivity",
+        otherActivities = listOf("kr.co.iefriends.pcsx2.MainActivity"),
+    ),
     Emulator("aethersx2", "NetherSX2 / AetherSX2", listOf("xyz.aethersx2.android"), Handoff.EXTRA, listOf("ps2"), "xyz.aethersx2.android.EmulationActivity", "bootPath", store = null),
     Emulator("ppsspp", "PPSSPP", listOf("org.ppsspp.ppssppgold", "org.ppsspp.ppsspp"), Handoff.VIEW, listOf("psp"), "org.ppsspp.ppsspp.PpssppActivity", store = "org.ppsspp.ppsspp"),
     Emulator("dolphin", "Dolphin", listOf("org.dolphinemu.dolphinemu", "org.dolphinemu.mmjr"), Handoff.EXTRA, listOf("gamecube", "wii"), "org.dolphinemu.dolphinemu.ui.main.MainActivity", "AutoStartFile"),
@@ -111,7 +119,7 @@ val EMULATORS = listOf(
 /** The best order for each platform: standalone emulators first where they play better. */
 private val PREFERRED = mapOf(
     "ps1" to listOf("duckstation", "retroarch"),
-    "ps2" to listOf("aethersx2", "retroarch"),
+    "ps2" to listOf("armsx2", "aethersx2", "retroarch"),
     "psp" to listOf("ppsspp", "retroarch"),
     "gamecube" to listOf("dolphin", "retroarch"),
     "wii" to listOf("dolphin", "retroarch"),
@@ -127,6 +135,15 @@ class Emulators(private val context: Context, private val prefs: Prefs) {
     fun installedPackage(e: Emulator): String? = e.packages.firstOrNull { isInstalled(it) }
 
     fun isInstalled(pkg: String): Boolean = runCatching { pm.getPackageInfo(pkg, 0); true }.getOrDefault(false)
+
+    /** The installed version's name ("2.7.5"), for the Emulators on this handheld panel. */
+    private fun versionOf(pkg: String): String? = runCatching { pm.getPackageInfo(pkg, 0).versionName }.getOrNull()
+
+    /** The game screen this build of the emulator has: the first of its known names that exists. */
+    private fun activityIn(e: Emulator, pkg: String): String? {
+        val names = listOfNotNull(e.activity) + e.otherActivities
+        return names.firstOrNull { runCatching { pm.getActivityInfo(ComponentName(pkg, it), 0); true }.getOrDefault(false) } ?: e.activity
+    }
 
     fun optionsFor(platform: String): List<Emulator> {
         val order = PREFERRED[platform] ?: listOf("retroarch")
@@ -152,7 +169,10 @@ class Emulators(private val context: Context, private val prefs: Prefs) {
             .put("using", choice?.name ?: JSONObject.NULL)
             .put("core", if (choice?.id == "retroarch") RETROARCH_CORES[p.id] else JSONObject.NULL)
             .put("options", JSONArray(optionsFor(p.id).map { e ->
-                JSONObject().put("id", e.id).put("name", e.name).put("installed", installedPackage(e) != null).put("store", e.store ?: JSONObject.NULL)
+                val pkg = installedPackage(e)
+                JSONObject().put("id", e.id).put("name", e.name).put("installed", pkg != null).put("store", e.store ?: JSONObject.NULL)
+                    .put("package", pkg ?: JSONObject.NULL)
+                    .put("version", pkg?.let { versionOf(it) } ?: JSONObject.NULL)
             }))
     })
 
@@ -170,7 +190,11 @@ class Emulators(private val context: Context, private val prefs: Prefs) {
         } catch (err: ActivityNotFoundException) {
             // The emulator moved its game screen in an update: let it open the file its own way.
             if (emu == null || emu.handoff == Handoff.RETROARCH) throw IllegalStateException("Couldn't start ${emu?.name ?: "an emulator"}: ${err.message}")
-            context.startActivity(view(rom).setPackage(installedPackage(emu)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            try {
+                context.startActivity(view(rom).setPackage(installedPackage(emu)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            } catch (again: ActivityNotFoundException) {
+                throw IllegalStateException("${emu.name} wouldn't open the game. Update ${emu.name}, or pick another emulator under Profile, This handheld.")
+            }
         }
         return emu
     }
@@ -204,13 +228,15 @@ class Emulators(private val context: Context, private val prefs: Prefs) {
             Handoff.EXTRA -> {
                 val uri = uriFor(rom)
                 Intent(Intent.ACTION_MAIN)
-                    .setComponent(ComponentName(pkg, emu.activity!!))
+                    .setComponent(ComponentName(pkg, activityIn(emu, pkg)!!))
                     .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
                     .putExtra(emu.extra!!, uri.toString())
                     .apply { clipData = ClipData.newRawUri(rom.name, uri) }
             }
             Handoff.VIEW -> view(rom).apply {
-                if (emu.activity != null) setComponent(ComponentName(pkg, emu.activity)) else setPackage(pkg)
+                val activity = activityIn(emu, pkg)
+                // A named game screen starts fresh, so a game already open there doesn't keep running instead.
+                if (activity != null) setComponent(ComponentName(pkg, activity)).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP) else setPackage(pkg)
             }
         }
     }

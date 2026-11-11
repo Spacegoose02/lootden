@@ -50,3 +50,22 @@ describe("the Android app's browser rules", () => {
     assert.deepEqual(android, desktop);
   });
 });
+
+describe("the Android app's emulators", () => {
+  it("offer ARMSX2 for PS2, ahead of NetherSX2 and RetroArch", () => {
+    assert.match(kotlin, /Emulator\(\s*"armsx2", "ARMSX2", listOf\("come\.nanodata\.armsx2"/);
+    assert.ok(kotlin.includes(`"ps2" to listOf("armsx2", "aethersx2", "retroarch")`));
+  });
+});
+
+// The page's window.lootden on Android (assets/bridge.js) and what the app answers (AppCore.kt).
+const bridgeJs = readFileSync(new URL("../../../android/app/src/main/assets/bridge.js", import.meta.url), "utf8");
+const appCore = readFileSync(new URL("../../../android/app/src/main/java/app/lootden/android/AppCore.kt", import.meta.url), "utf8");
+
+describe("the Android app's bridge", () => {
+  it("answers every method the page can call", () => {
+    const methods = [...(bridgeJs.match(/const METHODS = \[([^\]]*)\]/)?.[1] ?? "").matchAll(/"([A-Za-z]+)"/g)].map((m) => m[1]!);
+    assert.ok(methods.includes("playInBrowser"));
+    assert.deepEqual(methods.filter((m) => !appCore.includes(`"${m}" ->`)), []);
+  });
+});

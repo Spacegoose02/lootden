@@ -90,6 +90,14 @@ export function PlayInBrowser() {
 
   if (error) return <p className="error">{error}</p>;
   const ps2 = Boolean(game && platformFor(game.platform).browserPlayer);
+  // Over plain http no browser isolates the page, so the emulator would only stop with a "service worker" message.
+  if (ps2 && !window.isSecureContext)
+    return (
+      <p className="panel">
+        PS2 in the browser needs LootDen opened over https (or on localhost), and this address is plain http.{" "}
+        <a href={`/games/${id}`}>Back to the game</a> to play it in the desktop app or the Android app instead.
+      </p>
+    );
   // PS2 (TabStationToo) needs this page cross-origin isolated, which only a full page load from the
   // server gives. Arriving here by an in-app link, load the page again once.
   // A reload within the last 10 seconds that didn't isolate it won't do better: show the emulator's own message.
