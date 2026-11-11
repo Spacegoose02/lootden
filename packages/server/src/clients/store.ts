@@ -20,12 +20,12 @@ export interface ClientFile {
   name: string;
   size: number;
   modifiedAt: string;
-  platform: "windows" | "linux" | "playnite" | "other";
+  platform: "windows" | "linux" | "android" | "playnite" | "other";
   /** What the file is, in words for the downloads page. */
   kind: string;
 }
 
-const ALLOWED = /\.(exe|msi|appimage|deb|rpm|zip|7z|tar\.gz|pext)$|^(gm|lootden)(-cli)?(-linux|-win)?[\w.-]*$/i;
+const ALLOWED = /\.(exe|msi|appimage|deb|rpm|apk|zip|7z|tar\.gz|pext)$|^(gm|lootden)(-cli)?(-linux|-win)?[\w.-]*$/i;
 
 /** Names the app and plugin files the release workflow produces; anything else is "Other". */
 export function describe(name: string): Pick<ClientFile, "platform" | "kind"> {
@@ -34,6 +34,7 @@ export function describe(name: string): Pick<ClientFile, "platform" | "kind"> {
   if (n.endsWith(".appimage")) return { platform: "linux", kind: "Desktop app (AppImage)" };
   if (n.endsWith(".deb")) return { platform: "linux", kind: "Desktop app (Debian/Ubuntu package)" };
   if (n.endsWith(".rpm")) return { platform: "linux", kind: "Desktop app (Fedora package)" };
+  if (n.endsWith(".apk")) return { platform: "android", kind: "Android app" };
   // The CLI: lootden(.exe) and lootden-cli-*, or gm from before the rename.
   if (/^(gm|lootden)(\.exe)?$/.test(n) || /^(gm|lootden-cli)[-_]/.test(n)) return { platform: n.includes("win") || n.endsWith(".exe") ? "windows" : "linux", kind: "Command-line client" };
   if (n.endsWith(".exe") || n.endsWith(".msi")) return { platform: "windows", kind: n.includes("setup") ? "Desktop app (installer)" : "Desktop app" };
@@ -60,7 +61,7 @@ export class ClientDownloads {
   static checkName(name: string): string {
     const base = path.basename(name);
     if (base !== name || base.startsWith(".") || !ALLOWED.test(base)) {
-      throw new Error("Only app files can be hosted: .exe, .msi, .AppImage, .deb, .rpm, .zip, .7z, .tar.gz, .pext or the gm binary");
+      throw new Error("Only app files can be hosted: .exe, .msi, .AppImage, .deb, .rpm, .apk, .zip, .7z, .tar.gz, .pext or the gm binary");
     }
     return base;
   }
@@ -74,7 +75,7 @@ export class ClientDownloads {
       if (!s?.isFile()) continue;
       out.push({ name, size: s.size, modifiedAt: s.mtime.toISOString(), ...describe(name) });
     }
-    const order = { windows: 0, linux: 1, playnite: 2, other: 3 };
+    const order = { windows: 0, linux: 1, android: 2, playnite: 3, other: 4 };
     // Per platform, the desktop app comes before the command-line client and other files.
     const rank = (f: ClientFile) => (f.kind.startsWith("Desktop") ? 0 : 1);
     return out.sort((a, b) => order[a.platform] - order[b.platform] || rank(a) - rank(b) || a.name.localeCompare(b.name));

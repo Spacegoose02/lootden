@@ -7,6 +7,11 @@ import { desktop } from "../desktop";
 const GROUPS: Array<{ platform: ClientFile["platform"]; title: string; help: string }> = [
   { platform: "windows", title: "Windows", help: "Run the installer, or the portable .exe from any folder. Windows may warn that the app is unsigned: choose More info, then Run anyway." },
   { platform: "linux", title: "Linux and Steam Deck", help: "AppImage: make it executable (chmod +x) and run it. On Debian or Ubuntu you can install the .deb instead." },
+  {
+    platform: "android",
+    title: "Android handhelds and phones",
+    help: "For the Retroid Pocket, AYN Odin, Anbernic and other Android handhelds. Open the .apk (allow installs from your browser or file manager when asked), then enter this server's address. Console games install to a ROMs folder and play in RetroArch or a standalone emulator; PC games stream from a PC with Moonlight.",
+  },
   { platform: "playnite", title: "Playnite", help: "Drag the .pext onto Playnite, or unzip into Playnite's Extensions folder, then add your server and a personal token in the add-on settings." },
   { platform: "other", title: "Other files", help: "" },
 ];

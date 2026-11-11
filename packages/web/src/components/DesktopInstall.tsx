@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { EMULATORS, platformFor, recompsFor, RECOMP_LOOKS, type GameDetail, type RecompInfo } from "@lootden/shared";
 import { api, formatBytes } from "../api";
 import { useAuth } from "../auth";
-import { bridgeError, desktop, useDesktopGame, type Drive, type GameBananaModView, type RecompLookView, type RecompModsView, type RecompSettingView, type RecompSetup } from "../desktop";
+import { androidApp, bridgeError, desktop, useDesktopGame, type AndroidEmulatorChoice, type Drive, type GameBananaModView, type RecompLookView, type RecompModsView, type RecompSettingView, type RecompSetup } from "../desktop";
 import { VerifyFiles } from "./DownloadQueue";
 import { GameRunner } from "./LinuxSteam";
 import { LaunchOptionsPanel, PlayWithButtons, useLaunchOptions } from "./LaunchOptions";
@@ -31,6 +31,11 @@ export function DesktopInstall({ game, autoFocus }: { game: GameDetail; autoFocu
   useEffect(() => {
     if (recompKey && desktop?.recomps) void desktop.recomps().then((r) => setRecompSetup(r.recomps), () => {});
   }, [recompKey]);
+  /** Android: the emulator that plays this system on the handheld. */
+  const [androidEmu, setAndroidEmu] = useState<AndroidEmulatorChoice | null>(null);
+  useEffect(() => {
+    if (androidApp && game.platform !== "pc") void desktop?.androidEmulators?.().then((list) => setAndroidEmu(list.find((x) => x.platform === game.platform) ?? null), () => {});
+  }, [game.platform]);
   const readyRecomps = recomps.filter((r) => recompSetup?.find((x) => x.id === r.id)?.installed);
   /** Running and paused, followed from the app's events (waits and messages come in between). */
   /** The PC at home this install is copying from, when it isn't the server. */
@@ -69,6 +74,16 @@ export function DesktopInstall({ game, autoFocus }: { game: GameDetail; autoFocu
 
   if (!desktop) return null;
   const bridge = desktop;
+  if (androidApp && game.platform === "pc") {
+    return (
+      <div className="install panel">
+        <p>
+          <strong>PC games don't run on Android.</strong> Play it here with <strong>📺 Stream</strong> above (Moonlight on this handheld, Sunshine on the PC), or send it to a PC.
+        </p>
+        <p className="muted small">The Stream button shows once a PC has the game in Sunshine: set that up on the PC under Settings, You, This computer.</p>
+      </div>
+    );
+  }
   const run = async (fn: () => Promise<unknown>) => {
     setError("");
     setBusy(true);
@@ -87,7 +102,20 @@ export function DesktopInstall({ game, autoFocus }: { game: GameDetail; autoFocu
   const lowSpace = drive && drive.freeBytes < game.sizeBytes * (game.packed ? 2 : 1);
 
   const p = progress;
-  const emulatorName = game.platform !== "pc" ? EMULATORS.find((e) => e.id === platformFor(game.platform).emulator)?.name : undefined;
+  const emulatorName = androidApp
+    ? androidEmu
+      ? (androidEmu.using ?? "another app")
+      : undefined
+    : game.platform !== "pc"
+      ? EMULATORS.find((e) => e.id === platformFor(game.platform).emulator)?.name
+      : undefined;
+  const androidHint = androidEmu
+    ? androidEmu.using === "RetroArch" && androidEmu.core
+      ? `Plays in RetroArch with its ${androidEmu.core} core: get it once in RetroArch's Main Menu, Online Updater, Core Downloader. Saves follow you to your PCs.`
+      : androidEmu.using
+        ? null
+        : `No emulator for ${androidEmu.name} found on this handheld, so Android asks which app to open it with. Pick one under Settings, You, This computer.`
+    : null;
   const downloading = busy && p?.type === "download";
   const pct = downloading ? (p.received / Math.max(1, p.total)) * 100 : 0;
 
@@ -179,6 +207,7 @@ export function DesktopInstall({ game, autoFocus }: { game: GameDetail; autoFocu
           </p>
         )}
         {setupMessage && <p className={setupMessage.error ? "error small" : "muted small"}>{setupMessage.message}</p>}
+        {androidHint && <p className="muted small">{androidHint}</p>}
         <p className="muted small">
           Installed in <code>{installed.installedDir ?? installed.dir}</code>
           {p?.type === "stopped" ? ` · last session ${Math.round(p.seconds / 60)} min` : ""}
@@ -208,7 +237,7 @@ export function DesktopInstall({ game, autoFocus }: { game: GameDetail; autoFocu
       )}
       <div className="inline">
         <select value={target} onChange={(e) => setTarget(e.target.value)} aria-label="Install location" disabled={busy}>
-          {[...new Set([target, ...drives.map((d) => (d.path.endsWith("\\") ? `${d.path}Games` : `${d.path.replace(/\/$/, "")}/Games`))])]
+          {[...new Set([target, ...drives.map((d) => (d.path.endsWith("\\") ? `${d.path}Games` : `${d.path.replace(/\/$/, "")}/${androidApp ? "ROMs" : "Games"}`))])]
             .filter(Boolean)
             .map((dir) => {
               const d = driveFor(dir);

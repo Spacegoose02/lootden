@@ -150,6 +150,19 @@ describe("now playing", () => {
     assert.deepEqual(got.commands.map((c) => [c.kind, c.kind === "install" ? c.title : ""]), [["install", portal.title]]);
   });
 
+  it("keeps PC games off Android handhelds, which only take console games", async () => {
+    const { app, ctx } = await makeApp(root);
+    const admin = await person(app, ctx, "pops", { role: "admin" });
+    const portal = ctx.library.list({}).find((g) => /portal/i.test(g.title))!;
+    assert.equal(portal.platform, "pc");
+    await app.inject({ method: "POST", url: "/api/me/presence", headers: admin.headers, payload: { device: "Retroid Pocket 6", playing: [], pc: { platform: "android", appVersion: "0.32.0" } } });
+    const targets = (await app.inject({ url: "/api/pcs/targets", headers: admin.headers })).json() as Array<{ name: string; platform: string | null }>;
+    assert.deepEqual(targets.map((t) => [t.name, t.platform]), [["Retroid Pocket 6", "android"]]);
+    const sent = await app.inject({ method: "POST", url: `/api/pcs/${encodeURIComponent("Retroid Pocket 6")}/install`, headers: admin.headers, payload: { gameId: portal.id } });
+    assert.equal(sent.statusCode, 400);
+    assert.match((sent.json() as { error: string }).error, /Android handheld/);
+  });
+
   it("lists the PCs that stream a game", async () => {
     const { app, ctx } = await makeApp(root);
     const mom = await person(app, ctx, "ma", { role: "admin" });

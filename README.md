@@ -17,6 +17,9 @@ installs games from it on any PC in the house.
 - Desktop app for Windows and Linux: download with resume, unpack zip/7z/rar, delete the
   archives, play, track play time, uninstall. Runs in the tray and updates itself from the
   server.
+- Android app for handhelds like the Retroid Pocket: installs console games and plays them in
+  RetroArch or standalone emulators, RetroArch saves shared with your PCs, and PC games streamed
+  from a PC with Moonlight. See [Android handhelds](#android-handhelds).
 - **Download queue, speed limit and overnight downloads** (desktop app, Profile, This computer):
   downloads run one at a time (or two or three), can be moved to the top, paused and resumed, and
   share a speed limit. A download window ("only between 23:00 and 07:00") holds them until then
@@ -318,6 +321,46 @@ played. It works over borderless and windowed games. Windows won't put a window 
 exclusive full screen, so switch that game to borderless. On a handheld or laptop the top bar
 shows the battery beside the clock.
 
+## Android handhelds
+
+The Android app is for the Retroid Pocket, AYN Odin, Anbernic and other Android handhelds (it
+works on phones and tablets too). Download `LootDen-<version>.apk` from Get the app, open it and
+allow installs from your browser when Android asks, then enter the server's address. It's the
+same web UI, full screen and in landscape, with the controller navigation described above.
+
+- **Console games** install to `ROMs/<system>/<game>` on internal storage or an SD card (the app
+  asks for All files access the first time, so emulators can open what it downloads) and play
+  in the emulator picked under Settings, You, This handheld. LootDen picks the best one
+  installed: DuckStation for PS1, NetherSX2/AetherSX2 for PS2, PPSSPP, Dolphin, melonDS, Flycast
+  or Redream, and RetroArch for everything else (download each core once in RetroArch's Online
+  Updater). With none installed, Android asks which app to open the game with.
+- **Saves**: RetroArch battery saves go up to the server when you come back to LootDen and come
+  down before the next game, shared with the desktop app and the browser player. Standalone
+  emulators keep their saves in their own folders, which Android doesn't let other apps read.
+- **Play time** runs from starting a game until you're back in LootDen, and the handheld shows
+  on Now Playing, the PCs page and the family board. A parent's message pops up on screen.
+- **Send to…** on a console game's page sends it to the handheld like Send to PC.
+- **PC games** can't run on Android: they stream. With Sunshine on the gaming PC (Settings,
+  You, This computer there) and Moonlight on the handheld, 📺 Stream on a PC game's page wakes
+  the PC if it's off and opens Moonlight.
+- The app updates itself from Get the app, like the desktop app.
+
+Without the app, LootDen in Chrome on Android still browses the library, plays the browser
+emulators, and switches to the bigger handheld layout when a controller is used in landscape.
+Install on this handheld on a console game's page opens the app when it's there.
+
+The release workflow signs the APK with the key in the `ANDROID_KEYSTORE_BASE64`,
+`ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS` and `ANDROID_KEY_PASSWORD` repository secrets.
+Make one once and keep it: an APK signed with another key can't update the installed app.
+
+```sh
+keytool -genkeypair -v -keystore lootden.jks -alias lootden -keyalg RSA -keysize 4096 -validity 36500
+base64 -w0 lootden.jks   # the ANDROID_KEYSTORE_BASE64 secret
+```
+
+To build it yourself: Android Studio, or `./gradlew assembleDebug` in `packages/android` with
+the Android SDK and Java 17.
+
 ## Command-line client
 
 Download `lootden-cli-win-x64.zip` or `lootden-cli-linux-x64.tar.gz` from Get the app.
@@ -372,6 +415,7 @@ On Windows PowerShell set the variables with `$env:LOOTDEN_GAMES_DIR = "..."` fi
 | `packages/web` | React web UI, also what the desktop app shows |
 | `packages/client` | Install engine and the `lootden` CLI |
 | `packages/desktop` | Electron app |
+| `packages/android` | Android app (Kotlin): the web UI plus installs and emulators |
 | `playnite/LootDenLibrary` | Playnite plugin (C#) |
 | `brand` | Replacement logos, see [brand/README.md](brand/README.md) |
 
@@ -380,8 +424,8 @@ New release sources go in `packages/server/src/sources/adapters/`, see
 
 To release, bump the version in every `package.json`, `package-lock.json` and
 `packages/server/src/app.ts`, then push a `v*` tag. GitHub Actions publishes the image to
-`ghcr.io/spacegoose02/lootden` and attaches the desktop apps, CLI and Playnite plugin to a
-GitHub release.
+`ghcr.io/spacegoose02/lootden` and attaches the desktop apps, Android app, CLI and Playnite
+plugin to a GitHub release.
 
 ## Notes
 

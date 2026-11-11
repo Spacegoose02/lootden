@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import type { StreamHost } from "@lootden/shared";
 import { api } from "../api";
-import { bridgeError, desktop, type StreamingStatus } from "../desktop";
+import { androidApp, bridgeError, desktop, type StreamingStatus } from "../desktop";
 
 /**
  * Profile, This computer: game streaming. On the gaming PC, link Sunshine and LootDen keeps its
@@ -15,6 +15,7 @@ export function StreamingSetup() {
   const [busy, setBusy] = useState(false);
   useEffect(() => void desktop?.streaming?.().then(setS, () => {}), []);
   if (!desktop?.streaming || !s) return null;
+  if (androidApp) return <MoonlightOnAndroid moonlight={s.moonlight} />;
 
   const run = async (fn: () => Promise<StreamingStatus & { added?: string[] }>, done: (r: { added?: string[] }) => string) => {
     setBusy(true);
@@ -94,8 +95,9 @@ export function StreamButton({ gameId, title }: { gameId: string; title: string 
 
   const start = async (h: StreamHost) => {
     if (!h.addresses.length) throw new Error(`LootDen doesn't know ${h.name}'s address yet`);
-    await desktop!.streamGame!(h.addresses[0]!, title);
-    setMsg({ text: `Starting ${title} on ${h.name}…` });
+    const r = await desktop!.streamGame!(h.addresses[0]!, title);
+    // Android: Moonlight can't be told which game to start, so it opens on its list of PCs.
+    setMsg({ text: r && r.opened ? `Moonlight is open: pick ${h.name}, then ${title}.` : `Starting ${title} on ${h.name}…` });
   };
   /** Picks the PC, wakes it when it's off and waits (up to two minutes) for it to come on. */
   const streamBest = async () => {
@@ -140,6 +142,31 @@ export function StreamButton({ gameId, title }: { gameId: string; title: string 
           </button>
         ))}
       {msg && <p className={msg.error ? "error small" : "notice small"}>{msg.text}</p>}
+    </div>
+  );
+}
+
+/** The Android app's This computer: Moonlight plays PC games here, streamed from a PC with Sunshine. */
+function MoonlightOnAndroid({ moonlight }: { moonlight: boolean }) {
+  return (
+    <div className="store-scan">
+      <h3>📺 Play PC games by streaming</h3>
+      <p className="muted small">
+        PC games can't run on Android, but they stream well: <strong>Sunshine</strong> on the gaming PC, <strong>Moonlight</strong> on this handheld. Pair them once in Moonlight; after
+        that a PC game's page has a 📺 Stream button that wakes the PC if it's off and opens Moonlight.
+      </p>
+      <p className="small">
+        {moonlight ? (
+          "✅ Moonlight is installed here"
+        ) : (
+          <>
+            Moonlight isn't installed here.{" "}
+            <button className="button small" onClick={() => void desktop?.openStore?.("com.limelight")}>
+              Get Moonlight
+            </button>
+          </>
+        )}
+      </p>
     </div>
   );
 }

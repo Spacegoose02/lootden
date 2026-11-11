@@ -61,7 +61,7 @@ export function PcsSection({ say }: { say: Msg }) {
           key={pc.name}
           title={pc.name}
           status={pc.online ? <Pill tone="good">On</Pill> : <Pill tone="muted">Off · seen {ago(pc.lastSeenAt)}</Pill>}
-          description={[pc.lastUser && `Last signed in: ${pc.lastUser}`, pc.platform && (pc.platform === "win32" ? "Windows" : pc.platform === "linux" ? "Linux" : pc.platform), pc.appVersion && `app ${pc.appVersion}`].filter(Boolean).join(" · ")}
+          description={[pc.lastUser && `Last signed in: ${pc.lastUser}`, pc.platform && (pc.platform === "win32" ? "Windows" : pc.platform === "linux" ? "Linux" : pc.platform === "android" ? "Android handheld" : pc.platform), pc.appVersion && `app ${pc.appVersion}`].filter(Boolean).join(" · ")}
           actions={
             <>
               {!pc.online && (

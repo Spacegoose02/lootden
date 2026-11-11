@@ -256,6 +256,8 @@ export interface LocalShot {
 /** Bridge the desktop app injects (packages/desktop/src/preload.ts). Absent in a normal browser. */
 export interface DesktopBridge {
   version: number;
+  /** The Android app (packages/android): console games and emulators, no PC games. */
+  android?: boolean;
   info(): Promise<{ platform: string; version: string; installDir: string; libraryDirs: string[]; hostname: string; installing: string[] }>;
   drives(): Promise<Drive[]>;
   chooseFolder(): Promise<string | null>;
@@ -327,7 +329,8 @@ export interface DesktopBridge {
   linkSunshine?(user: string, pass: string): Promise<StreamingStatus & { added: string[] }>;
   syncSunshine?(): Promise<StreamingStatus & { added: string[] }>;
   unlinkSunshine?(): Promise<StreamingStatus>;
-  streamGame?(host: string, title: string): Promise<void>;
+  /** The Android app opens Moonlight and answers { opened: "moonlight" }: the player picks the PC and game there. */
+  streamGame?(host: string, title: string): Promise<void | { opened?: string }>;
   addStoreFolder?(): Promise<StoreScanSettings>;
   /** Disc/installer games: install once on this PC and upload the result. Missing in older apps. */
   prepare?(gameId: string): Promise<GameDetailLike | null>;
@@ -368,6 +371,10 @@ export interface DesktopBridge {
   installGamebananaMod?(id: string, modId: number): Promise<RecompInstalledMod[]>;
   recompLook?(id: string): Promise<RecompLookView>;
   setRecompLook?(id: string, look: string): Promise<RecompLookView>;
+  /** Android: which emulator plays each system on this handheld, picking one, and its store page. */
+  androidEmulators?(): Promise<AndroidEmulatorChoice[]>;
+  setAndroidEmulator?(platform: string, id: string | null): Promise<AndroidEmulatorChoice[]>;
+  openStore?(pkg: string): Promise<void>;
   changeServer(): Promise<void>;
   /** Switches to the app's offline library when the server really can't be reached (apps from 0.13.2). */
   goOffline?(): Promise<boolean>;
@@ -389,9 +396,25 @@ export interface DesktopBridge {
 
 type GameDetailLike = { id: string };
 
+/** One system on the Android app's Emulators panel. */
+export interface AndroidEmulatorChoice {
+  platform: string;
+  name: string;
+  /** The emulator picked under Settings, "ask" for Android's Open with…, or null for the best one installed. */
+  picked: string | null;
+  /** The emulator games start in now; null opens Android's Open with…. */
+  using: string | null;
+  /** RetroArch's core for the system, when RetroArch plays it. */
+  core: string | null;
+  options: Array<{ id: string; name: string; installed: boolean; store: string | null }>;
+}
+
 // Desktop apps from before the rename to LootDen expose the bridge as window.gameManager.
 const w = window as unknown as { lootden?: DesktopBridge; gameManager?: DesktopBridge };
 export const desktop: DesktopBridge | undefined = w.lootden ?? w.gameManager;
+
+/** Inside the Android app (Retroid Pocket, AYN Odin and other Android handhelds, or a phone). */
+export const androidApp = desktop?.android === true;
 
 /** Electron prefixes errors from the main process; keep just the message. */
 export const bridgeError = (e: unknown) => String((e as Error)?.message ?? e).replace(/^Error invoking remote method '[^']+': (Error: )?/, "");

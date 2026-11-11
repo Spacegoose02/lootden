@@ -1,14 +1,17 @@
 import { useEffect, useRef, useState } from "react";
 import { api, formatBytes } from "../api";
 
-type Target = { name: string; online: boolean; lastUser: string | null; freeBytes: number };
+type Target = { name: string; online: boolean; lastUser: string | null; freeBytes: number; platform?: string | null };
 
 /**
  * Send to PC on a game's page: pick one of the household's PCs and the LootDen app there
- * downloads and installs the game by itself, now or when the PC next comes on.
+ * downloads and installs the game by itself, now or when the PC next comes on. Console games
+ * can go to Android handhelds with the LootDen app too; PC games only to PCs.
  */
-export function SendToPcButton({ gameId, title, sizeBytes }: { gameId: string; title: string; sizeBytes: number }) {
-  const [targets, setTargets] = useState<Target[] | null>(null);
+export function SendToPcButton({ gameId, title, sizeBytes, platform }: { gameId: string; title: string; sizeBytes: number; platform: string }) {
+  const [all, setTargets] = useState<Target[] | null>(null);
+  const targets = all?.filter((t) => platform !== "pc" || t.platform !== "android") ?? null;
+  const handhelds = targets?.some((t) => t.platform === "android") ?? false;
   const [open, setOpen] = useState(false);
   const [note, setNote] = useState<{ text: string; error?: boolean } | null>(null);
   const box = useRef<HTMLDivElement>(null);
@@ -40,7 +43,7 @@ export function SendToPcButton({ gameId, title, sizeBytes }: { gameId: string; t
   return (
     <div className="shelf-button" ref={box}>
       <button className="secondary" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen(!open)}>
-        🖥️ Send to PC
+        {handhelds ? "🎮 Send to…" : "🖥️ Send to PC"}
       </button>
       {open && (
         <div className="shelf-menu panel" role="menu">
@@ -49,7 +52,8 @@ export function SendToPcButton({ gameId, title, sizeBytes }: { gameId: string; t
             return (
               <button key={t.name} role="menuitem" className="menu-item" onClick={() => void send(t)}>
                 <span>
-                  {t.online ? "🟢" : "⚪"} <strong>{t.name}</strong>
+                  {t.online ? "🟢" : "⚪"} {t.platform === "android" ? "🎮 " : ""}
+                  <strong>{t.name}</strong>
                   {t.lastUser && <small className="muted"> · {t.lastUser}</small>}
                 </span>
                 {t.freeBytes > 0 && <small className={tight ? "warn-text" : "muted"}>{formatBytes(t.freeBytes)} free</small>}

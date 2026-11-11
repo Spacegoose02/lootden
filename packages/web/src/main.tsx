@@ -7,8 +7,10 @@ import "./styles.css";
 import "./fx.css";
 import "./fun.css";
 import { registerServiceWorker } from "./pwa";
+import { watchAndroidHandheld } from "./android";
 
 registerServiceWorker();
+watchAndroidHandheld();
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
