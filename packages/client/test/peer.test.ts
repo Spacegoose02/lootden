@@ -67,7 +67,10 @@ describe("LAN copies between PCs", () => {
     assert.ok(checkTicket(source.ticket, key, game.id));
     assert.ok(!checkTicket(source.ticket, key, "another-game"), "for this game only");
     assert.ok(!checkTicket(source.ticket, key, game.id, Date.now() + 7 * 3600_000), "expires");
-    assert.ok(!checkTicket(source.ticket.replace(/.$/, (c) => (c === "A" ? "B" : "A")), key, game.id), "can't be changed");
+    // Change the signature's first character: its last one carries padding bits, so swapping A for B there can decode to the same bytes.
+    const [payload, sig] = source.ticket.split(".");
+    const forged = `${payload}.${sig![0] === "A" ? "B" : "A"}${sig!.slice(1)}`;
+    assert.ok(!checkTicket(forged, key, game.id), "can't be changed");
 
     const refused = await fetch(`${source.urls[0]}/lootden-peer/v1/games/${game.id}/files?t=nope`);
     assert.equal(refused.status, 403);
