@@ -166,7 +166,7 @@ function InGameMenuCard() {
   if (!desktop?.appSettings || !desktop.overlay) return null;
   return (
     <Card title="In-game menu" description="Bring LootDen up over a running game to pause it, ask Bandit, open the browser, take a screenshot or close the game.">
-      <Field label="Open it with" hint="Works over borderless and windowed games, and in the Xbox full screen experience. In exclusive full screen, switch the game to borderless if the menu stays behind it.">
+      <Field label="Open it with" hint="Works over borderless and windowed games. Ctrl+Shift+O also opens it while a game runs: map it to a button (a ROG Ally profile, Steam Input) if the combo doesn't get through, as in the Xbox full screen experience. In exclusive full screen, switch the game to borderless if the menu stays behind it.">
         <select
           value={opts?.overlay ?? "view-menu"}
           disabled={!opts}

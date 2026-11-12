@@ -32,7 +32,8 @@ export function comboHeld(combo: OverlayCombo, buttons: number): boolean {
  * window in front and its program whenever the buttons change. XInputGetStateEx (ordinal 100) also
  * reports the Xbox button; older Windows without it falls back to XInputGetState. Lines on stdin of
  * the form "focus <hwnd>" bring that window to the front and answer "focus <hwnd> <how> <front now>
- * <its program>", where how is the step that worked or "refused".
+ * <its program>", where how is the step that worked or "refused"; "front" answers "front <hwnd>
+ * <program>" for the window in front now.
  */
 const XINPUT_SCRIPT = String.raw`
 $ErrorActionPreference = 'Stop'
@@ -97,6 +98,9 @@ public static class LootDenPad {
           try { how = Focus(new IntPtr(h)); } catch (Exception e) { how = "error:" + e.GetType().Name; }
           IntPtr now = GetForegroundWindow();
           Say("focus " + h + " " + how + " " + now.ToInt64() + " " + Owner(now));
+        } else if (parts.Length == 1 && parts[0] == "front") {
+          IntPtr now = GetForegroundWindow();
+          Say("front " + now.ToInt64() + " " + Owner(now));
         }
       }
       Environment.Exit(0);
@@ -162,6 +166,27 @@ export class PadWatcher {
     return this.comboWindow;
   }
 
+  private frontWaiters: Array<(hwnd: number) => void> = [];
+
+  /**
+   * The window in front right now (Windows, while the watcher runs), for the keyboard shortcut,
+   * which has no button change to go by. 0 when unknown or the helper is slow to answer.
+   */
+  frontWindow(timeoutMs = 300): Promise<number> {
+    const stdin = this.child?.stdin;
+    if (!stdin || stdin.destroyed) return Promise.resolve(0);
+    return new Promise((resolve) => {
+      const done = (hwnd: number) => {
+        clearTimeout(timer);
+        this.frontWaiters = this.frontWaiters.filter((w) => w !== done);
+        resolve(hwnd);
+      };
+      const timer = setTimeout(() => done(0), timeoutMs);
+      this.frontWaiters.push(done);
+      stdin.write("front\n");
+    });
+  }
+
   /** Brings a window to the front (Windows, while the watcher runs). False when it couldn't ask. */
   focusWindow(hwnd: number): boolean {
     const stdin = this.child?.stdin;
@@ -223,6 +248,12 @@ export class PadWatcher {
       while ((nl = buf.indexOf("\n")) >= 0) {
         const line = buf.slice(0, nl).trim();
         buf = buf.slice(nl + 1);
+        if (line.startsWith("front ")) {
+          const [, w, prog] = line.split(/\s+/);
+          this.log(`shortcut pressed; in front: window ${w} (${prog ?? "unknown"})`);
+          for (const done of [...this.frontWaiters]) done(Number(w) || 0);
+          continue;
+        }
         if (line === "ready" || line.startsWith("focus ")) {
           this.log(`controller helper: ${line}`);
           continue;
