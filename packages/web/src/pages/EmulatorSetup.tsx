@@ -225,7 +225,7 @@ function EmulatorCard(props: {
         </div>
         {props.canSetUp && (
           <div className="inline">
-            {installed && <span className="badge">Version {installed.version}</span>}
+            {installed && <span className="badge">{installed.version === "Flatpak" ? "Flatpak" : `Version ${installed.version}`}</span>}
             <button className={installed ? "" : "primary"} disabled={!!props.busy} onClick={props.onInstall}>
               {props.busy === info.id ? "Working…" : installed ? "Update" : "Set up"}
             </button>

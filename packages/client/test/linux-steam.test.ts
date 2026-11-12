@@ -7,7 +7,19 @@ import os from "node:os";
 import path from "node:path";
 import { after, before, describe, it } from "node:test";
 import { installedRunners, installRunner, prefixDir, runnerCommand, WINE } from "../src/runners.js";
-import { addSteamShortcuts, listSteamShortcuts, parseBinaryVdf, removeSteamShortcuts, shortcutAppId, steamUsers, writeBinaryVdf } from "../src/steamshortcuts.js";
+import {
+  addSteamShortcuts,
+  listSteamShortcuts,
+  parseBinaryVdf,
+  parseTextVdf,
+  removeSteamShortcuts,
+  setCompatTool,
+  shortcutAppId,
+  steamRootOf,
+  steamUsers,
+  writeBinaryVdf,
+  writeTextVdf,
+} from "../src/steamshortcuts.js";
 
 let work: string;
 before(async () => (work = await mkdtemp(path.join(os.tmpdir(), "lootden-linux-"))));
@@ -49,6 +61,74 @@ describe("Steam shortcuts", () => {
     const left = parseBinaryVdf(await readFile(file)).shortcuts as Record<string, Record<string, unknown>>;
     assert.deepEqual(Object.values(left).map((s) => s.AppName), ["Mine"]);
     assert.deepEqual(await readdir(path.join(user!.dir, "config", "grid")), []);
+  });
+});
+
+describe("Windows games through Steam's Proton (ARM handhelds)", () => {
+  it("adds a Windows game as its own .exe and still knows it as a LootDen game", async () => {
+    const root = path.join(work, "steam-arm");
+    await mkdir(path.join(root, "userdata", "7", "config"), { recursive: true });
+    const [user] = await steamUsers([root]);
+    const app = { gameId: "g2", title: "Hades", appPath: "/apps/LootDen.AppImage", art: { cover: { data: Buffer.from("png"), ext: "png" as const } } };
+    await addSteamShortcuts(user!, [app]);
+    const viaApp = shortcutAppId('"/apps/LootDen.AppImage"', "Hades");
+
+    // Again with the game's .exe: the same entry changes over, and the old art goes.
+    await addSteamShortcuts(user!, [{ ...app, directExe: "/games/Hades/Hades.exe" }]);
+    const direct = shortcutAppId('"/games/Hades/Hades.exe"', "Hades");
+    assert.deepEqual([...(await listSteamShortcuts(user!))], [["g2", direct]]);
+    const all = Object.values(parseBinaryVdf(await readFile(path.join(user!.dir, "config", "shortcuts.vdf"))).shortcuts as Record<string, Record<string, unknown>>);
+    assert.equal(all.length, 1);
+    assert.equal(all[0]!.Exe, '"/games/Hades/Hades.exe"');
+    assert.equal(all[0]!.StartDir, '"/games/Hades"');
+    assert.equal(all[0]!.LaunchOptions, "");
+    assert.deepEqual(await readdir(path.join(user!.dir, "config", "grid")), [`${direct}p.png`]);
+    assert.notEqual(viaApp, direct);
+
+    assert.equal(steamRootOf(user!), root);
+    assert.equal(await removeSteamShortcuts(user!, ["g2"]), 1);
+  });
+
+  it("sets Steam Play for shortcuts, using the tool chosen for all other titles", async () => {
+    const root = path.join(work, "steam-compat");
+    await mkdir(path.join(root, "config"), { recursive: true });
+    const config = [
+      '"InstallConfigStore"',
+      "{",
+      '\t"Software"',
+      "\t{",
+      '\t\t"valve"',
+      "\t\t{",
+      '\t\t\t"Steam"',
+      "\t\t\t{",
+      '\t\t\t\t"AutoUpdateWindowEnabled"\t\t"0"',
+      '\t\t\t\t"CompatToolMapping"',
+      "\t\t\t\t{",
+      '\t\t\t\t\t"0"',
+      "\t\t\t\t\t{",
+      '\t\t\t\t\t\t"name"\t\t"proton_cachyos_11"',
+      '\t\t\t\t\t\t"config"\t\t""',
+      '\t\t\t\t\t\t"priority"\t\t"75"',
+      "\t\t\t\t\t}",
+      "\t\t\t\t}",
+      "\t\t\t}",
+      "\t\t}",
+      "\t}",
+      '\t"Path"\t\t"C:\\\\Games \\"x\\""',
+      "}",
+      "",
+    ].join("\n");
+    await writeFile(path.join(root, "config", "config.vdf"), config);
+    assert.equal(await setCompatTool(root, [3000000001]), "proton_cachyos_11");
+    const v = parseTextVdf(await readFile(path.join(root, "config", "config.vdf"), "utf8"));
+    const steam = ((v.InstallConfigStore as Record<string, unknown>).Software as Record<string, Record<string, Record<string, unknown>>>).valve!.Steam!;
+    assert.deepEqual((steam.CompatToolMapping as Record<string, unknown>)["3000000001"], { name: "proton_cachyos_11", config: "", priority: "250" });
+    assert.equal(steam.AutoUpdateWindowEnabled, "0", "other settings stay");
+    assert.equal((v.InstallConfigStore as Record<string, unknown>).Path, 'C:\\Games "x"');
+    assert.deepEqual(parseTextVdf(writeTextVdf(v)), v);
+
+    // No config.vdf yet (Steam never ran): Proton Experimental.
+    assert.equal(await setCompatTool(path.join(work, "steam-new"), [5]), "proton_experimental");
   });
 });
 

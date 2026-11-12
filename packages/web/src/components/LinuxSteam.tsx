@@ -19,6 +19,17 @@ export function LinuxRunners() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   if (!bridge?.runners || state?.platform !== "linux") return null;
+  if (state.arch === "arm64") {
+    return (
+      <div className="app-options">
+        <h3>Windows games on Linux</h3>
+        <p className="muted small">
+          This is an ARM handheld, so Windows games run through Steam's own Proton, which translates them with FEX. Use Add my games to Steam below: Windows games
+          go in as their own .exe set to use Steam Play, and play from Steam's Game Mode.
+        </p>
+      </div>
+    );
+  }
   const install = async (name: string) => {
     setError("");
     setBusy(`Downloading ${name}…`);
@@ -76,7 +87,7 @@ export function GameRunner({ gameId }: { gameId: string }) {
   const bridge = desktop;
   const [state, setState] = useState<RunnersState | null>(null);
   useEffect(() => void bridge?.runners?.().then(setState, () => {}), [bridge]);
-  if (!bridge?.setRunner || state?.platform !== "linux") return null;
+  if (!bridge?.setRunner || state?.platform !== "linux" || state.arch === "arm64") return null;
   const value = state.games[gameId] ?? "";
   return (
     <label className="inline small" title="How this Windows game starts on Linux">
@@ -129,7 +140,13 @@ export function SteamShortcuts() {
             ))}
           </select>
         )}
-        <button className="secondary" disabled={busy} onClick={() => void go(async () => `Added ${(await bridge.addToSteam!()).added} games. Restart Steam to see them.`)}>
+        <button className="secondary" disabled={busy} onClick={() =>
+            void go(async () => {
+              const r = await bridge.addToSteam!();
+              const proton = r.proton ? ` ${r.proton} Windows ${r.proton === 1 ? "game starts" : "games start"} with Steam's Proton.` : "";
+              return `Added ${r.added} games.${proton} Restart Steam to see them.`;
+            })
+          }>
           Add my games to Steam
         </button>
         {status.added.length > 0 && (

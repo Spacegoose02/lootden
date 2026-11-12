@@ -6,7 +6,11 @@ import { desktop } from "../desktop";
 
 const GROUPS: Array<{ platform: ClientFile["platform"]; title: string; help: string }> = [
   { platform: "windows", title: "Windows", help: "Run the installer, or the portable .exe from any folder. Windows may warn that the app is unsigned: choose More info, then Run anyway." },
-  { platform: "linux", title: "Linux and Steam Deck", help: "AppImage: make it executable (chmod +x) and run it. On Debian or Ubuntu you can install the .deb instead." },
+  {
+    platform: "linux",
+    title: "Linux and Steam Deck",
+    help: "AppImage: make it executable (chmod +x) and run it. On Debian or Ubuntu you can install the .deb instead. ARM handhelds running Linux, like a Retroid Pocket on Armada OS, take the ARM AppImage.",
+  },
   {
     platform: "android",
     title: "Android handhelds and phones",

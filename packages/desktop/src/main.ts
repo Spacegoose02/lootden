@@ -95,6 +95,9 @@ import {
   preparePrefix,
   removeSteamShortcuts,
   runnerCommand,
+  setCompatTool,
+  shortcutAppId,
+  steamRootOf,
   steamUsers,
   WINE,
   applyUpdate,
@@ -265,12 +268,12 @@ async function goOnline(): Promise<void> {
   void flushPendingPlays();
 }
 
-/** 7za shipped with the app: in resources/ when packaged, in vendor/ when run from source. */
+/** 7za shipped with the app: in resources/ when packaged, in vendor/<os>/<arch>/ when run from source. */
 function bundled7za(): string {
   const platform = process.platform === "win32" ? "win" : "linux";
   const file = process.platform === "win32" ? "7za.exe" : "7za";
-  const packaged = path.join(process.resourcesPath ?? "", "7zip", platform, file);
-  return app.isPackaged ? packaged : path.join(__dirname, "..", "vendor", "7zip", platform, file);
+  const packaged = path.join(process.resourcesPath ?? "", "7zip", file);
+  return app.isPackaged ? packaged : path.join(__dirname, "..", "vendor", "7zip", platform, process.arch, file);
 }
 
 /** A full 7-Zip install (handles RAR) wins over the bundled 7za (zip and 7z only). */
@@ -1153,6 +1156,15 @@ async function findInstalled(gameId: string) {
   return game;
 }
 
+/** An ARM handheld running Linux (a Retroid Pocket on Armada OS): x86 Windows games only run through Steam there. */
+const ARM_LINUX = process.platform === "linux" && process.arch === "arm64";
+const ARM_WINDOWS_GAMES = "On this ARM handheld, Windows games run through Steam's own Proton. Use Add my games to Steam (Settings, This computer), then play them from Steam.";
+
+/** Whether a program is on the PATH (Linux). */
+function onPath(cmd: string): boolean {
+  return (process.env.PATH ?? "").split(path.delimiter).some((d) => d && existsSync(path.join(d, cmd)));
+}
+
 /** Linux: how this game's .exe starts (its Proton build, the PC's default, or Wine), with its own prefix. */
 function linuxRunner(gameId: string): ((exe: string) => { cmd: string; args: string[]; env: Record<string, string> }) | undefined {
   if (process.platform !== "linux") return undefined;
@@ -1680,7 +1692,7 @@ function registerIpc(): void {
   ipcMain.handle("gm:runners", async (e) => {
     fromServer(e);
     const r = settings.get().linuxRunner ?? { default: "", games: {} };
-    return { platform: process.platform, installed: await installedRunners(toolsDir()), default: r.default, games: r.games };
+    return { platform: process.platform, arch: process.arch, installed: await installedRunners(toolsDir()), default: r.default, games: r.games };
   });
   ipcMain.handle("gm:runnerReleases", async (e) => {
     fromServer(e);
@@ -1689,6 +1701,7 @@ function registerIpc(): void {
   ipcMain.handle("gm:installRunner", async (e, name: string) => {
     fromServer(e);
     if (process.platform !== "linux") throw new Error("Proton is for Linux PCs");
+    if (ARM_LINUX) throw new Error(ARM_WINDOWS_GAMES);
     const release = (await listRunnerReleases()).find((x) => x.name === name);
     if (!release) throw new Error("That Proton-GE release isn't on GitHub any more");
     let last = 0;
@@ -1751,13 +1764,25 @@ function registerIpc(): void {
         return undefined;
       }
     };
+    // On ARM Linux, Windows games go to Steam as their own .exe so Steam's Proton (with FEX) runs them.
+    const installed = ARM_LINUX ? await listInstalled(await searchDirs()) : [];
+    const windowsExe = async (gameId: string): Promise<string | undefined> => {
+      const g = installed.find((x) => x.gameId === gameId);
+      if (!g || g.platform !== "pc") return undefined;
+      const home = g.installedDir ?? g.dir;
+      const rel = g.executable ?? (await findExecutable(home, g.title).then((x) => x && relTo(g.dir, path.join(home, x))));
+      return rel && /\.exe$/i.test(rel) ? path.resolve(g.dir, rel) : undefined;
+    };
     const shortcuts = [];
     for (const g of games) {
       const d = api ? await api.getGame(g.gameId).catch(() => null) : null;
-      shortcuts.push({ gameId: g.gameId, title: g.title, appPath, art: { cover: await picture(d?.coverUrl), hero: await picture(d?.backgroundUrl) } });
+      const directExe = await windowsExe(g.gameId);
+      shortcuts.push({ gameId: g.gameId, title: g.title, appPath, directExe, art: { cover: await picture(d?.coverUrl), hero: await picture(d?.backgroundUrl) } });
     }
     const n = await addSteamShortcuts(user, shortcuts);
-    return { added: n, restartSteam: true };
+    const direct = shortcuts.filter((s) => s.directExe).map((s) => shortcutAppId(`"${s.directExe}"`, s.title));
+    if (direct.length) await setCompatTool(steamRootOf(user), direct);
+    return { added: n, restartSteam: true, proton: direct.length };
   });
   ipcMain.handle("gm:steam:remove", async (e, ids?: string[]) => {
     fromServer(e);
@@ -1804,6 +1829,8 @@ function registerIpc(): void {
         exe = relTo(game.dir, r.filePaths[0]!);
       }
       if (exe !== game.executable) await saveExecutable(game.dir, exe);
+      // LootDen's Proton-GE is x86, so on ARM only Steam (or a Wine set up for ARM) can start a .exe.
+      if (ARM_LINUX && /\.exe$/i.test(exe) && !onPath("wine")) throw new Error(ARM_WINDOWS_GAMES);
     }
     // Play time limits and bedtime, then this person's own saves.
     const live = await clientOrOffline();

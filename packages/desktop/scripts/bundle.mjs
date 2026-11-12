@@ -24,9 +24,10 @@ for (const entry of ["main", "preload", "browser-preload"]) {
 }
 
 const sevenBin = path.dirname(require.resolve("7zip-bin"));
-for (const [platform, file] of [["win", "7za.exe"], ["linux", "7za"]]) {
-  const dest = path.join(root, "vendor", "7zip", platform);
+// vendor/7zip/<os>/<arch>/, which electron-builder picks per build (extraResources in package.json).
+for (const [platform, arch, file] of [["win", "x64", "7za.exe"], ["linux", "x64", "7za"], ["linux", "arm64", "7za"]]) {
+  const dest = path.join(root, "vendor", "7zip", platform, arch);
   mkdirSync(dest, { recursive: true });
-  cpSync(path.join(sevenBin, platform, "x64", file), path.join(dest, file));
+  cpSync(path.join(sevenBin, platform, arch, file), path.join(dest, file));
 }
 console.log("Bundled desktop app into dist/");

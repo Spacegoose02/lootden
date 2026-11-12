@@ -31,12 +31,16 @@ const ALLOWED = /\.(exe|msi|appimage|deb|rpm|apk|zip|7z|tar\.gz|pext)$|^(gm|loot
 export function describe(name: string): Pick<ClientFile, "platform" | "kind"> {
   const n = name.toLowerCase();
   if (n.endsWith(".pext") || n.includes("playnite")) return { platform: "playnite", kind: "Playnite plugin" };
-  if (n.endsWith(".appimage")) return { platform: "linux", kind: "Desktop app (AppImage)" };
-  if (n.endsWith(".deb")) return { platform: "linux", kind: "Desktop app (Debian/Ubuntu package)" };
+  // ARM builds are for Linux handhelds (Armada OS, ROCKNIX); everything else is a normal x64 PC.
+  const arm = /(arm64|aarch64)/.test(n) ? ", ARM" : "";
+  if (n.endsWith(".appimage")) return { platform: "linux", kind: `Desktop app (AppImage${arm})` };
+  if (n.endsWith(".deb")) return { platform: "linux", kind: `Desktop app (Debian/Ubuntu package${arm})` };
   if (n.endsWith(".rpm")) return { platform: "linux", kind: "Desktop app (Fedora package)" };
   if (n.endsWith(".apk")) return { platform: "android", kind: "Android app" };
   // The CLI: lootden(.exe) and lootden-cli-*, or gm from before the rename.
-  if (/^(gm|lootden)(\.exe)?$/.test(n) || /^(gm|lootden-cli)[-_]/.test(n)) return { platform: n.includes("win") || n.endsWith(".exe") ? "windows" : "linux", kind: "Command-line client" };
+  if (/^(gm|lootden)(\.exe)?$/.test(n) || /^(gm|lootden-cli)[-_]/.test(n)) {
+    return { platform: n.includes("win") || n.endsWith(".exe") ? "windows" : "linux", kind: `Command-line client${arm ? " (ARM)" : ""}` };
+  }
   if (n.endsWith(".exe") || n.endsWith(".msi")) return { platform: "windows", kind: n.includes("setup") ? "Desktop app (installer)" : "Desktop app" };
   return { platform: "other", kind: "Download" };
 }

@@ -24,6 +24,48 @@ export { EMULATORS, emulatorInfo } from "@lootden/shared";
 
 type OS = "win32" | "linux";
 const hostOs = (): OS => (process.platform === "win32" ? "win32" : "linux");
+/** x64 PCs, or arm64 for ARM handhelds running Linux (a Retroid Pocket on Armada OS). */
+type Arch = "x64" | "arm64";
+const hostArch = (): Arch => (process.arch === "arm64" ? "arm64" : "x64");
+
+/**
+ * Each emulator's Flathub id. On Linux a Flatpak copy the player already has (from Flathub,
+ * Discover or the Armada Store) is used instead of downloading an AppImage, and on ARM it's
+ * the only way for emulators without an official ARM Linux build.
+ */
+export const FLATPAK_IDS: Record<string, string> = {
+  retroarch: "org.libretro.RetroArch",
+  duckstation: "org.duckstation.DuckStation",
+  pcsx2: "net.pcsx2.PCSX2",
+  rpcs3: "net.rpcs3.RPCS3",
+  xemu: "app.xemu.xemu",
+};
+
+/** The manifest's exe for an emulator run through Flatpak: "flatpak:<app id>". */
+const FLATPAK_PREFIX = "flatpak:";
+export const flatpakApp = (exe: string | undefined): string | null => (exe?.startsWith(FLATPAK_PREFIX) ? exe.slice(FLATPAK_PREFIX.length) : null);
+
+/** Flatpak apps installed for this user or system-wide; empty when Flatpak isn't there. */
+export function installedFlatpaks(): Promise<Set<string>> {
+  return new Promise((resolve) => {
+    let out = "";
+    const child = spawn("flatpak", ["list", "--app", "--columns=application"], { stdio: ["ignore", "pipe", "ignore"] });
+    child.stdout.on("data", (d) => (out += d.toString()));
+    child.on("error", () => resolve(new Set()));
+    child.on("close", () => resolve(new Set(out.split(/\r?\n/).map((l) => l.trim()).filter(Boolean))));
+  });
+}
+
+/**
+ * The command that starts an emulator. A Flatpak one goes through "flatpak run", with the
+ * tools and game folders opened to its sandbox (games on an SD card aren't in it otherwise).
+ */
+export function emulatorCommand(toolsDir: string, exe: string, args: string[], folders: string[] = []): { cmd: string; args: string[] } {
+  const app = flatpakApp(exe);
+  if (!app) return { cmd: path.join(toolsDir, exe), args };
+  const open = [...new Set([toolsDir, ...folders])].map((f) => `--filesystem=${f}`);
+  return { cmd: "flatpak", args: ["run", ...open, app, ...args] };
+}
 
 /** What the app has set up in its tools folder, kept in lootden-tools.json. */
 export interface ToolsManifest {
@@ -77,12 +119,16 @@ export const emulatorDir = (toolsDir: string, id: string) => path.join(toolsDir,
  * Where an emulator keeps BIOS files, memory cards and saves. On Windows every emulator
  * runs portable from the tools folder; Linux AppImages use their usual home folders.
  */
-export function emulatorDataDir(toolsDir: string, id: string, platform: OS = hostOs()): string {
+export function emulatorDataDir(toolsDir: string, id: string, platform: OS = hostOs(), exe?: string): string {
   const dir = emulatorDir(toolsDir, id);
   if (platform === "win32" || id === "retroarch" || id === "xemu") return dir;
   const home = os.homedir();
-  const config = process.env.XDG_CONFIG_HOME ?? path.join(home, ".config");
-  if (id === "duckstation") return path.join(process.env.XDG_DATA_HOME ?? path.join(home, ".local", "share"), "duckstation");
+  // A Flatpak keeps its home folders under ~/.var/app/<id>/.
+  const app = flatpakApp(exe);
+  const sandbox = app ? path.join(home, ".var", "app", app) : null;
+  const config = sandbox ? path.join(sandbox, "config") : (process.env.XDG_CONFIG_HOME ?? path.join(home, ".config"));
+  const data = sandbox ? path.join(sandbox, "data") : (process.env.XDG_DATA_HOME ?? path.join(home, ".local", "share"));
+  if (id === "duckstation") return path.join(data, "duckstation");
   if (id === "pcsx2") return path.join(config, "PCSX2");
   if (id === "rpcs3") return path.join(config, "rpcs3");
   return dir;
@@ -110,8 +156,15 @@ async function githubAsset(fetchImpl: Fetch, repo: string, pattern: RegExp): Pro
   return { url: asset.browser_download_url, version: best.tag_name, fileName: asset.name };
 }
 
+/** Thrown when an emulator has no download for this computer; a Flatpak copy still works. */
+function noArmBuild(id: string, name: string): never {
+  throw new Error(`${name} has no official download for ARM Linux. Install it as a Flatpak (${FLATPAK_IDS[id]}, from Flathub or the Armada Store), then set it up here again and LootDen will use that.`);
+}
+
 /** Highest version folder on the libretro buildbot's stable page. */
-async function retroarchRelease(fetchImpl: Fetch, platform: OS): Promise<Release> {
+async function retroarchRelease(fetchImpl: Fetch, platform: OS, arch: Arch = "x64"): Promise<Release> {
+  // The buildbot's stable RetroArch is x86 only on Linux (its cores do come for aarch64).
+  if (platform === "linux" && arch === "arm64") noArmBuild("retroarch", "RetroArch");
   const res = await fetchImpl("https://buildbot.libretro.com/stable/", { headers: { "User-Agent": "LootDen" } });
   if (!res.ok) throw new Error(`The libretro buildbot answered ${res.status}`);
   const html = await res.text();
@@ -127,12 +180,24 @@ async function retroarchRelease(fetchImpl: Fetch, platform: OS): Promise<Release
   return { url: `https://buildbot.libretro.com/stable/${version}/${folder}/RetroArch.7z`, version, fileName: "RetroArch.7z" };
 }
 
-const SOURCES: Record<string, (f: Fetch, p: OS) => Promise<Release>> = {
+/** Where each emulator's newest build comes from. Windows builds are x64; Linux has x64 and, where the project makes one, arm64. */
+const SOURCES: Record<string, (f: Fetch, p: OS, a: Arch) => Promise<Release>> = {
   retroarch: retroarchRelease,
-  duckstation: (f, p) => githubAsset(f, "stenzek/duckstation", p === "win32" ? /^duckstation-windows-x64-release\.zip$/i : /^DuckStation-x64\.AppImage$/i),
-  pcsx2: (f, p) => githubAsset(f, "PCSX2/pcsx2", p === "win32" ? /windows-x64-Qt\.7z$/i : /linux-appimage-x64-Qt\.AppImage$/i),
-  rpcs3: (f, p) => (p === "win32" ? githubAsset(f, "RPCS3/rpcs3-binaries-win", /win64.*\.7z$/i) : githubAsset(f, "RPCS3/rpcs3-binaries-linux", /linux64\.AppImage$/i)),
-  xemu: (f, p) => githubAsset(f, "xemu-project/xemu", p === "win32" ? /^xemu-win-x86_64-release\.zip$|^xemu.*win.*x86_64.*(?<!pdb|dbg)\.zip$/i : /x86_64\.AppImage$/i),
+  duckstation: (f, p, a) =>
+    githubAsset(f, "stenzek/duckstation", p === "win32" ? /^duckstation-windows-x64-release\.zip$/i : a === "arm64" ? /^DuckStation-arm64\.AppImage$/i : /^DuckStation-x64\.AppImage$/i),
+  pcsx2: (f, p, a) => (p === "linux" && a === "arm64" ? noArmBuild("pcsx2", "PCSX2") : githubAsset(f, "PCSX2/pcsx2", p === "win32" ? /windows-x64-Qt\.7z$/i : /linux-appimage-x64-Qt\.AppImage$/i)),
+  rpcs3: (f, p, a) =>
+    p === "win32"
+      ? githubAsset(f, "RPCS3/rpcs3-binaries-win", /win64.*\.7z$/i)
+      : a === "arm64"
+        ? githubAsset(f, "RPCS3/rpcs3-binaries-linux-arm64", /linux_aarch64\.AppImage$/i)
+        : githubAsset(f, "RPCS3/rpcs3-binaries-linux", /linux64\.AppImage$/i),
+  xemu: (f, p, a) =>
+    githubAsset(
+      f,
+      "xemu-project/xemu",
+      p === "win32" ? /^xemu-win-x86_64-release\.zip$|^xemu.*win.*x86_64.*(?<!pdb|dbg)\.zip$/i : a === "arm64" ? /^xemu-(?!.*dbg).*aarch64\.AppImage$/i : /^xemu-(?!.*dbg).*x86_64\.AppImage$/i,
+    ),
 };
 
 /** The emulator's program, found after unpacking. */
@@ -180,6 +245,10 @@ export interface ToolsOptions {
   sevenZip: SevenZip;
   fetchImpl?: Fetch;
   platform?: OS;
+  /** The processor emulators are downloaded for; this computer's by default. */
+  arch?: Arch;
+  /** Installed Flatpak app ids; asks flatpak itself by default (tests pass their own). */
+  flatpaks?: () => Promise<Set<string>>;
   onEvent?: (e: ToolsEvent) => void;
   signal?: AbortSignal;
 }
@@ -191,9 +260,20 @@ export async function installEmulator(id: string, opts: ToolsOptions): Promise<{
   if (!info || !source) throw new Error(`Unknown emulator ${id}`);
   const fetchImpl = opts.fetchImpl ?? fetch;
   const platform = opts.platform ?? hostOs();
+  const arch = opts.arch ?? hostArch();
   const emit = opts.onEvent ?? (() => {});
+
+  // On Linux, an emulator the player installed as a Flatpak is used as it is (Flatpak keeps it
+  // up to date), unless LootDen already downloaded its own copy and is just updating that.
+  if (platform === "linux") {
+    const app = FLATPAK_IDS[id];
+    const current = (await readTools(opts.toolsDir)).emulators[id];
+    const downloaded = current && !flatpakApp(current.exe);
+    if (app && !downloaded && (await (opts.flatpaks ?? installedFlatpaks)()).has(app)) return useFlatpak(id, app, { ...opts, fetchImpl });
+  }
+
   emit({ message: `Finding the latest ${info.name}` });
-  const release = await source(fetchImpl, platform);
+  const release = await source(fetchImpl, platform, arch);
 
   const dir = emulatorDir(opts.toolsDir, id);
   await mkdir(dir, { recursive: true });
@@ -229,6 +309,21 @@ export async function installEmulator(id: string, opts: ToolsOptions): Promise<{
     await fetchXboxHdd({ ...opts, fetchImpl });
   }
   return { version: release.version, exe };
+}
+
+/** Records a Flatpak emulator in the manifest, with the folders LootDen keeps for it. */
+async function useFlatpak(id: string, app: string, opts: ToolsOptions & { fetchImpl: Fetch }): Promise<{ version: string; exe: string }> {
+  const info = emulatorInfo(id)!;
+  const dir = emulatorDir(opts.toolsDir, id);
+  if (id === "retroarch") for (const sub of ["system", "saves", "states", "cores"]) await mkdir(path.join(dir, sub), { recursive: true });
+  if (id === "xemu") await mkdir(path.join(dir, "bios"), { recursive: true });
+  const exe = `${FLATPAK_PREFIX}${app}`;
+  const tools = await readTools(opts.toolsDir);
+  tools.emulators[id] = { ...tools.emulators[id], version: "Flatpak", exe, installedAt: new Date().toISOString() };
+  await writeTools(opts.toolsDir, tools);
+  opts.onEvent?.({ message: `Using ${info.name} from Flatpak (${app})` });
+  if (id === "xemu" && !(await findFile(path.join(dir, "bios"), /^xbox_hdd\.qcow2$/i))) await fetchXboxHdd(opts);
+  return { version: "Flatpak", exe };
 }
 
 /** Archives often wrap the program in one folder ("RetroArch-Win64/"); lift it so paths stay stable across versions. */
@@ -272,11 +367,12 @@ async function fetchXboxHdd(opts: ToolsOptions & { fetchImpl: Fetch }): Promise<
 export async function installCore(core: string, opts: ToolsOptions): Promise<string> {
   const fetchImpl = opts.fetchImpl ?? fetch;
   const platform = opts.platform ?? hostOs();
+  const arch = opts.arch ?? hostArch();
   const dir = path.join(emulatorDir(opts.toolsDir, "retroarch"), "cores");
   const file = `${core}_libretro.${platform === "win32" ? "dll" : "so"}`;
   const target = path.join(dir, file);
   if (await stat(target).catch(() => null)) return target;
-  const folder = platform === "win32" ? "windows/x86_64" : "linux/x86_64";
+  const folder = platform === "win32" ? "windows/x86_64" : arch === "arm64" ? "linux/aarch64" : "linux/x86_64";
   const zip = path.join(dir, `${file}.zip`);
   opts.onEvent?.({ message: `Downloading the ${core} core for RetroArch` });
   await download(fetchImpl, `https://buildbot.libretro.com/nightly/${folder}/latest/${file}.zip`, zip, undefined, opts.signal);
@@ -307,9 +403,10 @@ export async function biosStatus(toolsDir: string, platform: OS = hostOs()): Pro
   for (const e of EMULATORS) {
     for (const r of e.bios) {
       let present: string | null = null;
-      if (r.folder === "firmware") present = tools.emulators[e.id] && (await firmwareInstalled(toolsDir, e.id, platform)) ? "installed" : null;
+      const exe = tools.emulators[e.id]?.exe;
+      if (r.folder === "firmware") present = tools.emulators[e.id] && (await firmwareInstalled(toolsDir, e.id, platform, exe)) ? "installed" : null;
       else {
-        const names = await readdir(path.join(emulatorDataDir(toolsDir, e.id, platform), r.folder)).catch(() => [] as string[]);
+        const names = await readdir(path.join(emulatorDataDir(toolsDir, e.id, platform, exe), r.folder)).catch(() => [] as string[]);
         present = names.find((n) => new RegExp(r.match, "i").test(n)) ?? null;
       }
       out.push({ emulator: e.id, requirement: r, present });
@@ -318,9 +415,9 @@ export async function biosStatus(toolsDir: string, platform: OS = hostOs()): Pro
   return out;
 }
 
-async function firmwareInstalled(toolsDir: string, id: string, platform: OS): Promise<boolean> {
+async function firmwareInstalled(toolsDir: string, id: string, platform: OS, exe?: string): Promise<boolean> {
   if (id !== "rpcs3") return false;
-  const vsh = path.join(emulatorDataDir(toolsDir, id, platform), "dev_flash", "vsh", "module", "vsh.self");
+  const vsh = path.join(emulatorDataDir(toolsDir, id, platform, exe), "dev_flash", "vsh", "module", "vsh.self");
   return !!(await stat(vsh).catch(() => null));
 }
 
@@ -332,14 +429,14 @@ export async function addBiosFile(toolsDir: string, emulator: EmulatorInfo, file
   const name = path.basename(file);
   const req = emulator.bios.find((r) => new RegExp(r.match, "i").test(name));
   if (!req) throw new Error(`${name} isn't a file ${emulator.name} uses. It needs: ${emulator.bios.map((r) => r.examples[0]).join(", ")}`);
+  const state = (await readTools(toolsDir)).emulators[emulator.id];
   if (req.folder === "firmware") {
-    const tools = await readTools(toolsDir);
-    const state = tools.emulators[emulator.id];
     if (!state) throw new Error(`Set up ${emulator.name} first, then add the firmware`);
-    await run(path.join(toolsDir, state.exe), ["--installfw", file]);
+    const c = emulatorCommand(toolsDir, state.exe, ["--installfw", file], [path.dirname(file)]);
+    await run(c.cmd, c.args);
     return req;
   }
-  const dest = path.join(emulatorDataDir(toolsDir, emulator.id, platform), req.folder);
+  const dest = path.join(emulatorDataDir(toolsDir, emulator.id, platform, state?.exe), req.folder);
   await mkdir(dest, { recursive: true });
   await copyFile(file, path.join(dest, name));
   return req;
@@ -372,7 +469,7 @@ export async function biosFromServer(api: GameServerClient, toolsDir: string, pl
 
 function run(cmd: string, args: string[]): Promise<void> {
   return new Promise((resolve, reject) => {
-    const child = spawn(cmd, args, { cwd: path.dirname(cmd), stdio: "ignore", windowsHide: true });
+    const child = spawn(cmd, args, { cwd: path.isAbsolute(cmd) ? path.dirname(cmd) : undefined, stdio: "ignore", windowsHide: true });
     child.on("error", reject);
     child.on("exit", (code) => (code === 0 ? resolve() : reject(new Error(`${path.basename(cmd)} exited with ${code}`))));
   });
@@ -411,8 +508,12 @@ export async function planLaunch(gameDir: string, platformId: string, opts: Tool
   const romRel = pickRomFile(files, platform);
   if (!romRel) throw new Error(`No ${platform.short} game file found in ${gameDir}`);
   const rom = path.join(gameDir, ...romRel.split("/"));
-  const exe = path.join(opts.toolsDir, state.exe);
-  const dataDir = emulatorDataDir(opts.toolsDir, emulator.id, os_);
+  const dataDir = emulatorDataDir(opts.toolsDir, emulator.id, os_, state.exe);
+  // Start through Flatpak when that's how it's installed; the game's folder is opened to it.
+  const launch = (args: string[]): { exe: string; args: string[] } => {
+    const c = emulatorCommand(opts.toolsDir, state.exe, args, [gameDir]);
+    return { exe: c.cmd, args: c.args };
+  };
   const base = path.basename(rom).replace(/\.[^.]+$/, "");
 
   switch (emulator.id) {
@@ -440,18 +541,18 @@ export async function planLaunch(gameDir: string, platformId: string, opts: Tool
           "",
         ].join("\n"),
       );
-      return { emulator, exe, rom, dataDir, args: ["-f", "-L", core, "--appendconfig", cfg, rom], saveDirs: ["saves", "states"], savePrefix: base };
+      return { emulator, rom, dataDir, ...launch(["-f", "-L", core, "--appendconfig", cfg, rom]), saveDirs: ["saves", "states"], savePrefix: base };
     }
     case "duckstation":
       // Memory cards named after the game file, the same name the browser player uses, so both share one card.
       await setIni(path.join(dataDir, "settings.ini"), "MemoryCards", { Card1Type: "PerGameFileTitle" });
       await bindController(path.join(dataDir, "settings.ini"), DUCKSTATION_PAD);
-      return { emulator, exe, rom, dataDir, args: ["-batch", "-fullscreen", "--", rom], saveDirs: ["memcards", "savestates"], savePrefix: null };
+      return { emulator, rom, dataDir, ...launch(["-batch", "-fullscreen", "--", rom]), saveDirs: ["memcards", "savestates"], savePrefix: null };
     case "pcsx2":
       await bindController(path.join(dataDir, "inis", "PCSX2.ini"), PCSX2_PAD);
-      return { emulator, exe, rom, dataDir, args: ["-batch", "-fullscreen", "--", rom], saveDirs: ["memcards", "sstates"], savePrefix: null };
+      return { emulator, rom, dataDir, ...launch(["-batch", "-fullscreen", "--", rom]), saveDirs: ["memcards", "sstates"], savePrefix: null };
     case "rpcs3":
-      return { emulator, exe, rom, dataDir, args: ["--no-gui", rom], saveDirs: ["dev_hdd0/home/00000001/savedata"], savePrefix: null };
+      return { emulator, rom, dataDir, ...launch(["--no-gui", rom]), saveDirs: ["dev_hdd0/home/00000001/savedata"], savePrefix: null };
     case "xemu": {
       const bios = path.join(dataDir, "bios");
       const names = await readdir(bios).catch(() => [] as string[]);
@@ -462,7 +563,7 @@ export async function planLaunch(gameDir: string, platformId: string, opts: Tool
       };
       const config = path.join(dataDir, "xemu.toml");
       await writeFile(config, `[sys.files]\nbootrom_path = '${pick("mcpx")}'\nflashrom_path = '${pick("flash")}'\nhdd_path = '${pick("hdd")}'\n`);
-      return { emulator, exe, rom, dataDir, args: ["-config_path", config, "-full-screen", "-dvd_path", rom], saveDirs: [], savePrefix: null };
+      return { emulator, rom, dataDir, ...launch(["-config_path", config, "-full-screen", "-dvd_path", rom]), saveDirs: [], savePrefix: null };
     }
     default:
       throw new Error(`Don't know how to start ${emulator.name}`);
@@ -649,7 +750,7 @@ export async function playEmulated(
   const started = Date.now();
   opts.onStarted?.(plan);
   await new Promise<void>((resolve, reject) => {
-    const child = spawn(plan.exe, plan.args, { cwd: path.dirname(plan.exe), stdio: "ignore" });
+    const child = spawn(plan.exe, plan.args, { cwd: path.isAbsolute(plan.exe) ? path.dirname(plan.exe) : os.homedir(), stdio: "ignore" });
     child.on("error", reject);
     child.on("exit", () => resolve());
   });

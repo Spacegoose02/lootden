@@ -2,7 +2,7 @@
   "name": "@lootden/desktop",
   "version": "0.34.0",
   "private": true,
-  "description": "LootDen desktop app for Windows and Linux",
+  "description": "LootDen desktop app for Windows and Linux (x64 and ARM)",
   "homepage": "https://github.com/Spacegoose02/lootden",
   "author": {
     "name": "Spacegoose02",
@@ -14,7 +14,7 @@
     "start": "npm run build && electron .",
     "dist": "npm run build && electron-builder --publish never",
     "dist:win": "npm run build && electron-builder --win --publish never",
-    "dist:linux": "npm run build && electron-builder --linux --publish never"
+    "dist:linux": "npm run build && electron-builder --linux --x64 --publish never && electron-builder --linux --arm64 --publish never '-c.appImage.artifactName=LootDen-linux-arm64-${version}.${ext}'"
   },
   "dependencies": {
     "@lootden/client": "0.34.0"
@@ -40,7 +40,7 @@
     ],
     "extraResources": [
       {
-        "from": "vendor/7zip",
+        "from": "vendor/7zip/${os}/${arch}",
         "to": "7zip",
         "filter": [
           "**/*"

@@ -123,6 +123,8 @@ export interface VerifyResult {
 
 export interface RunnersState {
   platform: string;
+  /** "arm64" on ARM handhelds running Linux, where Windows games go through Steam's Proton instead. */
+  arch?: string;
   /** Proton builds installed for LootDen, newest first. */
   installed: string[];
   /** What Windows games use unless they pick their own: a Proton build, "wine", or "" (Wine). */
@@ -296,7 +298,7 @@ export interface DesktopBridge {
   setRunner?(patch: { gameId?: string; runner: string | null }): Promise<unknown>;
   /** Add to Steam (newer apps only). */
   steamStatus?(): Promise<{ users: string[]; user: string | null; added: string[] }>;
-  addToSteam?(ids?: string[], userId?: string): Promise<{ added: number; restartSteam: boolean }>;
+  addToSteam?(ids?: string[], userId?: string): Promise<{ added: number; restartSteam: boolean; proton?: number }>;
   removeFromSteam?(ids?: string[]): Promise<{ removed: number }>;
   /** actionId picks one of the game's launch options; "" is the game's own way (apps from 0.25 take it). */
   play(gameId: string, actionId?: string): Promise<{ executable: string } | null>;
