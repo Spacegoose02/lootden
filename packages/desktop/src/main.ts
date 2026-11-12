@@ -822,15 +822,40 @@ function scheduleHeartbeat(ms: number): void {
 /** Shares the screen to the family wall. Only taken while a game runs, so it never steals the keys from other programs. */
 const SCREENSHOT_KEY = "Ctrl+Shift+S";
 let shotKeyOn = false;
+/**
+ * Opens and closes the in-game menu from the keyboard, for handhelds whose buttons can send keys
+ * (a ROG Ally profile, Steam Input) and where the controller combo doesn't get through, like the
+ * Xbox full screen experience. A key press also gives LootDen Windows' leave to come to the front.
+ */
+const OVERLAY_KEY = "Ctrl+Shift+O";
+let overlayKeyOn = false;
 
-/** The screenshot key works while a game runs (LootDen's or another launcher's). */
+/** The screenshot and in-game menu keys work while a game runs (LootDen's or another launcher's). */
 function updateScreenshotKey(gamesRunning: boolean): void {
-  if (gamesRunning === shotKeyOn || !app.isReady()) return;
-  if (gamesRunning) shotKeyOn = globalShortcut.register(SCREENSHOT_KEY.replace("Ctrl", "CommandOrControl"), () => void shareScreenshot());
-  else {
-    globalShortcut.unregister(SCREENSHOT_KEY.replace("Ctrl", "CommandOrControl"));
-    shotKeyOn = false;
+  if (!app.isReady()) return;
+  if (gamesRunning !== shotKeyOn) {
+    if (gamesRunning) shotKeyOn = globalShortcut.register(SCREENSHOT_KEY.replace("Ctrl", "CommandOrControl"), () => void shareScreenshot());
+    else {
+      globalShortcut.unregister(SCREENSHOT_KEY.replace("Ctrl", "CommandOrControl"));
+      shotKeyOn = false;
+    }
   }
+  const wantMenu = gamesRunning && (settings.get().overlay ?? "view-menu") !== "off";
+  if (wantMenu !== overlayKeyOn) {
+    if (wantMenu) {
+      overlayKeyOn = globalShortcut.register(OVERLAY_KEY.replace("Ctrl", "CommandOrControl"), () => void overlayFromKey());
+      overlayLog(overlayKeyOn ? `menu shortcut ${OVERLAY_KEY} on` : `menu shortcut ${OVERLAY_KEY} taken by another program`);
+    } else {
+      globalShortcut.unregister(OVERLAY_KEY.replace("Ctrl", "CommandOrControl"));
+      overlayKeyOn = false;
+    }
+  }
+}
+
+/** The menu shortcut: notes the game's window first, so Resume can put it back in front. */
+async function overlayFromKey(): Promise<void> {
+  const front = overlayOpen ? 0 : await padWatch.frontWindow();
+  toggleOverlay(front || undefined);
 }
 
 let lastPlayingNow: RunningGame[] = [];
@@ -919,11 +944,11 @@ function overlayState(open: boolean) {
   return { open, games: lastPlayingNow, paused: [...suspended.entries()].filter(([, v]) => v.since !== null).map(([id]) => id) };
 }
 
-function toggleOverlay(): void {
+function toggleOverlay(frontAtPress?: number): void {
   if (!win || win.isDestroyed()) return;
   if (overlayOpen && win.isFocused()) return closeOverlay(true);
   const mine = nativeWindowId(win);
-  const front = padWatch.windowAtCombo;
+  const front = frontAtPress ?? padWatch.windowAtCombo;
   if (!overlayOpen && front && front !== mine) overlayGameWindow = front;
   overlayOpen = true;
   if (win.isMinimized()) win.restore();
@@ -2868,6 +2893,7 @@ function registerIpc(): void {
       if (clean.overlay) {
         padWatch.stop();
         updatePadWatch();
+        updateScreenshotKey(lastPlayingNow.length > 0 || nowRunning.size > 0);
       }
     }
     const s = settings.get();
