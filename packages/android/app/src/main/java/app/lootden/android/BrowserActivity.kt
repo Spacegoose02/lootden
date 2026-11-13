@@ -89,6 +89,7 @@ class BrowserActivity : Activity() {
         pages = FrameLayout(this)
         shell = WebView(this)
         shell.setBackgroundColor(Color.parseColor("#0D0820"))
+        shell.defaultFocusHighlightEnabled = false // see createView
         shell.settings.javaScriptEnabled = true
         shell.settings.domStorageEnabled = true
         shell.addJavascriptInterface(ShellBridge(), "LootDenBrowserNative")
@@ -263,6 +264,9 @@ class BrowserActivity : Activity() {
         view.setBackgroundColor(Color.WHITE)
         view.isFocusable = true
         view.isFocusableInTouchMode = true
+        // Android 8+ tints a focused view with no focus drawable in translucent white whenever a d-pad or
+        // controller (not touch) moved focus: over a full-screen WebView that washes out the whole app.
+        view.defaultFocusHighlightEnabled = false
         with(view.settings) {
             javaScriptEnabled = true
             domStorageEnabled = true
