@@ -1,5 +1,6 @@
 // Builds standalone client executables into packages/client/release/.
-//   node scripts/package.mjs            -> Windows x64 and Linux x64
+//   node scripts/package.mjs            -> Windows x64, Linux x64 and Linux arm64
+//   node scripts/package.mjs linux      -> both Linux builds
 //   node scripts/package.mjs win        -> Windows only
 // Each release folder gets the matching 7za so zip and 7z work without installing anything.
 // RAR still needs a full 7-Zip install on the client machine.
@@ -18,6 +19,8 @@ const only = process.argv[2];
 const targets = [
   { name: "win-x64", pkg: "node22-win-x64", exe: "lootden.exe", sevenZip: ["win", "x64", "7za.exe"] },
   { name: "linux-x64", pkg: "node22-linux-x64", exe: "lootden", sevenZip: ["linux", "x64", "7za"] },
+  // ARM handhelds running Linux, such as a Retroid Pocket on Armada OS or ROCKNIX.
+  { name: "linux-arm64", pkg: "node22-linux-arm64", exe: "lootden", sevenZip: ["linux", "arm64", "7za"] },
 ].filter((t) => !only || t.name.startsWith(only));
 
 const bundle = path.join(root, "build", "lootden.cjs");

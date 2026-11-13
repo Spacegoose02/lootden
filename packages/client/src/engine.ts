@@ -10,7 +10,18 @@ export { DownloadQueue, QueueHold, type QueueItem, type QueueState } from "./que
 export { clockMinutes, inWindow, RateLimiter } from "./throttle.js";
 export { FILES_NAME, readRecord, recordFiles, repairGame, verifyGame, type VerifyResult } from "./verify.js";
 export { installedRunners, installRunner, listRunnerReleases, preparePrefix, prefixDir, runnerCommand, WINE, type RunnerRelease } from "./runners.js";
-export { addSteamShortcuts, listSteamShortcuts, parseBinaryVdf, removeSteamShortcuts, shortcutAppId, steamUsers, writeBinaryVdf, type SteamUser } from "./steamshortcuts.js";
+export {
+  addSteamShortcuts,
+  listSteamShortcuts,
+  parseBinaryVdf,
+  removeSteamShortcuts,
+  setCompatTool,
+  shortcutAppId,
+  steamRootOf,
+  steamUsers,
+  writeBinaryVdf,
+  type SteamUser,
+} from "./steamshortcuts.js";
 export { findExecutable, launchAndTrack, listProcesses, processesIn, saveExecutable } from "./launcher.js";
 export { backupStoreSaves, findStoreSaves, restoreStoreSaves, type SaveLocation } from "./storesaves.js";
 export { commandFor, isLaunchUrl, launchActionAndTrack, runLaunchSteps, stepTarget, suspendProcesses, type Spawner } from "./launchactions.js";

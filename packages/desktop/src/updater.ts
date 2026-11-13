@@ -26,12 +26,16 @@ export function compareVersions(a: string, b: string): number {
   return 0;
 }
 
-/** The app file names the release workflow produces, per install kind (see package.json build). */
-const PATTERNS: Record<Exclude<InstallKind, "other">, RegExp> = {
-  installer: /^LootDen-Setup-(\d+(?:\.\d+){1,3})\.exe$/i,
-  portable: /^LootDen-(\d+(?:\.\d+){1,3})-portable\.exe$/i,
-  appimage: /^LootDen-(\d+(?:\.\d+){1,3})-linux-[\w-]+\.AppImage$/i,
-};
+/**
+ * The app file names the release workflow produces, per install kind (see package.json build).
+ * The ARM AppImage puts the version last on purpose: copies from before 0.35 match any
+ * "LootDen-<version>-linux-*.AppImage", so an x64 copy would otherwise update itself to it.
+ */
+function pattern(kind: Exclude<InstallKind, "other">, arch: string): RegExp {
+  if (kind === "installer") return /^LootDen-Setup-(\d+(?:\.\d+){1,3})\.exe$/i;
+  if (kind === "portable") return /^LootDen-(\d+(?:\.\d+){1,3})-portable\.exe$/i;
+  return arch === "arm64" ? /^LootDen-linux-arm64-(\d+(?:\.\d+){1,3})\.AppImage$/i : /^LootDen-(\d+(?:\.\d+){1,3})-linux-x86_64\.AppImage$/i;
+}
 
 export interface AvailableUpdate {
   version: string;
@@ -42,13 +46,19 @@ export interface AvailableUpdate {
 /**
  * The newest app build on the server that this copy can update itself with, when it's newer
  * than the running version. Builds of other kinds (a .deb, an installer for a portable copy)
- * are ignored.
+ * and for other processors (an ARM AppImage on an x64 PC) are ignored.
  */
-export function pickUpdate(files: Array<{ name: string; size: number }>, current: string, kind: InstallKind): AvailableUpdate | null {
+export function pickUpdate(
+  files: Array<{ name: string; size: number }>,
+  current: string,
+  kind: InstallKind,
+  arch: string = process.arch,
+): AvailableUpdate | null {
   if (kind === "other") return null;
+  const re = pattern(kind, arch);
   let best: AvailableUpdate | null = null;
   for (const f of files) {
-    const v = f.name.match(PATTERNS[kind])?.[1];
+    const v = f.name.match(re)?.[1];
     if (!v || compareVersions(v, current) <= 0) continue;
     if (!best || compareVersions(v, best.version) > 0) best = { version: v, file: f.name, size: f.size };
   }
