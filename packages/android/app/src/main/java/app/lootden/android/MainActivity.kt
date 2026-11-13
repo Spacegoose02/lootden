@@ -64,6 +64,9 @@ class MainActivity : Activity() {
         web.setBackgroundColor(Color.parseColor("#120C24"))
         web.isFocusable = true
         web.isFocusableInTouchMode = true
+        // Android 8+ tints a focused view with no focus drawable in translucent white whenever a d-pad or
+        // controller (not touch) moved focus: over a full-screen WebView that washes out the whole app.
+        web.defaultFocusHighlightEnabled = false
         with(web.settings) {
             javaScriptEnabled = true
             domStorageEnabled = true
