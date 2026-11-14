@@ -61,7 +61,7 @@ class Updater(private val app: AppCore) {
         if (best == null || compare(best.version, BuildConfig.VERSION_NAME) <= 0) {
             found = null
             return if (candidates.isEmpty() && errors.isNotEmpty()) set { put("state", "error").put("error", errors.first()) }
-            else set { put("state", "none").put("checkedAt", Iso.now()).remove("error").remove("version") }
+            else set { put("state", "none").put("checkedAt", Iso.now()); remove("error"); remove("version") }
         }
         found = best
         if (ready(best.version)) return set { put("state", "ready").put("version", best.version).remove("error") }
