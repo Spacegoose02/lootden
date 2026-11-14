@@ -54,7 +54,8 @@ export function Emulation() {
           <pre className="code-block">{`Emulation/
   ps1/Crash Bandicoot (USA)/Crash Bandicoot (USA).cue + .bin
   ps2/Okami (USA).iso
-  snes/Super Mario World (USA).sfc`}</pre>
+  snes/Super Mario World (USA).sfc
+  arcade/Daytona3.teknoparrot/  (the game's files, played through TeknoParrot)`}</pre>
           <p className="muted small">
             Folder names: {data.platforms.filter((p) => p.id !== "pc").map((p) => p.id).join(", ")}. Admins can also send a download straight to a system from the
             Downloads page.
@@ -71,7 +72,7 @@ export function Emulation() {
                 <span className="system-name">{p.name}</span>
                 <span className="muted small">
                   {s.count} {s.count === 1 ? "game" : "games"} · {formatBytes(s.sizeBytes)}
-                  {emulator ? ` · ${emulator.name}` : ""}
+                  {emulator ? ` · ${emulator.name}` : p.runner === "teknoparrot" ? " · TeknoParrot" : ""}
                 </span>
               </Link>
             );
@@ -115,7 +116,7 @@ export function EmulationSystem() {
           <h1>{p.name}</h1>
           <p className="muted small">
             {games ? `${games.length} ${games.length === 1 ? "game" : "games"}` : "Loading…"}
-            {emulator ? ` · plays in ${emulator.name}` : " · no emulator for this system yet"}
+            {emulator ? ` · plays in ${emulator.name}` : p.runner === "teknoparrot" ? " · plays in TeknoParrot" : " · no emulator for this system yet"}
             {emulator?.bios.some((b) => b.required && (!b.platform || b.platform === p.id)) ? ` · needs ${p.emulator === "eden" ? "keys" : "a BIOS"}` : ""}
           </p>
           {p.note && <p className="muted small">{p.note}</p>}

@@ -111,8 +111,26 @@ import {
   suspendProcesses,
   findLocalScreenshots,
   readTools,
+  ArcadeSetupNeeded,
+  availableProfiles,
+  captureBindings,
+  connectedInputs,
+  findTeknoParrot,
+  isTeknoParrotDir,
+  lanAddress,
+  prepareArcade,
+  readArcadeState,
+  runTeknoParrot,
+  setControlsInTeknoParrot,
+  writeArcadeState,
+  TEKNOPARROT_EXE,
+  type LinkPlan,
 } from "@lootden/client";
 import {
+  ARCADE_PLATFORM,
+  arcadeGame,
+  arcadeProfileFor,
+  pickBindingSet,
   cleanLaunchProfile,
   cleanLaunchSteps,
   effectiveVersion,
@@ -1836,6 +1854,11 @@ function registerIpc(): void {
    */
   async function startGame(gameId: string, actionId?: string) {
     const game = await findInstalled(gameId);
+    if (game.platform === ARCADE_PLATFORM) {
+      const link = arcadeLinks.get(gameId) ?? null;
+      arcadeLinks.delete(gameId);
+      return playArcadeGame(gameId, game.dir, game.title, game.executable ?? null, link);
+    }
     if (game.platform && game.platform !== "pc") {
       // "recomp:<id>": a native PC version of the console game, handed the library ROM.
       if (actionId?.startsWith("recomp:")) return playRecompGame(gameId, game.dir, actionId.slice(7));
@@ -2182,6 +2205,187 @@ function registerIpc(): void {
     // Errors before it starts (not set up, wrong ROM) go straight back to the page.
     return Promise.race([ready, session.then(() => ({ executable: "" }))]);
   }
+
+  // ---- Arcade: TeknoParrot games -------------------------------------------------
+
+  /** A linked race's settings for the next start of a game, set by the Race linked button. */
+  const arcadeLinks = new Map<string, LinkPlan>();
+
+  /**
+   * Arcade games: fill in the TeknoParrot profile (game path, the controls for what's plugged in,
+   * link settings) and start the game through it, without TeknoParrot's window.
+   */
+  async function playArcadeGame(gameId: string, dir: string, title: string, executable: string | null, link: LinkPlan | null) {
+    const api = await clientOrOffline();
+    const player = currentPlayer();
+    const today = await todaysAllowance(api);
+    if (today && !today.canPlay) throw new Error(today.reason ?? "No play time left today");
+    const onEvent = (ev: { message: string }) => send({ gameId, type: "prepare", message: ev.message });
+    let plan;
+    try {
+      plan = await prepareArcade(gameId, dir, title, { toolsDir: toolsDir(), executable, link, onEvent });
+    } catch (err) {
+      if (!(err instanceof ArcadeSetupNeeded) || err.need !== "executable") throw err;
+      // LootDen couldn't tell which program is the game: ask once, then it's remembered.
+      const r = await dialog.showOpenDialog(win!, { title: `Which program starts ${title}?`, defaultPath: dir, properties: ["openFile"], filters: [{ name: "Programs", extensions: ["exe"] }] });
+      if (r.canceled) return null;
+      plan = await prepareArcade(gameId, dir, title, { toolsDir: toolsDir(), executable: relTo(dir, r.filePaths[0]!), link, onEvent });
+    }
+    if (plan.gameExe !== executable) await saveExecutable(dir, plan.gameExe);
+    if (plan.linkSteps.length) send({ gameId, type: "prepare", message: `Linked race, cabinet ${link?.cabinet} of ${link?.total}: ${plan.linkSteps.join(" ")}` });
+    const unwatch = guardPlay(api, gameId, title, today);
+    markRunning(gameId, title, "emulated");
+    send({ gameId, type: "playing" });
+    runTeknoParrot(plan.exe, plan.args).then(
+      async (seconds) => {
+        unwatch();
+        send({ gameId, type: "stopped", seconds });
+        await recordPlay(api, gameId, seconds, player);
+      },
+      (err: Error) => {
+        unwatch();
+        send({ gameId, type: "error", message: err.message });
+      },
+    );
+    return { executable: `TeknoParrot: ${plan.profile}`, profile: plan.profile, bindings: plan.bindings?.name ?? null, linkFields: plan.linkFields, linkSteps: plan.linkSteps };
+  }
+
+  /** The TeknoParrot profile a game uses here: the player's pick, else the one LootDen recognises. */
+  async function arcadeProfile(gameId: string) {
+    const game = await findInstalled(gameId);
+    const state = await readArcadeState(toolsDir());
+    const tpDir = await findTeknoParrot(state.tpDir);
+    const profiles = tpDir ? await availableProfiles(tpDir) : [];
+    const profile = state.games[gameId]?.profile ?? arcadeProfileFor(game.dir, game.title, tpDir ? profiles : undefined);
+    return { game, state, tpDir, profiles, profile };
+  }
+
+  // Everything the Arcade panels show: TeknoParrot here, the game's profile, controller setups and what's plugged in.
+  ipcMain.handle("gm:arcade", async (e, gameId?: string) => {
+    fromServer(e);
+    const state = await readArcadeState(toolsDir());
+    const tpDir = await findTeknoParrot(state.tpDir);
+    const connected = await connectedInputs();
+    const base = {
+      supported: process.platform === "win32",
+      tpDir,
+      device: os.hostname(),
+      address: lanAddress(),
+      connected,
+    };
+    const strip = (b: (typeof state.bindings)[number]) => ({ id: b.id, profile: b.profile, name: b.name, devices: b.devices, inputApi: b.inputApi, savedAt: b.savedAt, lastUsedAt: b.lastUsedAt ?? null, inputs: Object.keys(b.buttons).length });
+    if (typeof gameId !== "string" || !gameId) return { ...base, bindings: state.bindings.map(strip) };
+    const installed = await findInstalled(gameId).catch(() => null);
+    if (!installed) return { ...base, installed: false, bindings: [] };
+    const r = await arcadeProfile(gameId);
+    const sets = r.profile ? state.bindings.filter((b) => b.profile.toLowerCase() === r.profile!.toLowerCase()) : [];
+    const active = r.profile ? pickBindingSet(state.bindings, r.profile, connected, state.games[gameId]?.pinned) : null;
+    return {
+      ...base,
+      installed: true,
+      profile: r.profile,
+      profilePicked: Boolean(state.games[gameId]?.profile),
+      profiles: r.profiles,
+      known: r.profile ? (arcadeGame(r.profile) ?? null) : null,
+      pinned: state.games[gameId]?.pinned ?? null,
+      active: active?.id ?? null,
+      executable: installed.executable ?? null,
+      bindings: sets.map(strip),
+    };
+  });
+
+  ipcMain.handle("gm:arcade:locate", async (e) => {
+    fromServer(e);
+    const r = await dialog.showOpenDialog(win!, { title: "Where is TeknoParrot? (the folder with TeknoParrotUi.exe)", properties: ["openDirectory"] });
+    if (r.canceled) return null;
+    const dir = r.filePaths[0]!;
+    if (!(await isTeknoParrotDir(dir))) throw new Error(`${TEKNOPARROT_EXE} isn't in that folder`);
+    const state = await readArcadeState(toolsDir());
+    state.tpDir = dir;
+    await writeArcadeState(toolsDir(), state);
+    return dir;
+  });
+
+  ipcMain.handle("gm:arcade:setProfile", async (e, gameId: string, profile: string | null) => {
+    fromServer(e);
+    const r = await arcadeProfile(String(gameId));
+    if (profile && !r.profiles.some((p) => p.toLowerCase() === String(profile).toLowerCase())) throw new Error("TeknoParrot has no such profile");
+    const state = await readArcadeState(toolsDir());
+    const entry = (state.games[gameId] ??= {});
+    if (profile) entry.profile = r.profiles.find((p) => p.toLowerCase() === String(profile).toLowerCase())!;
+    else delete entry.profile;
+    await writeArcadeState(toolsDir(), state);
+    return true;
+  });
+
+  ipcMain.handle("gm:arcade:pin", async (e, gameId: string, setId: string | null) => {
+    fromServer(e);
+    const state = await readArcadeState(toolsDir());
+    (state.games[String(gameId)] ??= {}).pinned = typeof setId === "string" && setId ? setId : null;
+    await writeArcadeState(toolsDir(), state);
+    return true;
+  });
+
+  // Opens TeknoParrot's own window to bind controls; when it closes, they're saved for the devices used.
+  ipcMain.handle("gm:arcade:setControls", async (e, gameId: string) => {
+    fromServer(e);
+    const r = await arcadeProfile(String(gameId));
+    if (!r.tpDir) throw new Error("Show LootDen where TeknoParrot is first");
+    if (!r.profile) throw new Error("Pick the game's TeknoParrot profile first");
+    const set = await setControlsInTeknoParrot(toolsDir(), r.profile);
+    return { id: set.id, name: set.name };
+  });
+
+  // Saves the controls already in the game's TeknoParrot profile, for the devices they use.
+  ipcMain.handle("gm:arcade:capture", async (e, gameId: string, name?: string) => {
+    fromServer(e);
+    const r = await arcadeProfile(String(gameId));
+    if (!r.tpDir) throw new Error("Show LootDen where TeknoParrot is first");
+    if (!r.profile) throw new Error("Pick the game's TeknoParrot profile first");
+    const set = await captureBindings(toolsDir(), r.tpDir, r.profile, typeof name === "string" ? name : undefined);
+    return { id: set.id, name: set.name };
+  });
+
+  ipcMain.handle("gm:arcade:removeBinding", async (e, id: string) => {
+    fromServer(e);
+    const state = await readArcadeState(toolsDir());
+    state.bindings = state.bindings.filter((b) => b.id !== id);
+    for (const g of Object.values(state.games)) if (g.pinned === id) g.pinned = null;
+    await writeArcadeState(toolsDir(), state);
+    return true;
+  });
+
+  ipcMain.handle("gm:arcade:renameBinding", async (e, id: string, name: string) => {
+    fromServer(e);
+    const state = await readArcadeState(toolsDir());
+    const set = state.bindings.find((b) => b.id === id);
+    if (!set || typeof name !== "string" || !name.trim()) throw new Error("No such controller setup");
+    set.name = name.trim().slice(0, 80);
+    await writeArcadeState(toolsDir(), state);
+    return true;
+  });
+
+  // Starts the game for a linked race: this PC's cabinet number and how many are racing.
+  ipcMain.handle("gm:arcade:play", async (e, gameId: string, link: { cabinet: number; total: number } | null) => {
+    fromServer(e);
+    const cabinet = Math.floor(Number(link?.cabinet));
+    const total = Math.floor(Number(link?.total));
+    if (link && (!(cabinet >= 1) || !(total >= cabinet) || total > 8)) throw new Error("That cabinet number doesn't fit the race");
+    if (link) arcadeLinks.set(String(gameId), { cabinet, total, address: lanAddress() });
+    try {
+      return await play(String(gameId));
+    } finally {
+      arcadeLinks.delete(String(gameId));
+    }
+  });
+
+  ipcMain.handle("gm:arcade:openTeknoParrot", async (e) => {
+    fromServer(e);
+    const tpDir = await findTeknoParrot((await readArcadeState(toolsDir())).tpDir);
+    if (!tpDir) throw new Error("Show LootDen where TeknoParrot is first");
+    void runTeknoParrot(path.join(tpDir, TEKNOPARROT_EXE), []).catch(() => {});
+    return true;
+  });
 
   // ---- Recomps ---------------------------------------------------------------------
 

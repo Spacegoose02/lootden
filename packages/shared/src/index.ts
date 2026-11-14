@@ -2,6 +2,7 @@
 // Keep this package dependency-free so both sides can import it anywhere.
 
 export * from "./achievements.js";
+export * from "./arcade.js";
 export * from "./addons.js";
 export * from "./browser.js";
 export * from "./downloadlinks.js";

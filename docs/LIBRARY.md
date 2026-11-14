@@ -138,11 +138,12 @@ or folder inside a system's folder is one game, shown in the **Emulation** secti
   ps3/Demon's Souls/PS3_GAME/USRDIR/EBOOT.BIN
   snes/Super Mario World (USA).sfc
   switch/Zelda/Zelda [0100F2C0115B6000][v0].nsp + update and DLC .nsp files
+  arcade/Daytona3.teknoparrot/Daytona.exe + the rest of the game's files
 ```
 
 System folders: `ps1` (or `psx`), `ps2`, `ps3`, `xbox`, `psp`, `nes`, `snes`, `n64`, `gb`,
 `gbc`, `gba`, `nds`, `gamecube`, `wii`, `genesis` (or `megadrive`), `saturn`, `dreamcast`,
-`switch` (or `nsw`), `switch2` (or `ns2`), `android`.
+`switch` (or `nsw`), `switch2` (or `ns2`), `arcade` (or `teknoparrot`), `android`.
 
 - **Desktop app:** **Emulation, Emulators and BIOS** sets up RetroArch, DuckStation,
   PCSX2, RPCS3, xemu and Eden (Switch) from their official releases. BIOS files must come from consoles
@@ -165,6 +166,28 @@ System folders: `ps1` (or `psx`), `ps2`, `ps3`, `xbox`, `psp`, `nes`, `snes`, `n
   plays it yet (the first ones are weeks old, desktop only and run few games). FitGirl-style
   Switch and Switch 2 repacks are Windows installers with an emulator inside: import those as
   PC games, which is what the downloads folder picks for them.
+- **Arcade (TeknoParrot):** PC-based arcade games such as Daytona Championship USA, one
+  folder of dumped files per game, played through TeknoParrot on Windows PCs. TeknoParrot is
+  your own install (get it from teknoparrot.com, run it once so it fetches its parts):
+  LootDen finds it in the usual places or you show it the folder under **Emulators and BIOS,
+  Arcade**. Name a game's folder after its TeknoParrot profile (`Daytona3.teknoparrot`, the
+  RetroBat convention) or leave its normal name: LootDen knows Daytona's profile and lets you
+  pick any other on the game's page. **Play** fills in the game's TeknoParrot profile
+  (`UserProfiles/<Profile>.xml`, made from `GameProfiles/` the first time) with the game's
+  path and starts `TeknoParrotUi.exe --profile=<Profile>.xml`, so TeknoParrot's own window
+  never shows.
+  - **Wheels and controllers:** on the game's page, **Set controls in TeknoParrot** opens
+    TeknoParrot; bind your wheel, pedals and shifter (or pad) for the game and close it, and
+    LootDen saves those controls for the devices you used, on that PC. Do it once per wheel.
+    At Play, LootDen uses the saved setup whose devices are all plugged in (most devices
+    first), so swapping a G29 for a T300 needs nothing else. **Always use this one** pins a
+    setup while its devices are there.
+  - **Linked races:** **Join the race on this PC** on each PC gives it a cabinet number (in
+    the order they join, up to 8 for Daytona). **Start as cabinet N** starts the game and fills
+    in any link settings TeknoParrot has for it. Daytona keeps its cabinet number in its own
+    test menu: once per PC, press Test, then **NETWORK SETTINGS**, set **CABINET ID** to the PC's
+    number and **TOTAL LINKED CABINETS** to how many are racing (bind Test in TeknoParrot's
+    controls to reach it). The PCs need to be on the same network.
 - **Browser:** single-file games for NES, SNES, N64, Game Boy, GBA, DS, Genesis, Saturn,
   PS1 and PSP play in the browser with EmulatorJS, sharing saves with the desktop app.
   Set `LOOTDEN_EMULATORJS_DATA` to a self-hosted copy of EmulatorJS's `data/` folder to

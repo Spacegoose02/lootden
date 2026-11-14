@@ -4,6 +4,7 @@ import { api, formatBytes, type EmulationOverview } from "../api";
 import { useAuth } from "../auth";
 import { androidApp, biosPullMessage, bridgeError, desktop, type EmulatorSetup as Setup, type RecompSetup } from "../desktop";
 import { RomDats } from "../components/RomChecks";
+import { ArcadeSetupPanel } from "../components/Arcade";
 import { connectedPads } from "../gamepad";
 
 /**
@@ -129,6 +130,8 @@ export function EmulatorSetup() {
           />
         ))}
       </div>
+
+      <ArcadeSetupPanel />
 
       <h2>Recomps</h2>
       <p className="muted small">

@@ -41,6 +41,7 @@ import { GameUpdates } from "./news/updates.js";
 import { FreeGames } from "./news/freegames.js";
 import { loadConnectorSettings } from "./connectors/settings.js";
 import { emulationRoutes } from "./routes/emulation.js";
+import { arcadeRoutes } from "./routes/arcade.js";
 import { licenceRoutes } from "./routes/licences.js";
 import { ISOLATION_HEADERS, loadEmulationSettings, PLAY_PAGE_ISOLATION_HEADERS, PS2_WEB_PREFIX } from "./emulation/ps2-web.js";
 import { extraRoutes } from "./routes/extras.js";
@@ -421,6 +422,7 @@ export function buildApp(config: ServerConfig, db: Db, opts: BuildOptions = {}):
   gameRoutes(app, ctx);
   mediaRoutes(app, ctx);
   emulationRoutes(app, ctx, opts.ps2Dir ?? "");
+  arcadeRoutes(app, ctx);
   licenceRoutes(app, ctx);
   newsRoutes(app, ctx);
   downloadRoutes(app, ctx);

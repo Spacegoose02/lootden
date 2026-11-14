@@ -59,6 +59,28 @@ app's connect screen. Replacing those files and rebuilding is all it takes. The 
 theme-coloured SVG raccoon is still the fallback in `packages/web/public/logo.svg`; deleting
 `brand/logo.png` brings it back, along with the Profile option to recolour it.
 
+## Arcade games through TeknoParrot
+
+Platform `arcade` (folders `arcade`, `teknoparrot`; `runner: "teknoparrot"`, `emulator: null`
+so nothing downloads it and the Android test ignores it). Shared: `shared/src/arcade.ts`
+(known profiles, `arcadeProfileFor`, `pickBindingSet`). Desktop logic: `client/src/arcade.ts`;
+IPC `gm:arcade*` in `desktop/src/main.ts`; web `components/Arcade.tsx` (game page and
+Emulators and BIOS). Linked-race lobby: `server/src/routes/arcade.ts`, in memory, 10-minute expiry.
+
+- Play edits `TeknoParrot/UserProfiles/<Profile>.xml` as text (copied from `GameProfiles/`
+  first), sets `<GamePath>`, swaps in the saved `<JoystickButtons>` entries by `InputMapping`,
+  then runs `TeknoParrotUi.exe --profile=<Profile>.xml` from the TeknoParrot folder.
+- Controller setups live in `<tools>/arcade.json` per PC. Devices are matched by USB VID/PID:
+  bound DirectInput GUIDs map to VID/PID through
+  `HKCU\System\CurrentControlSet\Control\MediaProperties\PrivateProperties\DirectInput\VID_x&PID_y\Calibration\n`
+  (value `GUID`), names from `...\Joystick\OEM\...\OEMName`, plugged-in devices from
+  `Get-PnpDevice -PresentOnly -Class HIDClass`.
+- Not verified on a real PC yet: the DirectInput registry layout above, whether
+  `--profile=` also takes a full path (we pass the bare file name, as front ends do), and
+  whether any TeknoParrot profile has network fields (`applyLink` only fills fields that exist,
+  matched by name). Daytona's cabinet ID is set in its own test menu (from Sega's operator
+  manual), which the game page explains.
+
 ## Richer store integrations (0.15.0)
 
 Owner's feedback on the add-ons: other stores' games had no pictures and no page, keys
