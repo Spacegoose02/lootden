@@ -4,7 +4,7 @@ import { mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/
 import os from "node:os";
 import path from "node:path";
 import { after, before, describe, it } from "node:test";
-import { mapPath } from "../src/connectors/manager.js";
+import { folderImportId, mapPath } from "../src/connectors/manager.js";
 import { findServerSevenZip } from "../src/connectors/tidy.js";
 import { magnetHash, torrentInfoHash } from "../src/connectors/torrent.js";
 import { makeApp, makeLibrary } from "./helpers.js";
@@ -429,5 +429,95 @@ mkdir -p "$out/app/bin" "$out/tmp" && echo game > "$out/app/bin/Game.exe" && ech
     } finally {
       await rm(tmp, { recursive: true, force: true });
     }
+  });
+});
+
+describe("importing from a downloads folder on another mount", () => {
+  const headers = { authorization: "Bearer svc" };
+  // Zipped when 7-Zip is around, a folder when not.
+  const gameFiles = async (target: string) =>
+    target.endsWith(".zip") ? execFileSync((await findServerSevenZip())!.path, ["l", "-ba", target]).toString() : (await readdir(target)).join("\n");
+  const errno = (code: string, message: string) => Object.assign(new Error(message), { code });
+
+  async function setup(folderName: string) {
+    const { app, ctx } = await makeApp(root, { apiToken: "svc" }, { fetchImpl: fakeServices().impl });
+    const folder = path.join(downloads, folderName);
+    await mkdir(folder, { recursive: true });
+    await app.inject({ method: "PUT", url: "/api/connectors", headers, payload: { ...SETTINGS, import: { mode: "move", folder, pathMappings: [] } } });
+    return { app, ctx, folder, dm: ctx.downloads };
+  }
+
+  it("finishes the import when the downloads share won't let go of the moved folder", async () => {
+    const { app, dm, folder } = await setup("busy");
+    const name = "Busy Game [FitGirl Repack]";
+    const src = path.join(folder, name);
+    await mkdir(src);
+    await writeFile(path.join(src, "busy.exe"), "game");
+    const real = { ...dm.fsOps };
+    let tries = 0;
+    // /downloads and /games are separate mounts, and the share still holds the folder after its files are gone.
+    dm.fsOps = {
+      rename: async (a: string, b: string) => {
+        if (a === src) throw errno("EXDEV", "EXDEV: cross-device link not permitted");
+        return real.rename(a, b);
+      },
+      rm: async (p: string, o?: object) => {
+        if (p !== src) return real.rm(p, o);
+        tries++;
+        await real.rm(path.join(src, "busy.exe"), { force: true });
+        throw errno("ENOTEMPTY", `ENOTEMPTY: directory not empty, rmdir '${src}'`);
+      },
+    } as typeof dm.fsOps;
+
+    // Before: "ENOTEMPTY: directory not empty" failed the import, and the game sat hidden in .import-<id>.
+    const res = await app.inject({ method: "POST", url: "/api/downloads/folder/import", headers, payload: { name } });
+    assert.equal(res.statusCode, 200, res.body);
+    const target = res.json().target as string;
+    assert.match(await gameFiles(target), /busy\.exe/);
+    assert.equal(tries, 1);
+    const items = (await app.inject({ url: "/api/downloads/folder", headers })).json().items as Array<{ name: string; status: string; error: string | null }>;
+    assert.deepEqual(items.filter((i) => i.name === name).map((i) => [i.status, i.error]), [["imported", null]]);
+    assert.deepEqual((await readdir(root)).filter((n) => n.startsWith(".import")), [], "no staging folder left behind");
+    await rm(target, { recursive: true, force: true });
+    await app.close();
+  });
+
+  it("recovers a game an earlier failed import left in a hidden staging folder", async () => {
+    const { app, ctx, folder } = await setup("orphans");
+    const name = "Orphan Game-TENOKE";
+    await mkdir(path.join(folder, name));
+    // What a failed move used to leave: an emptied-out source, and the files under a random id.
+    const orphan = path.join(root, ".import-1234567890");
+    await mkdir(orphan);
+    await writeFile(path.join(orphan, "orphan.exe"), "game");
+    ctx.db
+      .prepare("INSERT INTO folder_imports (name, status, target, error, at) VALUES (?, 'failed', NULL, ?, ?)")
+      .run(name, `ENOTEMPTY: directory not empty, rmdir '${path.join(folder, name)}'`, new Date().toISOString());
+
+    const res = await app.inject({ method: "POST", url: "/api/downloads/folder/import", headers, payload: { name } });
+    assert.equal(res.statusCode, 200, res.body);
+    const target = res.json().target as string;
+    assert.match(await gameFiles(target), /orphan\.exe/);
+    await assert.rejects(stat(orphan), "the leftover was used");
+    await assert.rejects(stat(path.join(folder, name)), "the empty source is cleaned up");
+    await rm(target, { recursive: true, force: true });
+    await app.close();
+  });
+
+  it("keeps moved files when the clean-up fails, and picks them up on the next try", async () => {
+    const { app, folder } = await setup("broken");
+    const name = "Broken Game";
+    await mkdir(path.join(folder, name));
+    await writeFile(path.join(folder, name, "Game.7z"), "not a 7z");
+    const staging = path.join(root, `.import-${folderImportId(name)}`);
+
+    const first = await app.inject({ method: "POST", url: "/api/downloads/folder/import", headers, payload: { name } });
+    assert.equal(first.statusCode, 400, first.body);
+    // Before: the staging copy was deleted, and with the source already moved the game was gone.
+    assert.equal(await readFile(path.join(staging, "Game.7z"), "utf8"), "not a 7z");
+    const again = await app.inject({ method: "POST", url: "/api/downloads/folder/import", headers, payload: { name } });
+    assert.doesNotMatch(again.json().error, /not found/, "retries from the kept copy");
+    await rm(staging, { recursive: true, force: true });
+    await app.close();
   });
 });

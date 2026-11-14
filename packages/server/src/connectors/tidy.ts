@@ -283,9 +283,14 @@ export async function tidyDownload(
       } else report.warnings.push("The installer isn't one the server can unpack (only Inno Setup ones, like GOG's), so a PC runs it");
     }
   }
+  // The game is in place by the time this runs, so a share that's slow to let go of the leftovers
+  // (ENOTEMPTY on Unraid, SMB and Docker Desktop mounts) is retried, then only noted.
   const cleanup = async () => {
-    await rm(staging, { recursive: true, force: true });
-    await rm(installedTo, { recursive: true, force: true });
+    for (const dir of [staging, installedTo]) {
+      await rm(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 500 }).catch((err: Error) =>
+        report.warnings.push(`Couldn't remove the temporary folder ${path.basename(dir)}: ${err.message}`),
+      );
+    }
   };
 
   const name = tidyName(releaseName);
