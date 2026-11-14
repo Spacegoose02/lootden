@@ -45,6 +45,62 @@ export function describe(name: string): Pick<ClientFile, "platform" | "kind"> {
   return { platform: "other", kind: "Download" };
 }
 
+// A release version in a file name: 0.37.0, v1.2.3, 0.38.0-rc.1. Arch tags like x86_64 don't match.
+const VERSION = /(?<![\d.])v?(\d+\.\d+\.\d+(?:-(?:alpha|beta|rc|pre)\.?\d*)?)(?![\d])/i;
+
+/** The version in an app file's name, or null for files that don't carry one (the CLI archives). */
+export function fileVersion(name: string): string | null {
+  return name.match(VERSION)?.[1] ?? null;
+}
+
+/**
+ * What a file is without its version, so builds of the same thing can be told apart from each
+ * other: "LootDen-linux-arm64-0.35.0.AppImage" and "LootDen-0.38.0-linux-aarch64.AppImage" are
+ * the same kind, while the x64 AppImage, the .deb and the portable .exe are each their own.
+ */
+export function buildKind(name: string): string {
+  const n = name
+    .toLowerCase()
+    .replace(VERSION, "-")
+    .replace(/\.tar\.gz$/, ".tgz")
+    .replace(/x86[_-]64|amd64/g, "x64")
+    .replace(/aarch64/g, "arm64");
+  return n
+    .split(/[-_.\s]+/)
+    .filter(Boolean)
+    .sort()
+    .join(" ");
+}
+
+/** Compares two versions by number; a pre-release sorts before its release. */
+export function compareVersions(a: string, b: string): number {
+  const [ca, pa = ""] = a.replace(/^v/i, "").split(/-(.*)/);
+  const [cb, pb = ""] = b.replace(/^v/i, "").split(/-(.*)/);
+  const na = ca.split(".").map(Number);
+  const nb = cb.split(".").map(Number);
+  for (let i = 0; i < Math.max(na.length, nb.length); i++) {
+    const d = (na[i] ?? 0) - (nb[i] ?? 0);
+    if (d) return d;
+  }
+  if (pa === pb) return 0;
+  if (!pa) return 1;
+  if (!pb) return -1;
+  return pa.localeCompare(pb, undefined, { numeric: true });
+}
+
+/** Of the versioned files, the ones a newer build of the same kind has replaced. */
+export function outdated(names: string[]): string[] {
+  const newest = new Map<string, string>();
+  for (const name of names) {
+    const v = fileVersion(name);
+    if (!v) continue;
+    const k = buildKind(name);
+    const best = newest.get(k);
+    if (!best || compareVersions(v, fileVersion(best)!) > 0) newest.set(k, name);
+  }
+  return names.filter((name) => fileVersion(name) && newest.get(buildKind(name)) !== name);
+}
+
 /**
  * The desktop app, CLI and Playnite plugin, hosted by the server so players can grab
  * them from the web UI. Files live in <data>/clients: drop them in, upload them from
@@ -103,10 +159,24 @@ export class ClientDownloads {
   }
 
   /**
-   * Downloads the assets of a GitHub repository's latest release (e.g. "you/lootden"),
-   * replacing files with the same name. Returns what was fetched.
+   * Deletes builds that a newer version of the same kind has replaced (the 0.36.0 .deb once the
+   * 0.37.0 one is here), so the downloads list holds one of each. Returns what was removed.
    */
-  async fetchRelease(repo: string): Promise<{ tag: string; files: string[] }> {
+  async prune(): Promise<string[]> {
+    const removed: string[] = [];
+    for (const f of outdated((await this.list()).map((f) => f.name))) {
+      await this.remove(f);
+      removed.push(f);
+    }
+    return removed;
+  }
+
+  /**
+   * Downloads the assets of a GitHub repository's latest release (e.g. "you/lootden"),
+   * replacing files with the same name and older versions of the same builds. Returns what was
+   * fetched and what was removed.
+   */
+  async fetchRelease(repo: string): Promise<{ tag: string; files: string[]; removed: string[] }> {
     const release = await this.latest(repo);
     const files: string[] = [];
     for (const asset of release.assets) {
@@ -124,7 +194,7 @@ export class ClientDownloads {
     if (!files.length) throw new Error(`Release ${release.tag_name} has no app files attached`);
     const at = new Date().toISOString();
     this.remember({ repo, tag: release.tag_name, fetchedAt: at, checkedAt: at });
-    return { tag: release.tag_name, files };
+    return { tag: release.tag_name, files, removed: await this.prune() };
   }
 
   private async latest(repo: string): Promise<{ tag_name: string; assets: Array<{ name: string; browser_download_url: string }> }> {
@@ -155,9 +225,11 @@ export class ClientDownloads {
 
   /**
    * Once an admin has fetched a release, newer ones are fetched by themselves, so the desktop
-   * apps (which update from this server) pick them up. Returns the new tag, or null.
+   * apps (which update from this server) pick them up. Returns the new tag, or null. Old builds
+   * left over from before pruning existed are cleared on each check too.
    */
   async refresh(): Promise<string | null> {
+    await this.prune();
     const src = this.source();
     if (!src) return null;
     const release = await this.latest(src.repo);

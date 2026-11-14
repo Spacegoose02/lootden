@@ -47,8 +47,8 @@ export function AdminApps({ onMessage }: { onMessage: (m: string) => void }) {
       </p>
       <p className="muted small">
         {source
-          ? `From ${source.repo} ${source.tag}. Newer releases are fetched by themselves (last checked ${new Date(source.checkedAt ?? source.fetchedAt).toLocaleString()}), and the desktop apps update from here.`
-          : "Once you get a release from GitHub, newer ones are fetched by themselves and the desktop apps update from here."}
+          ? `From ${source.repo} ${source.tag}. Newer releases are fetched by themselves and replace the older builds (last checked ${new Date(source.checkedAt ?? source.fetchedAt).toLocaleString()}), and the desktop apps update from here.`
+          : "Once you get a release from GitHub, newer ones are fetched by themselves, older builds are removed, and the desktop apps update from here."}
       </p>
       <div className="inline">
         <input placeholder={`GitHub repository, e.g. ${OFFICIAL_REPO}`} value={repo} onChange={(e) => setRepo(e.target.value)} style={{ flex: 1 }} />
@@ -62,7 +62,8 @@ export function AdminApps({ onMessage }: { onMessage: (m: string) => void }) {
                 // not remembered
               }
               const r = await api.fetchRelease(repo.trim());
-              return `Fetched ${r.files.length} files from ${r.tag}`;
+              const old = r.removed?.length ? `, removed ${r.removed.length} older ${r.removed.length === 1 ? "build" : "builds"}` : "";
+              return `Fetched ${r.files.length} files from ${r.tag}${old}`;
             })
           }
         >
