@@ -35,6 +35,7 @@ import type {
   EmulatorInfo,
   Platform,
   ServerBiosFile,
+  GameLicence,
   RomCheck,
   RomCheckProgress,
   RomDat,
@@ -623,6 +624,11 @@ export const api = {
   uploadBios: (file: File, emulator?: string) =>
     upload<ServerBiosFile>("PUT", `/api/emulation/bios/${encodeURIComponent(file.name)}${emulator ? `?emulator=${emulator}` : ""}`, file, "application/octet-stream"),
   deleteBios: (name: string) => call("DELETE", `/api/emulation/bios/${encodeURIComponent(name)}`),
+  /** PS3 licence files (.rap) for one game. */
+  licences: (gameId: string) => call<GameLicence[]>("GET", `/api/games/${encodeURIComponent(gameId)}/licences`),
+  uploadLicence: (gameId: string, file: File) =>
+    upload<GameLicence>("PUT", `/api/games/${encodeURIComponent(gameId)}/licences/${encodeURIComponent(file.name)}`, file, "application/octet-stream"),
+  deleteLicence: (gameId: string, name: string) => call("DELETE", `/api/games/${encodeURIComponent(gameId)}/licences/${encodeURIComponent(name)}`),
   /** No-Intro and Redump DATs, and how far a "check all" got. */
   romDats: () => call<{ dats: RomDat[]; progress: RomCheckProgress }>("GET", "/api/emulation/dats"),
   uploadDat: (file: File) => upload<RomDat>("POST", "/api/emulation/dats", file, "application/octet-stream"),

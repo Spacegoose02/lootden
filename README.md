@@ -338,6 +338,8 @@ same web UI, full screen and in landscape, with the controller navigation descri
   Disc images (ISO) open in either build; folder games (`PS3_GAME/USRDIR/EBOOT.BIN`) need ARMSX3's
   All files access, which the GitHub build has. A PKG game goes to ARMSX3's own package installer
   on its first Play (with any `.rap`/`.edat` licences beside it), and later Plays start it by title id.
+  `.rap` licences an admin uploaded on the game's page come down with the game and go to ARMSX3's
+  installer the same way, for disc and folder games too (ARMSX3 asks once; Play again to start).
 - **Saves**: RetroArch battery saves go up to the server when you come back to LootDen and come
   down before the next game, shared with the desktop app and the browser player. Standalone
   emulators keep their saves in their own folders, which Android doesn't let other apps read.

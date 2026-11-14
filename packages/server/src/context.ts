@@ -13,6 +13,7 @@ import type { Integrations } from "./settings/integrations.js";
 import type { ClientDownloads } from "./clients/store.js";
 import type { SaveStore } from "./saves/store.js";
 import type { BiosStore } from "./emulation/bios.js";
+import type { LicenceStore } from "./emulation/licences.js";
 import type { RomChecker } from "./emulation/romcheck.js";
 import type { GameUpdates } from "./news/updates.js";
 import type { FreeGames } from "./news/freegames.js";
@@ -77,6 +78,8 @@ export interface AppContext {
   clients: ClientDownloads;
   saves: SaveStore;
   bios: BiosStore;
+  /** PS3 licence files (.rap) per game. */
+  licences: LicenceStore;
   /** No-Intro/Redump checks of emulated games' files. */
   roms: RomChecker;
   recompCache: RecompCache;

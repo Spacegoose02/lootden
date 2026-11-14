@@ -6,6 +6,7 @@ import type { GameServerClient } from "./api.js";
 import { downloadFile } from "./downloader.js";
 import { extractArchive, findSevenZip } from "./extractor.js";
 import { detectSetup } from "./installed.js";
+import { downloadLicences } from "./licences.js";
 import type { RateLimiter } from "./throttle.js";
 import { recordFiles } from "./verify.js";
 
@@ -188,6 +189,10 @@ export async function finishInstall(api: GameServerClient, game: GameDetail, gam
       2,
     ) + "\n",
   );
+  // PS3 licences (.rap) the admin uploaded: kept with the game, and copied into RPCS3 when it starts.
+  if (opts.report !== false) {
+    await downloadLicences(api, game.id, game.platform, gameDir).catch((err: Error) => emit({ type: "warning", message: `Couldn't get the game's licence files: ${err.message}` }));
+  }
   if (opts.report !== false) await api.reportActivity({ gameId: game.id, device: opts.device ?? os.hostname(), event: "installed", installPath: gameDir });
 }
 

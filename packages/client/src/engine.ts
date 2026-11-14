@@ -29,6 +29,7 @@ export { firstExisting, pcReport, runningStoreGames, streamingPaths } from "./pr
 export { missingSunshineApps, moonlightCommand, streamWithMoonlight, sunshineAppFor, syncSunshine } from "./streaming.js";
 export { isRobloxPlayer, RobloxLogWatcher, setRobloxFullscreen, trackRoblox, withFullscreen } from "./roblox.js";
 export * from "./emulators.js";
+export { downloadLicences, installLicences, LICENCE_FOLDER, RPCS3_EXDATA } from "./licences.js";
 export * from "./recomps.js";
 export * from "./recompmods.js";
 export { backupSaves, expandSavePath, restoreSaves } from "./saves.js";
