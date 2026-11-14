@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { platformFor, RECOMPS, type EmulatorInfo, type RecompInfo } from "@lootden/shared";
 import { api, formatBytes, type EmulationOverview } from "../api";
 import { useAuth } from "../auth";
-import { bridgeError, desktop, type EmulatorSetup as Setup, type RecompSetup } from "../desktop";
+import { androidApp, biosPullMessage, bridgeError, desktop, type EmulatorSetup as Setup, type RecompSetup } from "../desktop";
 import { RomDats } from "../components/RomChecks";
 import { connectedPads } from "../gamepad";
 
@@ -61,10 +61,28 @@ export function EmulatorSetup() {
     <div className="emulator-setup">
       <h1>Emulators and BIOS</h1>
       <ControllerPanel />
-      {!canSetUp && (
+      {!canSetUp && !androidApp && (
         <p className="notice">
           Emulators are set up on each PC from the LootDen desktop app. Open this page in the app to download them and add BIOS files.
         </p>
+      )}
+      {androidApp && desktop?.biosFromServer && (
+        <div className="panel">
+          <p className="small">
+            On this handheld, emulators come from Google Play (Profile, This handheld). The BIOS files on the server go to one BIOS folder beside your games, which each emulator
+            can be pointed at once.
+          </p>
+          <div className="inline">
+            <button
+              className="primary"
+              disabled={!!busy || data.bios.length === 0}
+              onClick={() => run("server", async () => biosPullMessage(await desktop!.biosFromServer!()))}
+            >
+              Get BIOS files from the server
+            </button>
+            <span className="muted small">{data.bios.length} on the server</span>
+          </div>
+        </div>
       )}
       {canSetUp && (
         <div className="inline">
@@ -72,10 +90,7 @@ export function EmulatorSetup() {
             className="primary"
             disabled={!!busy || data.bios.length === 0}
             onClick={() =>
-              run("server", async () => {
-                const r = await desktop!.biosFromServer!();
-                return r.added.length ? `Added ${r.added.join(", ")} from the server.` : "Nothing new on the server.";
-              })
+              run("server", async () => biosPullMessage(await desktop!.biosFromServer!()))
             }
           >
             Get BIOS files from the server
@@ -98,7 +113,13 @@ export function EmulatorSetup() {
             canSetUp={canSetUp}
             busy={busy}
             status={status[e.id]}
-            onInstall={() => run(e.id, async () => `${e.name} ${(await desktop!.installEmulator!(e.id)).version} is ready.`)}
+            onInstall={() =>
+              run(e.id, async () => {
+                const r = await desktop!.installEmulator!(e.id);
+                const bios = r.bios && (r.bios.added.length || r.bios.problems?.length) ? ` ${biosPullMessage(r.bios)}` : "";
+                return `${e.name} ${r.version} is ready.${bios}`;
+              })
+            }
             onAddBios={() =>
               run(`bios:${e.id}`, async () => {
                 const added = await desktop!.addBios!(e.id);

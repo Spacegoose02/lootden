@@ -229,6 +229,28 @@ export class GameServerClient {
     if (!res.ok) throw new ApiError(`GET ${pathname} failed with ${res.status}`, res.status);
     return new Uint8Array(await res.arrayBuffer());
   }
+  /** Saves a server file straight to disk (PS3 firmware is 200 MB, too big to hold in memory twice). */
+  async downloadTo(pathname: string, dest: string): Promise<number> {
+    const { createWriteStream } = await import("node:fs");
+    const { Readable } = await import("node:stream");
+    const { pipeline } = await import("node:stream/promises");
+    const res = await fetch(this.base + pathname, { headers: this.headers() });
+    if (!res.ok || !res.body) {
+      const body = await res.text().catch(() => "");
+      let detail = "";
+      try {
+        detail = (JSON.parse(body) as { error?: string }).error ?? "";
+      } catch {
+        detail = body.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 160);
+      }
+      throw new ApiError(`GET ${pathname} failed with ${res.status}${detail ? `: ${detail}` : ""}`, res.status);
+    }
+    let size = 0;
+    const source = Readable.fromWeb(res.body as import("node:stream/web").ReadableStream);
+    source.on("data", (c: Buffer) => (size += c.length));
+    await pipeline(source, createWriteStream(dest));
+    return size;
+  }
   /** The mods kept on the server for a truck game (ATS, ETS2). */
   listTruckMods(game: TruckGame) {
     return this.json<TruckMod[]>(`/api/truck-mods?game=${game}`);

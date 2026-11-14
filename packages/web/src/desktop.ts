@@ -170,7 +170,7 @@ export type Progress =
 /** The desktop app's own updates, from the server's Get the app page. */
 export interface AppUpdate {
   current: string;
-  kind?: "installer" | "portable" | "appimage" | "other";
+  kind?: "installer" | "portable" | "appimage" | "android" | "other";
   state: "idle" | "checking" | "none" | "available" | "downloading" | "ready" | "error" | "unsupported";
   version?: string;
   received?: number;
@@ -383,9 +383,10 @@ export interface DesktopBridge {
   restoreSaves?(gameId: string, saveId: number): Promise<{ previous: string | null } | null>;
   /** Emulators: missing in apps older than emulation support. */
   emulators?(): Promise<{ toolsDir: string; emulators: EmulatorSetup[] }>;
-  installEmulator?(id: string): Promise<{ version: string }>;
+  installEmulator?(id: string): Promise<{ version: string; bios?: BiosPull | null }>;
   addBios?(id: string): Promise<string[]>;
-  biosFromServer?(): Promise<{ added: string[]; skipped: string[] }>;
+  /** The server's BIOS files into place: the desktop app's emulators, or the Android app's BIOS folder. */
+  biosFromServer?(): Promise<BiosPull>;
   openTools?(): Promise<void>;
   /** Recomps (native PC versions of console games): missing in older apps. */
   recomps?(): Promise<{ toolsDir: string; recomps: RecompSetup[] }>;
@@ -427,6 +428,29 @@ export interface DesktopBridge {
 type GameDetailLike = { id: string };
 
 /** One system on the Android app's Emulators panel. */
+/** What getting the server's BIOS files did. Older apps only send added and skipped. */
+export interface BiosPull {
+  added: string[];
+  already?: string[];
+  skipped: string[];
+  problems?: Array<{ name: string; reason: string }>;
+  /** Android: the folder they went to, and what to set in each emulator. */
+  folder?: string;
+  notes?: string[];
+}
+
+/** One line on what happened, with why for anything that wasn't put in place. */
+export function biosPullMessage(r: BiosPull): string {
+  const parts: string[] = [];
+  if (r.added.length) parts.push(`Added ${r.added.join(", ")}${r.folder ? ` to ${r.folder}` : ""}.`);
+  if (r.already?.length) parts.push(`Already here: ${r.already.join(", ")}.`);
+  const reasons = r.problems?.length ? r.problems.map((p) => `${p.name}: ${p.reason}`) : r.skipped.map((n) => `${n} wasn't added`);
+  if (reasons.length) parts.push(`Not added: ${reasons.join("; ")}.`);
+  if (!parts.length) parts.push("There are no BIOS files on the server yet.");
+  if (r.notes?.length) parts.push(...r.notes);
+  return parts.join(" ");
+}
+
 export interface AndroidEmulatorChoice {
   platform: string;
   name: string;

@@ -27,10 +27,11 @@ function updateLine(u: AppUpdate): string {
     case "none":
       return "Up to date.";
     case "available":
-      return `Version ${u.version} is available.`;
+      return u.kind === "android" ? `Version ${u.version} is available. Install update downloads it and opens Android's installer.` : `Version ${u.version} is available.`;
     case "downloading":
       return `Downloading ${u.version}${u.total ? `: ${formatBytes(u.received ?? 0)} of ${formatBytes(u.total)}` : "…"}`;
     case "ready":
+      if (u.kind === "android") return `Version ${u.version} is downloaded. Install update opens Android's installer; tap Install there.`;
       return `Version ${u.version} is ready. It installs when you quit, or now with Restart to update.`;
     case "error":
       return `Couldn't update: ${u.error ?? "unknown error"}`;
@@ -170,9 +171,9 @@ export function AppOptions() {
           Version {update?.current ?? "?"}
           {update && updateLine(update) ? <span className={update.state === "error" ? "error" : "muted"}> · {updateLine(update)}</span> : null}
         </span>
-        {update?.state === "ready" ? (
+        {update?.state === "ready" || (update?.kind === "android" && update.state === "available") ? (
           <button className="primary small" onClick={() => void run(() => act("install"))}>
-            Restart to update
+            {installLabel(update)}
           </button>
         ) : (
           update?.state !== "unsupported" && (
@@ -196,6 +197,11 @@ export function AppOptions() {
   );
 }
 
+/** Android can't swap the app in place: the button opens its installer rather than restarting. */
+function installLabel(u: AppUpdate): string {
+  return u.kind === "android" ? "Install update" : "Restart to update";
+}
+
 /** A slim bar across the app when a new version has downloaded. */
 export function AppUpdateBanner() {
   const [update, act] = useAppUpdate();
@@ -205,7 +211,7 @@ export function AppUpdateBanner() {
     <div className="app-update-banner" role="status">
       <span>LootDen {update.version} is ready to install.</span>
       <button className="primary small" onClick={() => void act("install")}>
-        Restart to update
+        {installLabel(update)}
       </button>
       <button className="ghost small" onClick={() => setHidden(true)}>
         Later

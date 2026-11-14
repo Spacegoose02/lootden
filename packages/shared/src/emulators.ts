@@ -51,7 +51,7 @@ export const EMULATORS: EmulatorInfo[] = [
     homepage: "https://www.duckstation.org/",
     platforms: ["ps1"],
     saveSync: true,
-    bios: [{ id: "ps1", label: "PlayStation BIOS", match: "^(scph-?\\d{3,5}[a-z]?|ps-?\\d{2}[a-z]?|psxonpsp660|ps1_rom)\\.bin$", examples: ["scph5501.bin", "scph1001.bin", "scph7502.bin"], required: true, folder: "bios" }],
+    bios: [{ id: "ps1", label: "PlayStation BIOS", match: "^(scph-?\\d{3,4}[a-z]?|ps-?\\d{2}[a-z]?|psxonpsp660|ps1_rom)\\.bin$", examples: ["scph5501.bin", "scph1001.bin", "scph7502.bin"], required: true, folder: "bios" }],
   },
   {
     id: "pcsx2",
@@ -59,7 +59,7 @@ export const EMULATORS: EmulatorInfo[] = [
     homepage: "https://pcsx2.net/",
     platforms: ["ps2"],
     saveSync: true,
-    bios: [{ id: "ps2", label: "PlayStation 2 BIOS", match: "^(scph|ps2|dtl|.*bios).*\\.(bin|rom0)$", examples: ["SCPH-70012_BIOS_V12_USA_200.BIN", "ps2-0230a-20080220.bin"], required: true, folder: "bios" }],
+    bios: [{ id: "ps2", label: "PlayStation 2 BIOS", match: "^(?!xbox|mcpx|complex|evox)(scph|ps2|dtl|.*bios).*\\.(bin|rom0)$", examples: ["SCPH-70012_BIOS_V12_USA_200.BIN", "ps2-0230a-20080220.bin"], required: true, folder: "bios" }],
     note: "PCSX2 keeps every game on one memory card, so the newest card wins when you switch PCs.",
   },
   {
