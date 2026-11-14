@@ -13,6 +13,7 @@ import {
   pickRomFile,
   platformFor,
   RETROARCH_CORES,
+  SWITCH_PLATFORMS,
   type BiosRequirement,
   type EmulatorInfo,
   type RecompInfo,
@@ -20,7 +21,7 @@ import {
   type ServerBiosFile,
 } from "@lootden/shared";
 import type { GameServerClient } from "./api.js";
-import { extractArchive, type SevenZip } from "./extractor.js";
+import { extractArchive, findSevenZip, type SevenZip } from "./extractor.js";
 import { downloadLicences, installLicences, RPCS3_EXDATA } from "./licences.js";
 
 export { EMULATORS, emulatorInfo } from "@lootden/shared";
@@ -148,7 +149,9 @@ export const emulatorDir = (toolsDir: string, id: string) => path.join(toolsDir,
  */
 export function emulatorDataDir(toolsDir: string, id: string, platform: OS = hostOs(), exe?: string): string {
   const dir = emulatorDir(toolsDir, id);
-  if (platform === "win32" || id === "retroarch" || id === "xemu") return dir;
+  // Eden runs portable on Windows from a "user" folder beside it (keys, NAND, saves).
+  if (platform === "win32") return id === "eden" ? path.join(dir, "user") : dir;
+  if (id === "retroarch" || id === "xemu") return dir;
   const home = os.homedir();
   // A Flatpak keeps its home folders under ~/.var/app/<id>/.
   const app = flatpakApp(exe);
@@ -158,6 +161,7 @@ export function emulatorDataDir(toolsDir: string, id: string, platform: OS = hos
   if (id === "duckstation") return path.join(data, "duckstation");
   if (id === "pcsx2") return path.join(config, "PCSX2");
   if (id === "rpcs3") return path.join(config, "rpcs3");
+  if (id === "eden") return path.join(data, "eden");
   return dir;
 }
 
@@ -171,15 +175,19 @@ interface Release {
 
 type Fetch = typeof fetch;
 
-/** Newest release with a matching asset, preferring stable releases over previews. */
-async function githubAsset(fetchImpl: Fetch, repo: string, pattern: RegExp): Promise<Release> {
+/**
+ * Newest release with a matching asset, preferring stable releases over previews. When a
+ * release has several matching builds, the first that also matches [prefer] wins.
+ */
+async function githubAsset(fetchImpl: Fetch, repo: string, pattern: RegExp, prefer?: RegExp): Promise<Release> {
   const res = await fetchImpl(`https://api.github.com/repos/${repo}/releases?per_page=15`, { headers: UA });
   if (!res.ok) throw new Error(`GitHub answered ${res.status} for ${repo}`);
   const releases = (await res.json()) as Array<{ tag_name: string; prerelease: boolean; draft: boolean; assets: Array<{ name: string; browser_download_url: string }> }>;
   const withAsset = releases.filter((r) => !r.draft && r.assets.some((a) => pattern.test(a.name)));
   const best = withAsset.find((r) => !r.prerelease) ?? withAsset[0];
   if (!best) throw new Error(`No download for this computer in ${repo}'s releases`);
-  const asset = best.assets.find((a) => pattern.test(a.name))!;
+  const matching = best.assets.filter((a) => pattern.test(a.name));
+  const asset = (prefer && matching.find((a) => prefer.test(a.name))) || matching[0]!;
   return { url: asset.browser_download_url, version: best.tag_name, fileName: asset.name };
 }
 
@@ -225,6 +233,18 @@ const SOURCES: Record<string, (f: Fetch, p: OS, a: Arch) => Promise<Release>> = 
       "xemu-project/xemu",
       p === "win32" ? /^xemu-win-x86_64-release\.zip$|^xemu.*win.*x86_64.*(?<!pdb|dbg)\.zip$/i : a === "arm64" ? /^xemu-(?!.*dbg).*aarch64\.AppImage$/i : /^xemu-(?!.*dbg).*x86_64\.AppImage$/i,
     ),
+  // Eden publishes builds for several compilers and devices; the standard ones suit most PCs and handhelds.
+  eden: (f, p, a) =>
+    githubAsset(
+      f,
+      "eden-emulator/Releases",
+      p === "win32"
+        ? /^Eden-Windows(?!.*(arm64|aarch64|pdb|debug|symbols)).*\.(zip|7z)$/i
+        : a === "arm64"
+          ? /^Eden-Linux.*(aarch64|arm64).*\.AppImage$/i
+          : /^Eden-Linux(?!.*(aarch64|arm64)).*\.AppImage$/i,
+      /standard/i,
+    ),
 };
 
 /** The emulator's program, found after unpacking. */
@@ -234,6 +254,7 @@ const EXE: Record<string, RegExp> = {
   pcsx2: /^(pcsx2-qt\.exe|pcsx2.*\.AppImage)$/i,
   rpcs3: /^(rpcs3\.exe|rpcs3.*\.AppImage)$/i,
   xemu: /^(xemu\.exe|xemu.*\.AppImage)$/i,
+  eden: /^(eden\.exe|Eden.*\.AppImage)$/i,
 };
 
 export async function download(fetchImpl: Fetch, url: string, dest: string, onProgress?: (received: number, total: number) => void, signal?: AbortSignal): Promise<void> {
@@ -375,6 +396,8 @@ async function makePortable(id: string, dir: string, exeDir: string): Promise<vo
     for (const sub of ["system", "saves", "states"]) await mkdir(path.join(dir, sub), { recursive: true });
   }
   if (id === "xemu") await mkdir(path.join(dir, "bios"), { recursive: true });
+  // Eden (like yuzu before it) runs portable when a "user" folder sits beside its program.
+  if (id === "eden") await mkdir(path.join(exeDir, "user", "keys"), { recursive: true });
 }
 
 async function fetchXboxHdd(opts: ToolsOptions & { fetchImpl: Fetch }): Promise<void> {
@@ -443,20 +466,53 @@ export async function biosStatus(toolsDir: string, platform: OS = hostOs()): Pro
 }
 
 async function firmwareInstalled(toolsDir: string, id: string, platform: OS, exe?: string): Promise<boolean> {
+  if (id === "eden") {
+    const names = await readdir(switchFirmwareDir(emulatorDataDir(toolsDir, id, platform, exe))).catch(() => [] as string[]);
+    return names.some((n) => /\.nca$/i.test(n));
+  }
   if (id !== "rpcs3") return false;
   const vsh = path.join(emulatorDataDir(toolsDir, id, platform, exe), "dev_flash", "vsh", "module", "vsh.self");
   return !!(await stat(vsh).catch(() => null));
 }
 
+/** Where Eden keeps the Switch's system files: the firmware's .nca files go straight in here. */
+export const switchFirmwareDir = (dataDir: string) => path.join(dataDir, "nand", "system", "Contents", "registered");
+
 /**
- * Puts a BIOS file where its emulator looks. PS3 firmware is installed by RPCS3 itself.
- * Returns the requirement it satisfied.
+ * Installs a Switch firmware zip into Eden's NAND, the same as Eden's own Install firmware:
+ * the old firmware's files go, then every .nca in the zip goes into the system folder.
  */
-export async function addBiosFile(toolsDir: string, emulator: EmulatorInfo, file: string, platform: OS = hostOs()): Promise<BiosRequirement> {
+export async function installSwitchFirmware(dataDir: string, zip: string, sevenZip: SevenZip): Promise<number> {
+  const tmp = await mkdtemp(path.join(os.tmpdir(), "lootden-switchfw-"));
+  try {
+    await extractArchive(sevenZip, "zip", zip, tmp);
+    const files = (await listFiles(tmp)).filter((f) => /\.nca$/i.test(f));
+    if (!files.length) throw new Error(`${path.basename(zip)} has no firmware files in it (.nca). Use the firmware zip dumped from your Switch`);
+    const dest = switchFirmwareDir(dataDir);
+    await mkdir(dest, { recursive: true });
+    for (const old of await readdir(dest)) if (/\.nca$/i.test(old)) await rm(path.join(dest, old), { recursive: true, force: true });
+    for (const f of files) await copyFile(path.join(tmp, ...f.split("/")), path.join(dest, path.posix.basename(f)));
+    return files.length;
+  } finally {
+    await rm(tmp, { recursive: true, force: true });
+  }
+}
+
+/**
+ * Puts a BIOS file where its emulator looks. PS3 firmware is installed by RPCS3 itself; Switch
+ * firmware is unpacked into Eden's NAND. Returns the requirement it satisfied.
+ */
+export async function addBiosFile(toolsDir: string, emulator: EmulatorInfo, file: string, platform: OS = hostOs(), sevenZip?: SevenZip): Promise<BiosRequirement> {
   const name = path.basename(file);
   const req = emulator.bios.find((r) => new RegExp(r.match, "i").test(name));
   if (!req) throw new Error(`${name} isn't a file ${emulator.name} uses. It needs: ${emulator.bios.map((r) => r.examples[0]).join(", ")}`);
   const state = (await readTools(toolsDir)).emulators[emulator.id];
+  if (req.folder === "firmware" && emulator.id === "eden") {
+    const zip7 = sevenZip ?? (await findSevenZip(""));
+    if (!zip7) throw new Error("Unpacking Switch firmware needs 7-Zip");
+    await installSwitchFirmware(emulatorDataDir(toolsDir, emulator.id, platform, state?.exe), file, zip7);
+    return req;
+  }
   if (req.folder === "firmware") {
     if (!state) throw new Error(`Set up ${emulator.name} first, then add the firmware`);
     const c = emulatorCommand(toolsDir, state.exe, ["--installfw", file], [path.dirname(file)]);
@@ -494,7 +550,7 @@ export async function biosFromServer(
   api: GameServerClient,
   toolsDir: string,
   platform: OS = hostOs(),
-  opts: { only?: string; firmware?: boolean } = {},
+  opts: { only?: string; firmware?: boolean; sevenZip?: SevenZip } = {},
 ): Promise<BiosPull> {
   const only = opts.only;
   const files = await api.json<ServerBiosFile[]>("/api/emulation/bios");
@@ -517,7 +573,8 @@ export async function biosFromServer(
       }
       const { emulator: info, requirement: req } = found;
       const state = tools.emulators[info.id];
-      if (req.folder === "firmware") {
+      // Switch firmware unpacks without Eden running, so it needs neither Eden set up nor the button.
+      if (req.folder === "firmware" && info.id !== "eden") {
         if (!state) {
           problem(f.name, `Set up ${info.name} first, then get the BIOS files again to install it`);
           continue;
@@ -528,6 +585,12 @@ export async function biosFromServer(
         }
         if (opts.firmware === false) {
           problem(f.name, `Press "Get BIOS files from the server" to install it. ${info.name} opens to do that; close it once it says the firmware is installed`);
+          continue;
+        }
+      } else if (req.folder === "firmware") {
+        // Switch firmware: already unpacked when the server's zip is the one last installed here.
+        if ((await readFile(switchFirmwareMarker(toolsDir, platform, state?.exe), "utf8").catch(() => "")) === f.sha1 && status.find((b) => b.emulator === info.id && b.requirement.id === req.id)?.present) {
+          out.already.push(f.name);
           continue;
         }
       } else {
@@ -542,7 +605,8 @@ export async function biosFromServer(
       try {
         const size = await api.downloadTo(`/api/emulation/bios/${encodeURIComponent(f.name)}`, local);
         if (f.size && size !== f.size) throw new Error(`The download stopped at ${size} of ${f.size} bytes`);
-        await addBiosFile(toolsDir, info, local, platform);
+        await addBiosFile(toolsDir, info, local, platform, opts.sevenZip);
+        if (req.folder === "firmware" && info.id === "eden") await writeFile(switchFirmwareMarker(toolsDir, platform, state?.exe), f.sha1);
         out.added.push(f.name);
       } catch (err) {
         problem(f.name, (err as Error).message);
@@ -555,6 +619,10 @@ export async function biosFromServer(
   }
   return out;
 }
+
+/** Which server firmware zip was last unpacked into Eden here (its SHA-1), so it isn't unpacked every time. */
+const switchFirmwareMarker = (toolsDir: string, platform: OS, exe?: string) =>
+  path.join(switchFirmwareDir(emulatorDataDir(toolsDir, "eden", platform, exe)), ".lootden-firmware");
 
 function run(cmd: string, args: string[]): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -595,7 +663,12 @@ export async function planLaunch(gameDir: string, platformId: string, opts: Tool
 
   const files = await listFiles(gameDir);
   const romRel = pickRomFile(files, platform);
-  if (!romRel) throw new Error(`No ${platform.short} game file found in ${gameDir}`);
+  if (!romRel) {
+    // A FitGirl-style Switch repack is a Windows installer with its own emulator, not a dump.
+    const installer = SWITCH_PLATFORMS.includes(platform.id) && files.some((f) => /(^|\/)setup[^/]*\.exe$/i.test(f));
+    if (installer) throw new Error(`This ${platform.short} game is a Windows installer with its own emulator inside (a repack), not a game dump. Add it to PC games instead and install it like a PC game.`);
+    throw new Error(`No ${platform.short} game file found in ${gameDir}`);
+  }
   const rom = path.join(gameDir, ...romRel.split("/"));
   const dataDir = emulatorDataDir(opts.toolsDir, emulator.id, os_, state.exe);
   // Start through Flatpak when that's how it's installed; the game's folder is opened to it.
@@ -642,6 +715,9 @@ export async function planLaunch(gameDir: string, platformId: string, opts: Tool
       return { emulator, rom, dataDir, ...launch(["-batch", "-fullscreen", "--", rom]), saveDirs: ["memcards", "sstates"], savePrefix: null };
     case "rpcs3":
       return { emulator, rom, dataDir, ...launch(["--no-gui", rom]), saveDirs: ["dev_hdd0/home/00000001/savedata"], savePrefix: null };
+    case "eden":
+      // Full screen, straight into the game. Saves live in the emulated NAND's save folder.
+      return { emulator, rom, dataDir, ...launch(["-f", "-g", rom]), saveDirs: ["nand/user/save"], savePrefix: null };
     case "xemu": {
       const bios = path.join(dataDir, "bios");
       const names = await readdir(bios).catch(() => [] as string[]);

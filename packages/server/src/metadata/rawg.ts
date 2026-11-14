@@ -58,7 +58,9 @@ export class RawgProvider implements MetadataProvider {
   }
 
   async search(query: string, platform?: Platform): Promise<Candidate[]> {
-    const r = await this.get<{ results: RawgGame[] }>("/games", { search: query, page_size: "10", platforms: String(platform?.rawg ?? 4) });
+    // A console RAWG has no id for yet (Switch 2) searches every platform rather than PC's.
+    const rawgPlatform = platform?.rawg ?? (platform && platform.id !== "pc" ? null : 4);
+    const r = await this.get<{ results: RawgGame[] }>("/games", { search: query, page_size: "10", ...(rawgPlatform ? { platforms: String(rawgPlatform) } : {}) });
     return r.results.map((g) => ({
       provider: this.name,
       providerId: String(g.id),

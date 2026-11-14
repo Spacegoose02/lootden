@@ -10,7 +10,10 @@ export interface BiosRequirement {
   /** Typical file names, shown as hints. */
   examples: string[];
   required: boolean;
-  /** Folder inside the emulator's data folder. "firmware" means the emulator installs it itself. */
+  /**
+   * Folder inside the emulator's data folder. "firmware" means it's installed rather than copied:
+   * RPCS3 installs PS3 firmware itself, and LootDen unpacks a Switch firmware zip into Eden's NAND.
+   */
   folder: string;
   /** Only needed for this system (RetroArch covers many). */
   platform?: string;
@@ -93,6 +96,26 @@ export const EMULATORS: EmulatorInfo[] = [
       { id: "hdd", label: "Xbox hard drive image", match: "^xbox_hdd\\.qcow2$", examples: ["xbox_hdd.qcow2"], required: true, folder: "bios", autoFetch: true },
     ],
     note: "Xbox saves live inside the hard drive image, so they stay on each PC for now.",
+  },
+  {
+    id: "eden",
+    name: "Eden",
+    homepage: "https://eden-emu.dev/",
+    platforms: ["switch"],
+    saveSync: true,
+    bios: [
+      { id: "prodkeys", label: "Switch keys (prod.keys)", match: "^prod\\.keys$", examples: ["prod.keys"], required: true, folder: "keys" },
+      { id: "titlekeys", label: "Switch title keys (title.keys, optional)", match: "^title\\.keys$", examples: ["title.keys"], required: false, folder: "keys" },
+      {
+        id: "switchfw",
+        label: "Switch firmware (most games need it)",
+        match: "^(?!.*(ps3|xbox)).*firmware.*\\.zip$",
+        examples: ["Firmware 20.1.0.zip"],
+        required: false,
+        folder: "firmware",
+      },
+    ],
+    note: "Keys and firmware come from your own Switch (Lockpick and TegraExplorer dump them). Updates and DLC that came with a game install from Eden's File menu, Install files to NAND.",
   },
 ];
 

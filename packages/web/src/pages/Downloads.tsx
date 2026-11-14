@@ -331,6 +331,19 @@ function HeldForReview({ onMessage }: { onMessage: (m: string) => void }) {
   );
 }
 
+/** "Mario Kart World [FitGirl Switch 2 Repack]": which Switch the release name says, if any. */
+export function switchFromName(name: string): "switch" | "switch2" | null {
+  if (isRepack(name)) return null;
+  if (/\b(switch|nsw?)\s*-?\s*2\b/i.test(name)) return "switch2";
+  if (/\b(switch|nsw)\b/i.test(name)) return "switch";
+  return null;
+}
+
+/** FitGirl, DODI and friends ship console games as Windows installers with the emulator inside. */
+export function isRepack(name: string): boolean {
+  return /\b(fitgirl|dodi|elamigos|kaos)\b|\brepack\b/i.test(name);
+}
+
 /** Games already in the downloads folder: import them with the usual clean-up, or leave them be. */
 function DownloadsFolder({ onMessage }: { onMessage: (m: string) => void }) {
   const [data, setData] = useState<{ folder: string; items: FolderItem[] } | null>(null);
@@ -351,6 +364,11 @@ function DownloadsFolder({ onMessage }: { onMessage: (m: string) => void }) {
   // ROM files say which system they're for when only one system uses the extension.
   const guess = (name: string) => {
     const ext = name.match(/\.(\w+)$/)?.[1]?.toLowerCase();
+    // Switch and Switch 2 share file types, so the name decides; repacks are PC installers.
+    const sw = switchFromName(name);
+    if (sw) return sw;
+    if (isRepack(name)) return "pc";
+    if (ext && ["xci", "nsp", "xcz", "nsz"].includes(ext)) return "switch";
     const hits = ext ? PLATFORMS.filter((p) => p.id !== "pc" && p.extensions.includes(ext)) : [];
     return hits.length === 1 ? hits[0]!.id : "pc";
   };
@@ -394,6 +412,12 @@ function DownloadsFolder({ onMessage }: { onMessage: (m: string) => void }) {
                   {i.status === "imported" ? ` · imported to ${i.target}` : i.status !== "new" ? ` · ${i.status}` : ""}
                 </small>
                 {i.error && <small className="error"> · {i.error}</small>}
+                {isRepack(i.name) && /switch|\bns2?\b|\bnsw2?\b/i.test(i.name) && (
+                  <small className="muted">
+                    <br />A Switch repack like this is usually a Windows installer with an emulator built in, so it plays as a PC game. Pick a Switch system only for a
+                    plain game dump (.xci or .nsp files).
+                  </small>
+                )}
                 {i.progress && <ImportMeter progress={i.progress} />}
               </div>
               {i.status !== "imported" && (

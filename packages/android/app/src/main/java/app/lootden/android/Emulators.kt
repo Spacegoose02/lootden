@@ -16,7 +16,8 @@ import java.io.File
 /**
  * The systems LootDen plays on Android: the same ids and file types as
  * packages/shared/src/platforms.ts (keep them in step; a test checks the ids).
- * Xbox and Xbox 360 aren't here: nothing plays them on an Android handheld yet. PS3 plays in ARMSX3.
+ * Xbox, Xbox 360 and Switch 2 aren't here: nothing plays them on an Android handheld yet. PS3 plays in ARMSX3,
+ * Switch in Eden (or Citron).
  */
 data class Platform(val id: String, val name: String, val extensions: List<String>)
 
@@ -37,6 +38,7 @@ val PLATFORMS = listOf(
     Platform("genesis", "Sega Genesis", listOf("md", "gen", "smd", "bin", "zip", "7z")),
     Platform("saturn", "Sega Saturn", listOf("m3u", "cue", "chd")),
     Platform("dreamcast", "Dreamcast", listOf("m3u", "gdi", "chd", "cdi")),
+    Platform("switch", "Nintendo Switch", listOf("xci", "nsp", "xcz", "nsz")),
 )
 
 fun platformById(id: String): Platform? = PLATFORMS.firstOrNull { it.id == id }
@@ -49,11 +51,28 @@ fun pickRom(files: List<String>, platform: Platform): String? {
     if (platform.id == "ps3") {
         files.firstOrNull { PS3_EBOOT.containsMatchIn(it.lowercase()) }?.let { return it }
     }
+    if (platform.id == "switch") {
+        val games = files.filter { f -> platform.extensions.any { f.lowercase().endsWith(".$it") } }
+        val ext = { f: String -> platform.extensions.indexOfFirst { f.lowercase().endsWith(".$it") } }
+        return games.sortedWith(compareBy<String>({ isSwitchAddon(it) }, { ext(it) }, { it.count { c -> c == '/' } }, { it })).firstOrNull()
+    }
     for (ext in platform.extensions) {
         val hits = files.filter { it.lowercase().endsWith(".$ext") }
         if (hits.isNotEmpty()) return hits.sortedWith(compareBy<String>({ it.count { c -> c == '/' } }, { it })).first()
     }
     return null
+}
+
+/**
+ * An update or DLC NSP rather than the game itself, as isSwitchAddon in packages/shared decides:
+ * tagged [UPD] or [DLC], a version above v0, or a title id that isn't a base game's.
+ */
+fun isSwitchAddon(file: String): Boolean {
+    val name = file.substringAfterLast('/')
+    if (Regex("[\\[(]\\s*(upd|update|dlc|patch)\\b[^\\])]*[\\])]|\\b(update|dlc)\\b", RegexOption.IGNORE_CASE).containsMatchIn(name)) return true
+    if (Regex("[\\[(]v(?!0[\\])])\\d+[\\])]", RegexOption.IGNORE_CASE).containsMatchIn(name)) return true
+    val id = Regex("(0100[0-9a-fA-F]{12})").find(name)?.groupValues?.get(1) ?: return false
+    return !Regex("[02468aceACE]000$").containsMatchIn(id)
 }
 
 /** A PS3 folder game's start file, as pickRomFile in packages/shared finds it. */
@@ -129,6 +148,13 @@ val EMULATORS = listOf(
         "armsx3", "ARMSX3", listOf("com.armsx3", "com.armsx3.play"), Handoff.ARMSX3, listOf("ps3"), "com.armsx2.Main",
         store = "com.armsx3.play", otherActivities = listOf("com.armsx2.MainActivity"),
     ),
+    // Eden (from eden-emu.dev, the yuzu line) and Citron: neither is on Google Play. Both keep yuzu's
+    // game screen, which opens a game from ACTION_VIEW; an unknown build falls back to its own handler.
+    Emulator(
+        "eden", "Eden", listOf("dev.eden.eden_emulator", "dev.eden.eden_emulator.nightly"), Handoff.VIEW, listOf("switch"), "org.yuzu.yuzu_emu.activities.EmulationActivity",
+        store = null,
+    ),
+    Emulator("citron", "Citron", listOf("org.citron.citron_emu", "org.citron.emu"), Handoff.VIEW, listOf("switch"), "org.citron.citron_emu.activities.EmulationActivity", store = null),
     Emulator("ppsspp", "PPSSPP", listOf("org.ppsspp.ppssppgold", "org.ppsspp.ppsspp"), Handoff.VIEW, listOf("psp"), "org.ppsspp.ppsspp.PpssppActivity", store = "org.ppsspp.ppsspp"),
     Emulator("dolphin", "Dolphin", listOf("org.dolphinemu.dolphinemu", "org.dolphinemu.mmjr"), Handoff.EXTRA, listOf("gamecube", "wii"), "org.dolphinemu.dolphinemu.ui.main.MainActivity", "AutoStartFile"),
     Emulator("melonds", "melonDS", listOf("me.magnum.melonds"), Handoff.EXTRA, listOf("nds"), "me.magnum.melonds.ui.emulator.EmulatorActivity", "uri"),
@@ -143,6 +169,7 @@ private val PREFERRED = mapOf(
     "ps1" to listOf("duckstation", "retroarch"),
     "ps2" to listOf("armsx2", "aethersx2", "retroarch"),
     "ps3" to listOf("armsx3"),
+    "switch" to listOf("eden", "citron"),
     "psp" to listOf("ppsspp", "retroarch"),
     "gamecube" to listOf("dolphin", "retroarch"),
     "wii" to listOf("dolphin", "retroarch"),

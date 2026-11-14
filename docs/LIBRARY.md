@@ -137,14 +137,15 @@ or folder inside a system's folder is one game, shown in the **Emulation** secti
   ps2/Okami (USA).iso
   ps3/Demon's Souls/PS3_GAME/USRDIR/EBOOT.BIN
   snes/Super Mario World (USA).sfc
+  switch/Zelda/Zelda [0100F2C0115B6000][v0].nsp + update and DLC .nsp files
 ```
 
 System folders: `ps1` (or `psx`), `ps2`, `ps3`, `xbox`, `psp`, `nes`, `snes`, `n64`, `gb`,
 `gbc`, `gba`, `nds`, `gamecube`, `wii`, `genesis` (or `megadrive`), `saturn`, `dreamcast`,
-`android`.
+`switch` (or `nsw`), `switch2` (or `ns2`), `android`.
 
 - **Desktop app:** **Emulation, Emulators and BIOS** sets up RetroArch, DuckStation,
-  PCSX2, RPCS3 and xemu from their official releases. BIOS files must come from consoles
+  PCSX2, RPCS3, xemu and Eden (Switch) from their official releases. BIOS files must come from consoles
   you own: pick them on the PC, or upload them once (admins) and press **Get BIOS files
   from the server** on each PC. **Play** starts the right emulator, tracks play time and
   syncs saves.
@@ -155,6 +156,15 @@ System folders: `ps1` (or `psx`), `ps2`, `ps3`, `xbox`, `psp`, `nes`, `snes`, `n
   `dev_hdd0/home/00000001/exdata` when the game starts, and the Android app hands it to
   ARMSX3's installer on the next Play (ARMSX3 asks the player once, then Play again starts the
   game). `.rap` files inside a game's own folder go the same way.
+- **Switch:** games are XCI or NSP dumps (NSZ and XCZ too); Play opens the base game, so
+  update and DLC NSPs can sit beside it (install them once from Eden's File menu, Install
+  files to NAND). Eden needs `prod.keys` (and `title.keys` if you have it) and a firmware zip
+  (`Firmware 20.1.0.zip`), dumped from your own Switch: pick them on the PC or upload them
+  once as BIOS files, and LootDen copies the keys and unpacks the firmware into Eden's NAND.
+- **Switch 2:** stored and organised like any system, but no emulator LootDen can set up
+  plays it yet (the first ones are weeks old, desktop only and run few games). FitGirl-style
+  Switch and Switch 2 repacks are Windows installers with an emulator inside: import those as
+  PC games, which is what the downloads folder picks for them.
 - **Browser:** single-file games for NES, SNES, N64, Game Boy, GBA, DS, Genesis, Saturn,
   PS1 and PSP play in the browser with EmulatorJS, sharing saves with the desktop app.
   Set `LOOTDEN_EMULATORJS_DATA` to a self-hosted copy of EmulatorJS's `data/` folder to

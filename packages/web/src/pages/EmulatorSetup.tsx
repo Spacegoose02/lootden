@@ -499,7 +499,7 @@ function ControllerPanel() {
       <p className="muted small">
         The first controller is player 1 in every emulator: LootDen sets it up in DuckStation and PCSX2 unless you already bound one there, and RetroArch picks it up
         by itself. In RetroArch, Select + Start quits back to LootDen and L3 + R3 opens the menu. In the browser player, click the game once so it gets the controller;
-        its own Controls menu remaps buttons. RPCS3 and xemu use their own input settings the first time.
+        its own Controls menu remaps buttons. RPCS3, xemu and Eden use their own input settings the first time.
       </p>
     </section>
   );

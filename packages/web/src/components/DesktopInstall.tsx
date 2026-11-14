@@ -133,6 +133,10 @@ export function DesktopInstall({ game, autoFocus }: { game: GameDetail; autoFocu
         : androidEmu.using
           ? null
           : "PS3 games play in ARMSX3: get it from Google Play or GitHub (Profile, This handheld has a button), then install the PS3 firmware in it once. LootDen starts games in it once it's installed."
+      : game.platform === "switch" && !androidEmu.using
+      ? "Switch games play in Eden (or Citron): get it from its own site, then in it install your prod.keys and the firmware zip from LootDen's BIOS folder once (Get BIOS files from the server on the Emulators page puts them there)."
+      : game.platform === "switch" && androidEmu.using
+      ? `Plays in ${androidEmu.using}. Install your prod.keys and firmware in it once (Get BIOS files from the server on the Emulators page puts them in LootDen's BIOS folder). Updates and DLC install from its own menu.`
       : game.platform === "ps2" && armsx2 && !armsx2.installed && (androidEmu.using === "RetroArch" || !androidEmu.using)
       ? `For PS2, get ARMSX2 from Google Play (Profile, This handheld has a button): it plays far more PS2 games than ${androidEmu.using ? "RetroArch's Play! core" : "anything else"}, and LootDen starts games in it once it's installed.`
       : androidEmu.using === "RetroArch" && androidEmu.core
@@ -183,7 +187,7 @@ export function DesktopInstall({ game, autoFocus }: { game: GameDetail; autoFocu
           {(pcGame || apkGame || emulatorName || running) && <button ref={button} className="primary" disabled={busy || running} onClick={() => run(() => bridge.play(game.id))}>
             {running ? (paused ? "Paused" : "Playing…") : emulatorName ? `▶ Play in ${emulatorName}` : launch.state?.profile?.defaultAction ? `▶ Play with ${launch.state.profile.actions.find((a) => a.id === launch.state!.profile!.defaultAction)?.name ?? "mods"}` : "▶ Play"}
           </button>}
-          {!pcGame && !apkGame && !emulatorName && !running && !recomps.length && <span className="muted small">LootDen has no emulator for {platformFor(game.platform).name} yet.</span>}
+          {!pcGame && !apkGame && !emulatorName && !running && !recomps.length && <span className="muted small">{platformFor(game.platform).note ?? `LootDen has no emulator for ${platformFor(game.platform).name} yet.`}</span>}
           {!running && <PlayWithButtons profile={launch.state?.profile ?? null} disabled={busy} onPlay={(id) => void run(() => bridge.play(game.id, id))} />}
           {!running &&
             bridge.recomps &&

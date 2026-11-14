@@ -27,6 +27,8 @@ export interface Platform {
    * WebAssembly, served by the LootDen server when the image includes it and an admin allows it.
    */
   browserPlayer?: "tabstationtoo";
+  /** Shown on the system's shelf and install panel: what plays it, or why nothing does yet. */
+  note?: string;
 }
 
 const p = (x: Platform) => x;
@@ -52,6 +54,23 @@ export const PLATFORMS: Platform[] = [
   p({ id: "genesis", name: "Sega Genesis", short: "Genesis", aliases: ["megadrive", "md"], coverAspect: 0.7, color: "#1f1f1f", emulator: "retroarch", extensions: ["md", "gen", "smd", "bin", "zip", "7z"], igdb: 29, rawg: 167, browserCore: "segaMD" }),
   p({ id: "saturn", name: "Sega Saturn", short: "Saturn", aliases: ["ss"], coverAspect: 0.7, color: "#4a6fb5", emulator: "retroarch", extensions: ["m3u", "cue", "chd"], igdb: 32, rawg: 107, browserCore: "segaSaturn" }),
   p({ id: "dreamcast", name: "Dreamcast", short: "DC", aliases: ["dc"], coverAspect: 1, color: "#f26522", emulator: "retroarch", extensions: ["m3u", "gdi", "chd", "cdi"], igdb: 23, rawg: 106 }),
+  // Switch: XCI and NSP dumps (updates and DLC as extra NSPs beside the base game), played in Eden.
+  p({ id: "switch", name: "Nintendo Switch", short: "Switch", aliases: ["nsw", "ns", "nintendoswitch", "switch1"], coverAspect: 0.62, color: "#e60012", emulator: "eden", extensions: ["xci", "nsp", "xcz", "nsz"], igdb: 130, rawg: 7 }),
+  // Switch 2: stored and organised like any system, but nothing LootDen can set up plays it yet.
+  p({
+    id: "switch2",
+    name: "Nintendo Switch 2",
+    short: "Switch 2",
+    aliases: ["ns2", "nsw2", "nintendoswitch2", "switch-2"],
+    coverAspect: 0.62,
+    color: "#ff4554",
+    emulator: null,
+    extensions: ["xci", "nsp", "xcz", "nsz"],
+    igdb: 508,
+    rawg: null,
+    note:
+      "No Switch 2 emulator LootDen can set up yet: the first ones (Eglantine, Lichii) are weeks old, desktop only, and run few games badly. Games here are stored and organised until one is ready. FitGirl Switch 2 repacks are Windows installers with their own emulator inside, so import those as PC games to play them.",
+  }),
   // Android games as APKs (split APKs and .obb data in the game's folder), installed and opened by the LootDen Android app.
   p({ id: "android", name: "Android", short: "Android", aliases: ["apk", "apks"], coverAspect: 3 / 4, color: "#3ddc84", emulator: null, extensions: ["apk", "xapk", "apks"], igdb: 34, rawg: 21 }),
 ];
@@ -81,11 +100,33 @@ export function pickRomFile(files: string[], platform: Platform): string | null 
     const eboot = lower.findIndex((f) => /(^|\/)ps3_game\/usrdir\/eboot\.bin$/.test(f));
     if (eboot >= 0) return files[eboot]!;
   }
+  // Switch: the base game, not an update or DLC NSP that came with it.
+  if (SWITCH_PLATFORMS.includes(platform.id)) {
+    const ext = (f: string) => platform.extensions.findIndex((e) => f.toLowerCase().endsWith(`.${e}`));
+    const games = files.filter((f) => ext(f) >= 0);
+    if (!games.length) return null;
+    return games.sort((a, b) => Number(isSwitchAddon(a)) - Number(isSwitchAddon(b)) || ext(a) - ext(b) || a.split("/").length - b.split("/").length || a.localeCompare(b))[0]!;
+  }
   for (const ext of platform.extensions) {
     const matches = files.filter((_, i) => lower[i]!.endsWith(`.${ext}`));
     if (matches.length) return matches.sort((a, b) => a.split("/").length - b.split("/").length || a.localeCompare(b))[0]!;
   }
   return null;
+}
+
+/** Systems whose games are Switch dumps (XCI, NSP and their compressed forms). */
+export const SWITCH_PLATFORMS = ["switch", "switch2"];
+
+/**
+ * Whether a Switch file is an update or DLC rather than the game itself: tagged [UPD] or [DLC],
+ * a version above v0, or a title id that isn't a base game's (those end in 000, updates in 800).
+ */
+export function isSwitchAddon(file: string): boolean {
+  const name = file.split("/").pop()!;
+  if (/[[(]\s*(upd|update|dlc|patch)\b[^\])]*[\])]|\b(update|dlc)\b/i.test(name)) return true;
+  if (/[[(]v(?!0[\])])\d+[\])]/i.test(name)) return true;
+  const id = name.match(/[[(]?(0100[0-9a-f]{12})[\])]?/i)?.[1];
+  return !!id && !/[02468ace]000$/i.test(id);
 }
 
 /** "Crash Bandicoot (USA) (Rev 1) [!]" → "Crash Bandicoot"; region and dump tags only confuse metadata search. */
