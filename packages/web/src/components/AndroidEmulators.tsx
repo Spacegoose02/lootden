@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { androidApp, bridgeError, desktop, type AndroidEmulatorChoice } from "../desktop";
+import { androidApp, biosPullMessage, bridgeError, desktop, type AndroidEmulatorChoice } from "../desktop";
 
 type Option = AndroidEmulatorChoice["options"][number];
 
@@ -11,6 +11,8 @@ type Option = AndroidEmulatorChoice["options"][number];
 export function AndroidEmulators() {
   const [list, setList] = useState<AndroidEmulatorChoice[] | null>(null);
   const [error, setError] = useState("");
+  const [bios, setBios] = useState("");
+  const [gettingBios, setGettingBios] = useState(false);
   const load = useCallback(() => {
     if (androidApp) void desktop?.androidEmulators?.().then(setList, (e) => setError(bridgeError(e)));
   }, []);
@@ -94,7 +96,24 @@ export function AndroidEmulators() {
         <button className="button small ghost" onClick={load}>
           ↻ Check again
         </button>
+        {desktop?.biosFromServer && (
+          <button
+            className="button small ghost"
+            disabled={gettingBios}
+            onClick={() => {
+              setGettingBios(true);
+              setBios("");
+              desktop!.biosFromServer!().then(
+                (r) => setBios(biosPullMessage(r)),
+                (e) => setError(bridgeError(e)),
+              ).finally(() => setGettingBios(false));
+            }}
+          >
+            {gettingBios ? "Getting BIOS files…" : "⬇ Get BIOS files from the server"}
+          </button>
+        )}
       </p>
+      {bios && <p className="notice small">{bios}</p>}
       {error && <p className="error small">{error}</p>}
     </div>
   );

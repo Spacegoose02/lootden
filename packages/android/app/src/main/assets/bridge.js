@@ -41,6 +41,7 @@
     "changeServer", "toggleFullscreen", "appSettings", "appUpdate", "quit", "streaming", "streamGame",
     "androidEmulators", "setAndroidEmulator", "openStore", "openBrowser", "offlineTheme", "playInBrowser",
     "deviceApps", "setDeviceAppKind", "launchApp", "appDetails", "uninstallApp", "storeGames", "launchStore",
+    "biosFromServer",
   ];
   const bridge = {
     version: 1,
