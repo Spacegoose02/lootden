@@ -521,3 +521,31 @@ describe("importing from a downloads folder on another mount", () => {
     await app.close();
   });
 });
+
+describe("finding a finished download without path mappings", () => {
+  const headers = { authorization: "Bearer svc" };
+
+  it("looks in the downloads folder when the client's path doesn't exist here", async () => {
+    const fake = fakeServices();
+    const { app, ctx } = await makeApp(root, { apiToken: "svc" }, { fetchImpl: fake.impl });
+    const folder = path.join(downloads, "unmapped");
+    const name = "Unmapped.Game-TENOKE";
+    await mkdir(path.join(folder, name), { recursive: true });
+    await writeFile(path.join(folder, name, "unmapped.exe"), "game");
+    // qBittorrent sees the share as /data/games; this container has it at the downloads folder. No mapping set.
+    await app.inject({ method: "PUT", url: "/api/connectors", headers, payload: { ...SETTINGS, import: { mode: "move", folder, pathMappings: [] } } });
+    const results = (await app.inject({ url: "/api/downloads/search?q=cool%20game", headers })).json();
+    await app.inject({ method: "POST", url: "/api/downloads", headers, payload: { url: results[1].downloadUrl, title: name, protocol: "torrent" } });
+    Object.assign(fake.torrents[0]!, { name, content_path: `/data/games/${name}`, progress: 1, state: "stalledUP" });
+
+    // Before: "Finished download not found at /data/games/Unmapped.Game-TENOKE; check the path mappings".
+    await ctx.downloads.reconcile();
+    const record = (await app.inject({ url: "/api/downloads", headers })).json().downloads[0];
+    assert.equal(record.status, "imported", record.error ?? "");
+    const imports = ctx.db.prepare("SELECT status FROM folder_imports WHERE name = ?").get(name) as { status: string };
+    assert.equal(imports.status, "imported", "the downloads folder list agrees");
+    await assert.rejects(stat(path.join(folder, name)), "moved out of the downloads folder");
+    await rm(record.importedPath, { recursive: true, force: true });
+    await app.close();
+  });
+});

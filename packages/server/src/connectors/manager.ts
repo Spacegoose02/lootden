@@ -394,6 +394,28 @@ export class DownloadManager {
     return rel.split(/[\\/]/)[0] ?? null;
   }
 
+  /**
+   * This container's path for a path the download client reported. Uses the path mappings, and when
+   * they don't lead anywhere (none set up, or a client that sees the share as /data/games while this
+   * container has it at /downloads), looks for the same name in the downloads folder: first the last
+   * part of the path, then the last two, and so on.
+   */
+  private async resolveSource(clientPath: string): Promise<string> {
+    const s = this.settings().import;
+    const mapped = mapPath(clientPath, s.pathMappings);
+    if (!s.folder || (await stat(mapped).catch(() => null))) return mapped;
+    const parts = clientPath.replace(/\\/g, "/").split("/").filter(Boolean);
+    for (let k = 1; k <= Math.min(parts.length, 4); k++) {
+      const candidate = path.join(s.folder, ...parts.slice(-k));
+      if (await stat(candidate).catch(() => null)) return candidate;
+    }
+    // Gone from the downloads folder because an import from there moved it and then failed: its
+    // files wait in that import's staging folder, which the downloads-folder import picks up again.
+    const name = parts.at(-1);
+    if (name && (await stat(path.join(this.library.gamesDir, `.import-${folderImportId(name)}`)).catch(() => null))) return path.join(s.folder, name);
+    return mapped;
+  }
+
   /** Where an earlier import put this download, when it already happened (from the downloads folder). */
   private alreadyImported(source: string): string | null {
     const entry = this.folderEntry(source) ?? path.basename(source);
@@ -408,9 +430,13 @@ export class DownloadManager {
     const settings = this.settings();
     // Folder entries that belong to our own downloads; the folder auto-import leaves them alone.
     const claimed = new Set<string>();
+    const sources = new Map<number, string>();
     for (const r of rows) {
       const l = r.status === "downloading" ? this.match(r, live) : null;
-      const entry = l?.path ? this.folderEntry(mapPath(l.path, settings.import.pathMappings)) : null;
+      if (!l?.path) continue;
+      const source = await this.resolveSource(l.path);
+      sources.set(r.id, source);
+      const entry = this.folderEntry(source);
       if (entry) claimed.add(entry);
     }
     await this.autoImportFolder(claimed);
@@ -419,7 +445,7 @@ export class DownloadManager {
     for (const r of pending) {
       const l = this.match(r, live);
       if (!l) continue;
-      const source = l.path ? mapPath(l.path, settings.import.pathMappings) : null;
+      const source = sources.get(r.id) ?? null;
       // Moved into the library already (by hand from the downloads folder, or a run before this
       // one): the client now reports the files missing, which isn't a failure.
       const earlier = source ? this.alreadyImported(source) : null;
@@ -435,6 +461,19 @@ export class DownloadManager {
       if (!finished || settings.import.mode === "off" || !source) continue;
       try {
         this.db.prepare("UPDATE downloads SET status = 'importing' WHERE id = ?").run(r.id);
+        // Sitting right in the downloads folder: import it the way that list does, so an earlier
+        // try from there (or its leftover staging copy) is picked up instead of started over.
+        const own = this.folderEntry(source);
+        if (own && path.join(settings.import.folder, own) === path.normalize(source)) {
+          const target = await this.importFromFolder(own, r.platform);
+          this.db.prepare("UPDATE downloads SET status = 'imported', imported_path = ?, imported_at = ?, error = NULL WHERE id = ?").run(target, now(), r.id);
+          this.log.info({ name: r.name, target }, "Imported download into the library");
+          if (settings.import.mode === "move")
+            await this.client(r.client)
+              .remove(l.id, true)
+              .catch((err: Error) => this.log.warn({ name: r.name, err: err.message }, "Couldn't remove the imported download from its client"));
+          continue;
+        }
         const placed = await this.importPath(source, settings.import.mode, r.name, settings.import.tidy, r.id, r.platform, String(r.id));
         const target = await this.afterImport(placed, r.name);
         if (!target) {
@@ -497,7 +536,10 @@ export class DownloadManager {
     // an emptied-out folder by now. Carry on from staging instead of throwing it away.
     const resume = (await stat(staging).catch(() => null))?.isDirectory() === true && !(await hasData(source));
     const s = await stat(source).catch(() => null);
-    if (!s && !resume) throw new Error(`Finished download not found at ${source}; check the path mappings`);
+    if (!s && !resume) {
+      const folder = this.settings().import.folder;
+      throw new Error(`Finished download not found at ${source}${folder ? ` or in the downloads folder (${folder})` : ""}; check the path mappings`);
+    }
     if (platform) {
       await mkdir(targetDir, { recursive: true });
       tidy = { ...tidy, repack: "folder" };
