@@ -21,14 +21,19 @@ describe("the Android app's systems", () => {
   });
 
   it("covers every console LootDen has an emulator for, except the ones Android can't play", () => {
-    const skipped = new Set(["ps3", "xbox"]);
+    const skipped = new Set(["xbox"]);
     const wanted = PLATFORMS.filter((p) => p.emulator && !skipped.has(p.id)).map((p) => p.id);
     assert.deepEqual(wanted.filter((id) => !androidPlatforms.some((p) => p.id === id)), []);
   });
 
-  it("has a RetroArch core for each of them", () => {
+  it("has a RetroArch core for each of them, except PS3, which only ARMSX3 plays", () => {
     const cores = [...kotlin.matchAll(/"([a-z0-9]+)" to "([a-z0-9_]+)"/g)].map((m) => m[1]);
-    assert.deepEqual(androidPlatforms.map((p) => p.id).filter((id) => !cores.includes(id)), []);
+    assert.deepEqual(androidPlatforms.map((p) => p.id).filter((id) => id !== "ps3" && !cores.includes(id)), []);
+  });
+
+  it("plays PS3 in ARMSX3, from both its GitHub and Google Play builds", () => {
+    assert.match(kotlin, /"armsx3", "ARMSX3", listOf\("com\.armsx3", "com\.armsx3\.play"\)/);
+    assert.match(kotlin, /"ps3" to listOf\("armsx3"\)/);
   });
 });
 

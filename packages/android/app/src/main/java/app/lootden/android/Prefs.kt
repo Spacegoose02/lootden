@@ -30,6 +30,14 @@ class Prefs(private val context: Context) {
         sp.edit().apply { if (id == null) remove("emulator.$platform") else putString("emulator.$platform", id) }.apply()
     }
 
+    /** PS3 packages already handed to ARMSX3's installer, by file, so later plays start the installed game instead. */
+    fun ps3PackageSent(path: String): Boolean = sp.getStringSet("ps3PackagesSent", emptySet())!!.contains(path)
+    fun setPs3PackageSent(path: String, sent: Boolean) {
+        val all = sp.getStringSet("ps3PackagesSent", emptySet())!!.toMutableSet()
+        if (sent) all += path else all -= path
+        sp.edit().putStringSet("ps3PackagesSent", all).apply()
+    }
+
     /** The save backup last brought onto this device for each game, so it's restored once. */
     fun restoredSave(gameId: String): Long = JSONObject(sp.getString("restored", "{}") ?: "{}").optLong(gameId, -1)
     fun setRestoredSave(gameId: String, id: Long) {
