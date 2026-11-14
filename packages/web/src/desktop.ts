@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { ActiveTruckMod, DuplicateModGroup, GameDetail, GlobalLaunchScripts, InstalledTruckMod, LaunchProfile, LocalStoreGame, ModLinkCheck, TruckGame, TruckModFile, TruckProfile } from "@lootden/shared";
+import type { ArcadeDevice, ArcadeGame, ConnectedInputs, ActiveTruckMod, DuplicateModGroup, GameDetail, GlobalLaunchScripts, InstalledTruckMod, LaunchProfile, LocalStoreGame, ModLinkCheck, TruckGame, TruckModFile, TruckProfile } from "@lootden/shared";
 
 export interface Drive {
   path: string;
@@ -37,6 +37,36 @@ export interface AppliedUpdate {
   appliedAt: string;
   replaced: number;
   added: number;
+}
+
+/** A controller setup saved on this PC for one arcade game (the bindings themselves stay in the app). */
+export interface ArcadeBindingView {
+  id: string;
+  profile: string;
+  name: string;
+  devices: ArcadeDevice[];
+  inputApi: string | null;
+  savedAt: string;
+  lastUsedAt: string | null;
+  inputs: number;
+}
+
+/** TeknoParrot on this PC and, for one game, its profile and controller setups. */
+export interface ArcadeLocal {
+  supported: boolean;
+  tpDir: string | null;
+  device: string;
+  address: string | null;
+  connected: ConnectedInputs;
+  bindings: ArcadeBindingView[];
+  installed?: boolean;
+  profile?: string | null;
+  profilePicked?: boolean;
+  profiles?: string[];
+  known?: ArcadeGame | null;
+  pinned?: string | null;
+  active?: string | null;
+  executable?: string | null;
 }
 
 export interface EmulatorSetup {
@@ -381,6 +411,17 @@ export interface DesktopBridge {
   backupStoreSaves?(addon: string, externalId: string, title: string): Promise<{ backupId: number; size: number; files: number }>;
   restoreStoreSaves?(addon: string, externalId: string, title: string, saveId: number): Promise<{ restored: number; previous: string } | null>;
   restoreSaves?(gameId: string, saveId: number): Promise<{ previous: string | null } | null>;
+  /** Arcade games through TeknoParrot (Windows): missing in apps older than arcade support. */
+  arcade?(gameId?: string): Promise<ArcadeLocal>;
+  arcadeLocate?(): Promise<string | null>;
+  arcadeSetProfile?(gameId: string, profile: string | null): Promise<boolean>;
+  arcadePin?(gameId: string, setId: string | null): Promise<boolean>;
+  arcadeSetControls?(gameId: string): Promise<{ id: string; name: string }>;
+  arcadeCapture?(gameId: string, name?: string): Promise<{ id: string; name: string }>;
+  arcadeRemoveBinding?(id: string): Promise<boolean>;
+  arcadeRenameBinding?(id: string, name: string): Promise<boolean>;
+  arcadePlay?(gameId: string, link: { cabinet: number; total: number } | null): Promise<{ executable: string; profile?: string; bindings?: string | null; linkFields?: string[]; linkSteps?: string[] } | null>;
+  arcadeOpenTeknoParrot?(): Promise<boolean>;
   /** Emulators: missing in apps older than emulation support. */
   emulators?(): Promise<{ toolsDir: string; emulators: EmulatorSetup[] }>;
   installEmulator?(id: string): Promise<{ version: string; bios?: BiosPull | null }>;

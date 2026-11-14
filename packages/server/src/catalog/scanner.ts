@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { readdir, stat } from "node:fs/promises";
 import path from "node:path";
-import { ANDROID_PLATFORM, archiveKindOf, packageInfo, PC_PLATFORM, platformFor, romTitle, setupKindOf, versionFromFiles, type GameFile, type GameSummary } from "@lootden/shared";
+import { ANDROID_PLATFORM, ARCADE_PLATFORM, arcadeGame, arcadeProfileFor, archiveKindOf, packageInfo, PC_PLATFORM, platformFor, romTitle, setupKindOf, versionFromFiles, type GameFile, type GameSummary } from "@lootden/shared";
 
 /** What the scanner knows from disk alone; the library adds database and metadata fields. */
 export type ScannedGame = Pick<
@@ -72,6 +72,14 @@ export const ANDROID_FOLDERS = /^(android|apks?)$/i;
 export const UPDATE_FOLDERS = /^(updates|patches)$/i;
 export const DLC_FOLDERS = /^dlcs?$/i;
 
+/** "Daytona3.teknoparrot" or "Daytona3" is shown as the game's name, not its TeknoParrot profile name. */
+function arcadeTitle(name: string): string {
+  const plain = romTitle(name) || name;
+  const profile = arcadeProfileFor(name, plain);
+  const known = profile ? arcadeGame(profile) : undefined;
+  return known && /^[a-z0-9]+$/i.test(plain.replace(/\s+/g, "")) && plain.replace(/\s+/g, "").toLowerCase() === known.profile.toLowerCase() ? known.title : plain;
+}
+
 function summarize(
   id: string,
   source: string,
@@ -93,7 +101,14 @@ function summarize(
     version: pkg.version ?? (pkg.kind === "game" && platform === PC_PLATFORM && layout === "folder" ? versionFromFiles(files) : null),
     fromVersion: pkg.fromVersion,
     id,
-    title: pkg.kind !== "game" ? packageTitle(name) : platform === PC_PLATFORM ? titleFromSource(name, layout === "archive") : romTitle(name, layout !== "folder") || name,
+    title:
+      pkg.kind !== "game"
+        ? packageTitle(name)
+        : platform === PC_PLATFORM
+          ? titleFromSource(name, layout === "archive")
+          : platform === ARCADE_PLATFORM
+            ? arcadeTitle(name)
+            : romTitle(name, layout !== "folder") || name,
     source,
     layout,
     platform,

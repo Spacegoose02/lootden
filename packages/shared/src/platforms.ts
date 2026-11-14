@@ -29,6 +29,8 @@ export interface Platform {
   browserPlayer?: "tabstationtoo";
   /** Shown on the system's shelf and install panel: what plays it, or why nothing does yet. */
   note?: string;
+  /** A launcher that runs the games instead of an emulator LootDen downloads: TeknoParrot for arcade games. */
+  runner?: "teknoparrot";
 }
 
 const p = (x: Platform) => x;
@@ -70,6 +72,22 @@ export const PLATFORMS: Platform[] = [
     rawg: null,
     note:
       "No Switch 2 emulator LootDen can set up yet: the first ones (Eglantine, Lichii) are weeks old, desktop only, and run few games badly. Games here are stored and organised until one is ready. FitGirl Switch 2 repacks are Windows installers with their own emulator inside, so import those as PC games to play them.",
+  }),
+  // Arcade games (Daytona Championship USA and other PC-based cabinets): each game is a folder of its dumped files, run by
+  // TeknoParrot on Windows. emulator stays null: TeknoParrot is the player's own install, found or pointed at, not downloaded.
+  p({
+    id: "arcade",
+    name: "Arcade",
+    short: "Arcade",
+    aliases: ["teknoparrot", "tp", "parrot", "arcadepc"],
+    coverAspect: 3 / 4,
+    color: "#ff8a00",
+    emulator: null,
+    runner: "teknoparrot",
+    extensions: [],
+    igdb: 52,
+    rawg: null,
+    note: "Plays through TeknoParrot on Windows PCs. LootDen starts each game straight into its TeknoParrot profile, uses the controller setup saved for the wheel or pad plugged in, and can link PCs for races.",
   }),
   // Android games as APKs (split APKs and .obb data in the game's folder), installed and opened by the LootDen Android app.
   p({ id: "android", name: "Android", short: "Android", aliases: ["apk", "apks"], coverAspect: 3 / 4, color: "#3ddc84", emulator: null, extensions: ["apk", "xapk", "apks"], igdb: 34, rawg: 21 }),
@@ -131,7 +149,8 @@ export function isSwitchAddon(file: string): boolean {
 
 /** "Crash Bandicoot (USA) (Rev 1) [!]" → "Crash Bandicoot"; region and dump tags only confuse metadata search. */
 export function romTitle(name: string, isFile = false): string {
-  return (isFile ? name.replace(/(\.[a-z0-9]{1,5})+$/i, "") : name)
+  // "Daytona3.teknoparrot": a folder named after its TeknoParrot profile (the RetroBat way).
+  return (isFile ? name.replace(/(\.[a-z0-9]{1,5})+$/i, "") : name.replace(/\.(teknoparrot|parrot)$/i, ""))
     .replace(/\s*[([][^)\]]*[)\]]/g, "")
     // Scene-style "Super.Mario.World" dots become spaces; "Dr. Mario" keeps its dot.
     .replace(/_+|\.(?=\S)/g, " ")

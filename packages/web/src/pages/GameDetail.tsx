@@ -4,7 +4,7 @@ import { StreamButton } from "../components/Streaming";
 import { EarnersAdmin, EarnLockBanner } from "../components/EarnLock";
 import { useEffect, useState, type CSSProperties } from "react";
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { ANDROID_PLATFORM, browserRomFile, platformFor, truckGameFor, type GameDetail as Game } from "@lootden/shared";
+import { ANDROID_PLATFORM, ARCADE_PLATFORM, browserRomFile, platformFor, truckGameFor, type GameDetail as Game } from "@lootden/shared";
 import { api, formatBytes, type ApiError, type Candidate, type Ps2BrowserStatus } from "../api";
 import { useAuth } from "../auth";
 import { Badges } from "../components/Badges";
@@ -33,6 +33,7 @@ import type { GameSummary } from "@lootden/shared";
 import { useImageTint } from "../tint";
 import { RomBadge } from "../components/RomChecks";
 import { LicencesPanel } from "../components/Licences";
+import { ArcadePanel } from "../components/Arcade";
 import { useHelperGame } from "../helperGame";
 import { t } from "../i18n";
 import { ManualAdmin, ManualsPanel, TrailerPanel } from "../components/GameManuals";
@@ -187,6 +188,7 @@ export function GameDetail() {
             </p>
           </div>
           )}
+          {game.platform === ARCADE_PLATFORM && !isAddon && <ArcadePanel game={game} />}
           {!isAddon && <ReleaseLookup title={game.title} autoOpen={params.get("releases") === "1"} />}
         </div>
       </div>

@@ -1,5 +1,6 @@
 import { desktop } from "./desktop";
 import type {
+  ArcadeLobby,
   RecompInfo,
   GameCompat,
   PriceSettings,
@@ -619,6 +620,9 @@ export const api = {
   importFromFolder: (name: string, platform: string | null) => call<{ target: string }>("POST", "/api/downloads/folder/import", { name, platform }),
   skipFolderItem: (name: string) => call("POST", "/api/downloads/folder/skip", { name }),
   emulation: () => call<EmulationOverview>("GET", "/api/emulation"),
+  arcadeLobby: (gameId: string) => call<ArcadeLobby>("GET", `/api/arcade/link/${encodeURIComponent(gameId)}`),
+  arcadeJoin: (gameId: string, device: string, address: string | null) => call<ArcadeLobby>("POST", `/api/arcade/link/${encodeURIComponent(gameId)}/join`, { device, address }),
+  arcadeLeave: (gameId: string, device: string) => call<ArcadeLobby>("POST", `/api/arcade/link/${encodeURIComponent(gameId)}/leave`, { device }),
   ps2Browser: () => call<Ps2BrowserStatus>("GET", "/api/emulation/ps2-browser"),
   setPs2Browser: (enabled: boolean) => call<Ps2BrowserStatus>("PUT", "/api/emulation/settings", { ps2Browser: enabled }),
   uploadBios: (file: File, emulator?: string) =>
