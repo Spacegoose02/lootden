@@ -2303,8 +2303,9 @@ function registerIpc(): void {
       });
       // The server's BIOS files for it go in now, into the folder this copy uses (a Flatpak's
       // differs from an AppImage's). PS3 firmware waits for the button: RPCS3 opens to install it.
+      // Switch keys and firmware go straight into Eden's folder.
       send({ gameId: key, type: "prepare", message: "Getting its BIOS files from the server" });
-      const bios = await biosFromServer(await client(), toolsDir(), undefined, { only: id, firmware: false }).catch(() => null);
+      const bios = await biosFromServer(await client(), toolsDir(), undefined, { only: id, firmware: false, sevenZip: await sevenZip() }).catch(() => null);
       return { ...done, bios };
     } finally {
       running.delete(key);
@@ -2318,17 +2319,17 @@ function registerIpc(): void {
     const r = await dialog.showOpenDialog(win!, {
       title: `BIOS or firmware for ${info.name}`,
       properties: ["openFile", "multiSelections"],
-      filters: [{ name: "BIOS and firmware", extensions: ["bin", "rom0", "pup", "qcow2", "BIN", "PUP"] }, { name: "All files", extensions: ["*"] }],
+      filters: [{ name: "BIOS, keys and firmware", extensions: ["bin", "rom0", "pup", "qcow2", "keys", "zip", "BIN", "PUP"] }, { name: "All files", extensions: ["*"] }],
     });
     if (r.canceled) return [];
     const added: string[] = [];
-    for (const f of r.filePaths) added.push((await addBiosFile(toolsDir(), info, f)).label);
+    for (const f of r.filePaths) added.push((await addBiosFile(toolsDir(), info, f, undefined, await sevenZip())).label);
     return added;
   });
 
   ipcMain.handle("gm:biosFromServer", async (e) => {
     fromServer(e);
-    return biosFromServer(await client(), toolsDir());
+    return biosFromServer(await client(), toolsDir(), undefined, { sevenZip: await sevenZip() });
   });
 
   ipcMain.handle("gm:openTools", async (e) => {

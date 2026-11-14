@@ -7,8 +7,8 @@ import { pipeline } from "node:stream/promises";
 import { biosRequirementFor, emulatorInfo, type ServerBiosFile } from "@lootden/shared";
 import { now, type Db } from "../db/database.js";
 
-/** PS3 firmware is the biggest at about 200 MB. */
-const MAX_BIOS_BYTES = 512 * 1024 ** 2;
+/** Switch firmware zips are the biggest, a few hundred MB (PS3 firmware is about 200 MB). */
+const MAX_BIOS_BYTES = 1024 ** 3;
 
 interface Row {
   name: string;

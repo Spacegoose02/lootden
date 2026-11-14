@@ -26,9 +26,14 @@ describe("the Android app's systems", () => {
     assert.deepEqual(wanted.filter((id) => !androidPlatforms.some((p) => p.id === id)), []);
   });
 
-  it("has a RetroArch core for each of them, except PS3, which only ARMSX3 plays", () => {
+  it("has a RetroArch core for each of them, except PS3 and Switch, which only their own emulators play", () => {
     const cores = [...kotlin.matchAll(/"([a-z0-9]+)" to "([a-z0-9_]+)"/g)].map((m) => m[1]);
-    assert.deepEqual(androidPlatforms.map((p) => p.id).filter((id) => id !== "ps3" && !cores.includes(id)), []);
+    assert.deepEqual(androidPlatforms.map((p) => p.id).filter((id) => id !== "ps3" && id !== "switch" && !cores.includes(id)), []);
+  });
+
+  it("plays Switch in Eden, then Citron", () => {
+    assert.match(kotlin, /"eden", "Eden", listOf\("dev\.eden\.eden_emulator"/);
+    assert.match(kotlin, /"switch" to listOf\("eden", "citron"\)/);
   });
 
   it("plays PS3 in ARMSX3, from both its GitHub and Google Play builds", () => {

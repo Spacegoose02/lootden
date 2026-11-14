@@ -12,7 +12,7 @@ const AUTH_PARAMS = ["devid", "devpassword", "softname", "ssid", "sspassword"];
 /** ScreenScraper system ids for LootDen's platforms. */
 const SYSTEMS: Record<string, number> = {
   pc: 138, nes: 3, snes: 4, n64: 14, gb: 9, gbc: 10, gba: 12, nds: 15, gamecube: 13, wii: 16,
-  genesis: 1, saturn: 22, dreamcast: 23, ps1: 57, ps2: 58, ps3: 59, psp: 61, xbox: 32,
+  genesis: 1, saturn: 22, dreamcast: 23, ps1: 57, ps2: 58, ps3: 59, psp: 61, xbox: 32, switch: 225,
 };
 const REGIONS = ["us", "wor", "eu", "ss", "uk", "jp"];
 const COVER_TYPES = ["box-2D", "box-2D-front"];

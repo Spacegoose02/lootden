@@ -116,8 +116,9 @@ export function EmulationSystem() {
           <p className="muted small">
             {games ? `${games.length} ${games.length === 1 ? "game" : "games"}` : "Loading…"}
             {emulator ? ` · plays in ${emulator.name}` : " · no emulator for this system yet"}
-            {emulator?.bios.some((b) => b.required && (!b.platform || b.platform === p.id)) ? " · needs a BIOS" : ""}
+            {emulator?.bios.some((b) => b.required && (!b.platform || b.platform === p.id)) ? ` · needs ${p.emulator === "eden" ? "keys" : "a BIOS"}` : ""}
           </p>
+          {p.note && <p className="muted small">{p.note}</p>}
         </div>
       </header>
       {data && <SystemTabs data={data} />}

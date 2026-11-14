@@ -10,7 +10,7 @@ import java.security.MessageDigest
 /**
  * The BIOS and firmware files an admin uploaded to the server, on this handheld. Android keeps
  * each emulator's own folders private, so they go to one BIOS folder beside the games
- * (<installDir>/bios) that DuckStation, ARMSX2, NetherSX2, ARMSX3 and the rest can be pointed at
+ * (<installDir>/bios) that DuckStation, ARMSX2, NetherSX2, ARMSX3, Eden and the rest can be pointed at
  * once. RetroArch's files also go straight into its system folder when LootDen can reach it.
  */
 class Bios(private val app: AppCore) {
@@ -71,6 +71,7 @@ class Bios(private val app: AppCore) {
         if ("duckstation" in emulators) out += "PS1: in DuckStation, Settings, BIOS, pick the $shown folder as the BIOS directory (RetroArch's PS1 core finds it in its system folder)."
         if ("pcsx2" in emulators) out += "PS2: in ARMSX2 or NetherSX2, Settings, BIOS, pick the $shown folder and choose the BIOS there."
         if ("rpcs3" in emulators) out += "PS3: in ARMSX3, install the firmware from its menu and pick PS3UPDAT.PUP in $shown. That's needed once."
+        if ("eden" in emulators) out += "Switch: in Eden or Citron, Settings, install the keys (prod.keys in $shown), then Install firmware with the firmware zip there. That's needed once."
         if ("retroarch" in emulators) {
             out += if (retroarch.isNotEmpty()) "RetroArch: copied into its system folder too." else "RetroArch: set its System/BIOS directory (Settings, Directory) to $shown."
         }

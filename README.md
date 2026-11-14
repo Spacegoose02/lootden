@@ -67,7 +67,7 @@ installs games from it on any PC in the house.
   on Timmy's PC", "make a shelf of short games", "switch on the den PC"): a button shows what
   he'll do, and nothing happens until you press it, with your own permissions.
 - Emulation: console games in their own section. The desktop app sets up RetroArch,
-  DuckStation, PCSX2, RPCS3 and xemu, and many systems also play in the browser. PS2 games
+  DuckStation, PCSX2, RPCS3, xemu and Eden (Switch, with keys and firmware), and many systems also play in the browser. PS2 games
   play in the browser too (experimental, on a fast PC in Chrome or Edge) through
   [TabStationToo](https://github.com/TabStationToo/TabStationToo), PCSX2 compiled to
   WebAssembly (GPL-3.0); admins can switch it off under Emulation, Emulators and BIOS.
@@ -331,7 +331,7 @@ same web UI, full screen and in landscape, with the controller navigation descri
 - **Console games** install to `ROMs/<system>/<game>` on internal storage or an SD card (the app
   asks for All files access the first time, so emulators can open what it downloads) and play
   in the emulator picked under Settings, You, This handheld. LootDen picks the best one
-  installed: DuckStation for PS1, ARMSX2 or NetherSX2/AetherSX2 for PS2, ARMSX3 for PS3, PPSSPP,
+  installed: DuckStation for PS1, ARMSX2 or NetherSX2/AetherSX2 for PS2, ARMSX3 for PS3, Eden or Citron for Switch, PPSSPP,
   Dolphin, melonDS, Flycast or Redream, and RetroArch for everything else (download each core once
   in RetroArch's Online Updater). With none installed, Android asks which app to open the game with.
 - **PS3** plays in ARMSX3 (Google Play's or GitHub's build). Install the PS3 firmware in ARMSX3 once.
