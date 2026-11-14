@@ -713,7 +713,7 @@ export const api = {
   uploadClient: (file: File) => upload<ClientFile>("PUT", `/api/clients/${encodeURIComponent(file.name)}`, file, "application/octet-stream"),
   deleteClient: (name: string) => call("DELETE", `/api/clients/${encodeURIComponent(name)}`),
   clientSource: () => call<{ repo: string; tag: string; fetchedAt: string; checkedAt: string | null } | null>("GET", "/api/clients/source"),
-  fetchRelease: (repo: string) => call<{ tag: string; files: string[] }>("POST", "/api/clients/github", { repo }),
+  fetchRelease: (repo: string) => call<{ tag: string; files: string[]; removed?: string[] }>("POST", "/api/clients/github", { repo }),
 
   saves: (id: string) => call<SaveBackup[]>("GET", `/api/games/${id}/saves`),
   uploadSave: (id: string, file: File) => upload<SaveBackup>("POST", `/api/games/${id}/saves?device=${encodeURIComponent("Web upload")}`, file, "application/octet-stream"),
