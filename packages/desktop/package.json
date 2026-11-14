@@ -1,6 +1,6 @@
 {
   "name": "@lootden/desktop",
-  "version": "0.35.0",
+  "version": "0.36.0",
   "private": true,
   "description": "LootDen desktop app for Windows and Linux (x64 and ARM)",
   "homepage": "https://github.com/Spacegoose02/lootden",
@@ -17,7 +17,7 @@
     "dist:linux": "npm run build && electron-builder --linux --x64 --publish never && electron-builder --linux --arm64 --publish never '-c.appImage.artifactName=LootDen-linux-arm64-${version}.${ext}'"
   },
   "dependencies": {
-    "@lootden/client": "0.35.0"
+    "@lootden/client": "0.36.0"
   },
   "devDependencies": {
     "electron": "44.10.0",
