@@ -103,6 +103,7 @@ class MainActivity : Activity() {
         super.onResume()
         immersive()
         core.endSession()
+        core.updater.resumed()
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {

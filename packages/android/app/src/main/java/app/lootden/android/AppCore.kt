@@ -269,7 +269,7 @@ class AppCore private constructor(val context: Context) {
             }, delay)
         }
         next(2_000)
-        if (prefs.autoUpdate) main.postDelayed({ io.execute { updater.check() } }, 20_000)
+        if (prefs.autoUpdate) main.postDelayed({ io.execute { updater.autoCheck() } }, 20_000)
     }
 
     companion object {

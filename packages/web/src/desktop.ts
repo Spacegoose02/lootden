@@ -170,7 +170,7 @@ export type Progress =
 /** The desktop app's own updates, from the server's Get the app page. */
 export interface AppUpdate {
   current: string;
-  kind?: "installer" | "portable" | "appimage" | "other";
+  kind?: "installer" | "portable" | "appimage" | "android" | "other";
   state: "idle" | "checking" | "none" | "available" | "downloading" | "ready" | "error" | "unsupported";
   version?: string;
   received?: number;
