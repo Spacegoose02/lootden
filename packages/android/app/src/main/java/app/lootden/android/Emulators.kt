@@ -312,8 +312,10 @@ class Emulators(private val context: Context, private val prefs: Prefs) {
     }
 
     /** The game's .rap licences: the ones the server sent into its folder and any that came with it. */
-    private fun licencesOf(rom: File, gameDir: File?): List<File> =
-        Ps3Licences.inFolder(gameDir ?: rom.parentFile ?: return emptyList())
+    private fun licencesOf(rom: File, gameDir: File?): List<File> {
+        val dir = gameDir ?: rom.parentFile ?: return emptyList()
+        return Ps3Licences.inFolder(dir)
+    }
 
     /** ARMSX3's package installer (its com.armsx3.action.INSTALL): the PKGs first, then .rap and .edat licences. */
     private fun armsx3Install(pkg: String, rom: File, extraLicences: List<File>): Intent {
