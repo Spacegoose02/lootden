@@ -2290,7 +2290,7 @@ function registerIpc(): void {
     running.set(key, controller);
     let last = 0;
     try {
-      return await installEmulator(id, {
+      const done = await installEmulator(id, {
         toolsDir: toolsDir(),
         sevenZip: await sevenZip(),
         signal: controller.signal,
@@ -2301,6 +2301,11 @@ function registerIpc(): void {
           send({ gameId: key, type: "prepare", message: ev.total ? `${ev.message} (${Math.floor(((ev.received ?? 0) / ev.total) * 100)}%)` : ev.message });
         },
       });
+      // The server's BIOS files for it go in now, into the folder this copy uses (a Flatpak's
+      // differs from an AppImage's). PS3 firmware waits for the button: RPCS3 opens to install it.
+      send({ gameId: key, type: "prepare", message: "Getting its BIOS files from the server" });
+      const bios = await biosFromServer(await client(), toolsDir(), undefined, { only: id, firmware: false }).catch(() => null);
+      return { ...done, bios };
     } finally {
       running.delete(key);
     }

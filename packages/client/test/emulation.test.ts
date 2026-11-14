@@ -127,6 +127,15 @@ describe("emulation", () => {
 
     assert.deepEqual((await biosFromServer(api, tools, "linux")).added, ["scph5501.bin"]);
     assert.ok((await biosStatus(tools, "linux")).find((b) => b.requirement.id === "ps1")!.present);
+    // Again: the same file is already there, so nothing is copied twice.
+    const again = await biosFromServer(api, tools, "linux");
+    assert.deepEqual([again.added, again.already], [[], ["scph5501.bin"]]);
+    // PS3 firmware needs RPCS3 to install it: the player is told so, not left with "nothing new".
+    const auth = { Authorization: `Bearer ${token}` };
+    await fetch(`${base}/api/emulation/bios/PS3UPDAT.PUP`, { method: "PUT", headers: { ...auth, "Content-Type": "application/octet-stream" }, body: "pup" });
+    const fw = await biosFromServer(api, tools, "linux");
+    assert.deepEqual(fw.problems, [{ name: "PS3UPDAT.PUP", reason: "Set up RPCS3 first, then get the BIOS files again to install it" }]);
+    await fetch(`${base}/api/emulation/bios/PS3UPDAT.PUP`, { method: "DELETE", headers: auth });
 
     const session = await playEmulated(api, crash.id, dir, "ps1", { toolsDir: tools, sevenZip, platform: "linux", device: "desktop" });
     const data = path.join(work, "xdg", "duckstation");
