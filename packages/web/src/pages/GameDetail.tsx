@@ -32,6 +32,7 @@ import { KindBadge, UpdateActions, useInstalled, versionLabel } from "../compone
 import type { GameSummary } from "@lootden/shared";
 import { useImageTint } from "../tint";
 import { RomBadge } from "../components/RomChecks";
+import { LicencesPanel } from "../components/Licences";
 import { useHelperGame } from "../helperGame";
 import { t } from "../i18n";
 import { ManualAdmin, ManualsPanel, TrailerPanel } from "../components/GameManuals";
@@ -266,6 +267,7 @@ export function GameDetail() {
               {!isAddon && <PreparePanel game={game} />}
 
               {!isAddon && <SavesPanel game={game} onChange={setGame} />}
+              {game.platform === "ps3" && !isAddon && <LicencesPanel gameId={game.id} isAdmin={me?.role === "admin"} />}
               <section className="panel">
                 <h2>{t("Files")}</h2>
                 <table className="table">

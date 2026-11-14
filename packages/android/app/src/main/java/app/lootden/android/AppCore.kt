@@ -178,7 +178,10 @@ class AppCore private constructor(val context: Context) {
         val before = if (retro) saves.snapshot(rom) else emptyMap()
         val android = platform == AndroidApps.PLATFORM
         if (android) apps.launch(g.optString("package"))
-        val started = if (android) null else emulators.launch(platform, rom)
+        // PS3: licences an admin added since the install. Offline, the ones already here still go.
+        val dir = g.optString("dir").takeIf { it.isNotEmpty() }?.let(::File)
+        if (platform == "ps3" && dir != null) runCatching { Ps3Licences.pull(server, gameId, dir) }
+        val started = if (android) null else emulators.launch(platform, rom, dir)
         session = Session(gameId, g.optString("title", gameId), platform, rom, started?.id, System.currentTimeMillis(), before)
         emit(JSONObject().put("gameId", gameId).put("type", "playing"))
         io.execute { runCatching { presence.beat() } }

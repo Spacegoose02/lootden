@@ -21,6 +21,7 @@ import {
 } from "@lootden/shared";
 import type { GameServerClient } from "./api.js";
 import { extractArchive, type SevenZip } from "./extractor.js";
+import { downloadLicences, installLicences, RPCS3_EXDATA } from "./licences.js";
 
 export { EMULATORS, emulatorInfo } from "@lootden/shared";
 
@@ -815,6 +816,20 @@ export async function restoreEmulatorSaves(api: GameServerClient, gameId: string
   }
 }
 
+/**
+ * PS3 licences (.rap): the newest from the server when it's reachable, then every one in the
+ * game's folder copied into RPCS3's exdata, so PSN games start without anyone copying keys by hand.
+ */
+async function licencesForRpcs3(api: GameServerClient, gameId: string, platformId: string, gameDir: string, plan: LaunchPlan, opts: ToolsOptions): Promise<void> {
+  await downloadLicences(api, gameId, platformId, gameDir).catch(() => []);
+  try {
+    const copied = await installLicences(gameDir, path.join(plan.dataDir, RPCS3_EXDATA));
+    if (copied.length) opts.onEvent?.({ message: `Added ${copied.length === 1 ? "the game's licence" : `${copied.length} licences`} to RPCS3` });
+  } catch (err) {
+    opts.onEvent?.({ message: `Couldn't add the game's licence to RPCS3: ${(err as Error).message}` });
+  }
+}
+
 export interface EmulatedSession {
   seconds: number;
   backup: SaveBackup | null;
@@ -833,6 +848,7 @@ export async function playEmulated(
   opts: ToolsOptions & { device: string; onStarted?: (plan: LaunchPlan) => void },
 ): Promise<EmulatedSession> {
   const plan = await planLaunch(gameDir, platformId, opts);
+  if (plan.emulator.id === "rpcs3") await licencesForRpcs3(api, gameId, platformId, gameDir, plan, opts);
   const restored = await restoreEmulatorSaves(api, gameId, plan, opts.toolsDir, opts.sevenZip, opts.device).catch(() => null);
   const before = await snapshot(plan);
   const started = Date.now();

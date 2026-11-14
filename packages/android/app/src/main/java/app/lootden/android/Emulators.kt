@@ -202,11 +202,14 @@ class Emulators(private val context: Context, private val prefs: Prefs) {
     /** A content:// link to a file, readable by the app it's handed to. */
     fun uriFor(file: File) = FileProvider.getUriForFile(context, "${context.packageName}.files", file)
 
-    /** Starts the game; returns the emulator's name, or null when Android's Open with… was shown. */
-    fun launch(platformId: String, rom: File): Emulator? {
+    /**
+     * Starts the game; returns the emulator's name, or null when Android's Open with… was shown.
+     * [gameDir] is the game's install folder, where its PS3 licences are.
+     */
+    fun launch(platformId: String, rom: File, gameDir: File? = null): Emulator? {
         if (!rom.exists()) throw IllegalStateException("The game's file is missing: ${rom.path}. Uninstall and install it again.")
         val emu = choiceFor(platformId)
-        val intent = if (emu == null) chooser(rom) else intentFor(emu, platformId, rom)
+        val intent = if (emu == null) chooser(rom) else intentFor(emu, platformId, rom, gameDir)
         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         try {
             context.startActivity(intent)
@@ -214,6 +217,7 @@ class Emulators(private val context: Context, private val prefs: Prefs) {
             // An ARMSX3 from before it took packages from other apps: try again once it's updated.
             if (intent.action == ARMSX3_INSTALL) {
                 prefs.setPs3PackageSent(rom.path, false)
+                prefs.setPs3LicencesSent(licencesOf(rom, gameDir).map(Ps3Licences::key), false)
                 throw IllegalStateException("This ARMSX3 can't install PS3 packages from LootDen. Update ARMSX3, or install ${rom.name} from ARMSX3's own menu.")
             }
             // The emulator moved its game screen in an update: let it open the file its own way.
@@ -235,7 +239,7 @@ class Emulators(private val context: Context, private val prefs: Prefs) {
 
     private fun chooser(rom: File): Intent = Intent.createChooser(view(rom), "Play ${rom.nameWithoutExtension} with")
 
-    private fun intentFor(emu: Emulator, platformId: String, rom: File): Intent {
+    private fun intentFor(emu: Emulator, platformId: String, rom: File, gameDir: File?): Intent {
         val pkg = installedPackage(emu)!!
         return when (emu.handoff) {
             Handoff.RETROARCH -> {
@@ -261,7 +265,7 @@ class Emulators(private val context: Context, private val prefs: Prefs) {
                     .putExtra(emu.extra!!, uri.toString())
                     .apply { clipData = ClipData.newRawUri(rom.name, uri) }
             }
-            Handoff.ARMSX3 -> armsx3(emu, pkg, rom)
+            Handoff.ARMSX3 -> armsx3(emu, pkg, rom, gameDir)
             Handoff.VIEW -> view(rom).apply {
                 val activity = activityIn(emu, pkg)
                 // A named game screen starts fresh, so a game already open there doesn't keep running instead.
@@ -274,19 +278,30 @@ class Emulators(private val context: Context, private val prefs: Prefs) {
      * How ARMSX3 gets a PS3 game. Its game screen is singleTop and takes a new game in onNewIntent,
      * so it isn't started fresh: tearing it down ends its whole process, the new game's too.
      */
-    private fun armsx3(emu: Emulator, pkg: String, rom: File): Intent {
+    private fun armsx3(emu: Emulator, pkg: String, rom: File, gameDir: File?): Intent {
         val screen = ComponentName(pkg, activityIn(emu, pkg)!!)
         val flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
         val name = rom.name.lowercase()
+        val licences = licencesOf(rom, gameDir)
         if (name.endsWith(".pkg")) {
             val titleId = Ps3Pkg.titleId(rom)
             // The first time, the package (with its updates, DLC and licences beside it) goes to
             // ARMSX3's installer, which asks the player first. After that it starts by its title id.
             if (titleId == null || !prefs.ps3PackageSent(rom.path)) {
                 prefs.setPs3PackageSent(rom.path, true)
-                return armsx3Install(pkg, rom)
+                prefs.setPs3LicencesSent(licences.map(Ps3Licences::key), true)
+                return armsx3Install(pkg, rom, licences)
             }
-            return Intent(Intent.ACTION_MAIN).setComponent(screen).addFlags(flags).putExtra("title_id", titleId)
+        }
+        // A licence that hasn't been to ARMSX3 yet (one the admin added since, or a disc or folder
+        // game's): its installer copies it into exdata, after the player says yes. Play again after.
+        val pending = licences.filter { !prefs.ps3LicenceSent(Ps3Licences.key(it)) }
+        if (pending.isNotEmpty()) {
+            prefs.setPs3LicencesSent(pending.map(Ps3Licences::key), true)
+            return armsx3InstallFiles(pkg, pending)
+        }
+        if (name.endsWith(".pkg")) {
+            return Intent(Intent.ACTION_MAIN).setComponent(screen).addFlags(flags).putExtra("title_id", Ps3Pkg.titleId(rom)!!)
         }
         // A folder game: ARMSX3 boots the folder its EBOOT.BIN is in, so it needs the path, not a
         // link to one file. A bare path in "path" (not a file:// link, which Android refuses to hand
@@ -296,19 +311,31 @@ class Emulators(private val context: Context, private val prefs: Prefs) {
         return view(rom).setComponent(screen).addFlags(flags)
     }
 
+    /** The game's .rap licences: the ones the server sent into its folder and any that came with it. */
+    private fun licencesOf(rom: File, gameDir: File?): List<File> {
+        val dir = gameDir ?: rom.parentFile ?: return emptyList()
+        return Ps3Licences.inFolder(dir)
+    }
+
     /** ARMSX3's package installer (its com.armsx3.action.INSTALL): the PKGs first, then .rap and .edat licences. */
-    private fun armsx3Install(pkg: String, rom: File): Intent {
+    private fun armsx3Install(pkg: String, rom: File, extraLicences: List<File>): Intent {
         val dir = rom.parentFile ?: throw IllegalStateException("The game's folder is missing")
         val all = dir.walkTopDown().filter { it.isFile }.toList()
         val packages = listOf(rom) + all.filter { it != rom && it.name.lowercase().endsWith(".pkg") }.sortedBy { it.path.lowercase() }
-        val licences = all.filter { f -> listOf(".rap", ".edat").any { f.name.lowercase().endsWith(it) } }.sortedBy { it.path.lowercase() }
-        val uris = (packages + licences).map { uriFor(it) }
+        val licences = (all.filter { f -> listOf(".rap", ".edat").any { f.name.lowercase().endsWith(it) } } + extraLicences)
+            .distinctBy { it.canonicalPath }.sortedBy { it.path.lowercase() }
+        return armsx3InstallFiles(pkg, packages + licences)
+    }
+
+    /** Hands files to ARMSX3's installer, which asks the player first. Licences alone are fine: it copies them into exdata. */
+    private fun armsx3InstallFiles(pkg: String, files: List<File>): Intent {
+        val uris = files.map { uriFor(it) }
         return Intent(ARMSX3_INSTALL)
             .setComponent(ComponentName(pkg, "com.armsx2.packages.ExternalInstallActivity"))
             .setDataAndType(uris.first(), "application/octet-stream")
             .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             .apply {
-                clipData = ClipData.newRawUri(rom.name, uris.first()).also { clip -> uris.drop(1).forEach { clip.addItem(ClipData.Item(it)) } }
+                clipData = ClipData.newRawUri(files.first().name, uris.first()).also { clip -> uris.drop(1).forEach { clip.addItem(ClipData.Item(it)) } }
             }
     }
 

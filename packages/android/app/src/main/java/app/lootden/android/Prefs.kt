@@ -38,6 +38,14 @@ class Prefs(private val context: Context) {
         sp.edit().putStringSet("ps3PackagesSent", all).apply()
     }
 
+    /** PS3 licences (.rap) already handed to ARMSX3's installer, by Ps3Licences.key, so each goes once. */
+    fun ps3LicenceSent(key: String): Boolean = sp.getStringSet("ps3LicencesSent", emptySet())!!.contains(key)
+    fun setPs3LicencesSent(keys: Collection<String>, sent: Boolean) {
+        val all = sp.getStringSet("ps3LicencesSent", emptySet())!!.toMutableSet()
+        if (sent) all += keys else all -= keys.toSet()
+        sp.edit().putStringSet("ps3LicencesSent", all).apply()
+    }
+
     /** The save backup last brought onto this device for each game, so it's restored once. */
     fun restoredSave(gameId: String): Long = JSONObject(sp.getString("restored", "{}") ?: "{}").optLong(gameId, -1)
     fun setRestoredSave(gameId: String, id: Long) {

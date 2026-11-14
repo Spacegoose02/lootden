@@ -103,6 +103,12 @@ class Installer(private val app: AppCore) {
             return JSONObject().put("gameDir", gameDir.path)
         }
 
+        // PS3 licences (.rap) the admin uploaded: ARMSX3 gets them from here on the first play.
+        if (platform.id == "ps3") {
+            runCatching { Ps3Licences.pull(app.server, gameId, gameDir) }
+                .onFailure { app.emit(JSONObject().put("gameId", gameId).put("type", "warning").put("message", "Couldn't get the game's licence files: ${it.message}")) }
+        }
+
         val all = gameDir.walkTopDown().filter { it.isFile && !it.name.endsWith(".part") }.map { it.relativeTo(gameDir).path.replace('\\', '/') }.toList()
         val rom = pickRom(all, platform) ?: all.maxByOrNull { File(gameDir, it).length() }
             ?: throw IOException("The download has no game file in it")

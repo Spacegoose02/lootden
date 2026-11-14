@@ -35,11 +35,13 @@ import { ReleaseCalendar } from "./metadata/calendar.js";
 import { VideoService } from "./news/videos.js";
 import { SaveStore } from "./saves/store.js";
 import { BiosStore } from "./emulation/bios.js";
+import { LicenceStore } from "./emulation/licences.js";
 import { RomChecker } from "./emulation/romcheck.js";
 import { GameUpdates } from "./news/updates.js";
 import { FreeGames } from "./news/freegames.js";
 import { loadConnectorSettings } from "./connectors/settings.js";
 import { emulationRoutes } from "./routes/emulation.js";
+import { licenceRoutes } from "./routes/licences.js";
 import { ISOLATION_HEADERS, loadEmulationSettings, PLAY_PAGE_ISOLATION_HEADERS, PS2_WEB_PREFIX } from "./emulation/ps2-web.js";
 import { extraRoutes } from "./routes/extras.js";
 import { Notifier } from "./alerts/notifier.js";
@@ -286,6 +288,7 @@ export function buildContext(config: ServerConfig, db: Db, log: Log, opts: Build
     clients: new ClientDownloads(config.dataDir, opts.fetchImpl, db),
     saves: new SaveStore(db, config.dataDir),
     bios: new BiosStore(db, config.dataDir),
+    licences: new LicenceStore(config.dataDir, () => config.gamesDir),
     roms: new RomChecker(db, () => config.gamesDir),
     recompCache: new RecompCache(config.dataDir, opts.fetchImpl),
     updates,
@@ -418,6 +421,7 @@ export function buildApp(config: ServerConfig, db: Db, opts: BuildOptions = {}):
   gameRoutes(app, ctx);
   mediaRoutes(app, ctx);
   emulationRoutes(app, ctx, opts.ps2Dir ?? "");
+  licenceRoutes(app, ctx);
   newsRoutes(app, ctx);
   downloadRoutes(app, ctx);
   settingsRoutes(app, ctx);

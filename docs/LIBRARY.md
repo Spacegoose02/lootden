@@ -148,6 +148,13 @@ System folders: `ps1` (or `psx`), `ps2`, `ps3`, `xbox`, `psp`, `nes`, `snes`, `n
   you own: pick them on the PC, or upload them once (admins) and press **Get BIOS files
   from the server** on each PC. **Play** starts the right emulator, tracks play time and
   syncs saves.
+- **PS3 licences:** PSN games need their `.rap` licence. Admins upload it on the game's
+  page (**Files** tab, **Licences**), named after the content id it unlocks
+  (`UP0001-BLUS30001_00-0000000000000001.rap`; a game that's a single `.pkg` works the id out
+  from the package). Every install gets it: the desktop app copies it into RPCS3's
+  `dev_hdd0/home/00000001/exdata` when the game starts, and the Android app hands it to
+  ARMSX3's installer on the next Play (ARMSX3 asks the player once, then Play again starts the
+  game). `.rap` files inside a game's own folder go the same way.
 - **Browser:** single-file games for NES, SNES, N64, Game Boy, GBA, DS, Genesis, Saturn,
   PS1 and PSP play in the browser with EmulatorJS, sharing saves with the desktop app.
   Set `LOOTDEN_EMULATORJS_DATA` to a self-hosted copy of EmulatorJS's `data/` folder to
