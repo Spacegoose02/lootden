@@ -101,6 +101,24 @@ export function mapPath(p: string, mappings: ConnectorSettings["import"]["pathMa
   return hit ? path.posix.join(hit.to, norm.slice(hit.from.replace(/\/$/, "").length)) : norm;
 }
 
+/** Imports from the downloads folder get ids above this; downloads LootDen sent use their own row id. */
+const FOLDER_ID_BASE = 1_000_000_000;
+
+/** The same id every time for one folder entry, so a retry finds the staging copy an earlier try left behind. */
+export function folderImportId(name: string): number {
+  let h = 0x811c9dc5;
+  for (const ch of Buffer.from(name, "utf8")) h = Math.imul(h ^ ch, 0x01000193) >>> 0;
+  return FOLDER_ID_BASE + (h % FOLDER_ID_BASE);
+}
+
+/** Node only retries a recursive rm on ENOTEMPTY/EBUSY/EPERM when asked to. */
+const RM_RETRY = { recursive: true, force: true, maxRetries: 5, retryDelay: 500 } as const;
+
+/** Has at least one byte of real data (an emptied-out folder left by a half-finished move doesn't). */
+async function hasData(p: string): Promise<boolean> {
+  return (await folderSize(p)).size > 0;
+}
+
 const sanitize = (name: string) => name.replace(/[<>:"/\\|?*\x00-\x1f]/g, " ").replace(/\s+/g, " ").trim().replace(/[. ]+$/, "") || "download";
 
 /**
@@ -111,6 +129,10 @@ export class DownloadManager {
   private reconciling: Promise<void> | null = null;
   /** Imports in flight, by download id or "folder:<name>". */
   private readonly progress = new Map<string, ImportProgress>();
+  /** Staging folders an import is using right now; anything else named .import-<id> is a leftover. */
+  private readonly activeStaging = new Set<string>();
+  /** File operations, swappable in tests to act like separate mounts or a busy share. */
+  fsOps = { rename, rm };
 
   constructor(
     private readonly db: Db,
@@ -315,7 +337,12 @@ export class DownloadManager {
     const sys = platform && platform !== PC_PLATFORM ? platformFor(platform).id : null;
     // Copy unless the admin chose move: the client may still be seeding it.
     const mode = s.import.mode === "move" ? "move" : "copy";
-    const id = 1_000_000_000 + Math.floor(Math.random() * 1_000_000_000);
+    if (this.progress.has(`folder:${name}`)) throw new Error(`${name} is already being imported`);
+    const id = folderImportId(name);
+    const previous = this.db.prepare("SELECT status, at FROM folder_imports WHERE name = ?").get(name) as { status: string; at: string } | undefined;
+    // An earlier try that failed after moving the files left them in a staging folder under a random id:
+    // give that folder this entry's id, so the import below picks up where it stopped.
+    if (previous?.status === "failed") await this.adoptLegacyStaging(source, id, previous.at);
     const record = this.db.prepare(
       "INSERT INTO folder_imports (name, status, target, error, at) VALUES (?, ?, ?, ?, ?) ON CONFLICT(name) DO UPDATE SET status = excluded.status, target = excluded.target, error = excluded.error, at = excluded.at",
     );
@@ -462,34 +489,51 @@ export class DownloadManager {
   }
 
   private async importWithProgress(source: string, mode: "copy" | "move", releaseName: string, tidy: TidyOptions, id: number, platform: string | null, report: ProgressFn): Promise<string> {
-    const s = await stat(source).catch(() => null);
-    if (!s) throw new Error(`Finished download not found at ${source}; check the path mappings`);
     // Emulated games go to their system's folder as plain files: emulators open ROMs and disc images directly.
     const targetDir = platform ? path.join(this.library.gamesDir, "Emulation", platform) : this.library.gamesDir;
+    // Work on a private copy in the games folder (hidden from scans), so seeding torrents stay intact.
+    const staging = path.join(this.library.gamesDir, `.import-${id}`);
+    // A move that got as far as staging before failing has the only full copy there; the source may be
+    // an emptied-out folder by now. Carry on from staging instead of throwing it away.
+    const resume = (await stat(staging).catch(() => null))?.isDirectory() === true && !(await hasData(source));
+    const s = await stat(source).catch(() => null);
+    if (!s && !resume) throw new Error(`Finished download not found at ${source}; check the path mappings`);
     if (platform) {
       await mkdir(targetDir, { recursive: true });
       tidy = { ...tidy, repack: "folder" };
     }
     const tidyOn = tidy.stripJunk || tidy.extract || tidy.repack === "zip";
     // A lone ROM or disc image needs no tidying; it sits next to the system's other games.
-    if (!tidyOn || (platform && s.isFile() && !/\.(zip|7z|rar)$/i.test(source))) return this.place(source, path.join(targetDir, sanitize(path.basename(source))), mode, report);
+    if (!resume && (!tidyOn || (platform && s!.isFile() && !/\.(zip|7z|rar)$/i.test(source)))) return this.place(source, path.join(targetDir, sanitize(path.basename(source))), mode, report);
 
-    // Work on a private copy in the games folder (hidden from scans), so seeding torrents stay intact.
-    const staging = path.join(this.library.gamesDir, `.import-${id}`);
-    await rm(staging, { recursive: true, force: true });
-    if (s.isDirectory()) await this.place(source, staging, mode, report);
-    else {
-      await mkdir(staging, { recursive: true });
-      await this.place(source, path.join(staging, path.basename(source)), mode, report);
-    }
+    this.activeStaging.add(staging);
     try {
-      const tidied = await tidyDownload(staging, releaseName || path.basename(source), targetDir, tidy, await findServerSevenZip(), report, platform ? null : await findInnoextract());
-      this.log.info({ name: releaseName, removed: tidied.removed, extracted: tidied.extracted, warnings: tidied.warnings }, "Tidied download");
-      return tidied.target;
-    } catch (err) {
-      await rm(staging, { recursive: true, force: true });
-      await rm(`${staging}.installed`, { recursive: true, force: true });
-      throw err;
+      if (resume) {
+        this.log.info({ name: releaseName, staging }, "Resuming an import from the copy an earlier try left in the games folder");
+        // Whatever an earlier try couldn't delete from the downloads folder goes now.
+        if (s) await this.removeSource(source);
+      } else {
+        await this.fsOps.rm(staging, RM_RETRY);
+        if (s!.isDirectory()) await this.place(source, staging, mode, report);
+        else {
+          await mkdir(staging, { recursive: true });
+          await this.place(source, path.join(staging, path.basename(source)), mode, report);
+        }
+      }
+      try {
+        const tidied = await tidyDownload(staging, releaseName || path.basename(source), targetDir, tidy, await findServerSevenZip(), report, platform ? null : await findInnoextract());
+        this.log.info({ name: releaseName, removed: tidied.removed, extracted: tidied.extracted, warnings: tidied.warnings }, "Tidied download");
+        return tidied.target;
+      } catch (err) {
+        await this.fsOps.rm(`${staging}.installed`, RM_RETRY).catch(() => {});
+        // Copied: the original is still in the downloads folder, so the staging copy can go. Moved: staging
+        // holds the only copy of the game, so it stays, and the next try picks it up from there.
+        if (mode === "copy") await this.fsOps.rm(staging, RM_RETRY).catch(() => {});
+        else this.log.warn({ name: releaseName, staging }, "Import failed after moving; the files are kept in the games folder for the next try");
+        throw err;
+      }
+    } finally {
+      this.activeStaging.delete(staging);
     }
   }
 
@@ -498,13 +542,14 @@ export class DownloadManager {
     if (await stat(target).catch(() => null)) throw new Error(`${path.basename(target)} already exists in the games folder`);
     if (mode === "move") {
       try {
-        await rename(source, target);
+        await this.fsOps.rename(source, target);
         return target;
       } catch (err) {
         if ((err as NodeJS.ErrnoException).code !== "EXDEV") throw err;
       }
     }
     const temp = `${target}.importing`;
+    await this.fsOps.rm(temp, RM_RETRY);
     const { size } = await folderSize(source);
     let copied = 0;
     report({ stage: "copying", percent: 0 });
@@ -514,11 +559,55 @@ export class DownloadManager {
         report({ stage: "copying", percent: size ? Math.min(100, Math.floor((copied / size) * 100)) : null });
       });
     } catch (err) {
-      await rm(temp, { recursive: true, force: true });
+      await this.fsOps.rm(temp, RM_RETRY).catch(() => {});
       throw err;
     }
-    await rename(temp, target);
-    if (mode === "move") await rm(source, { recursive: true, force: true });
+    await this.fsOps.rename(temp, target);
+    if (mode === "move") await this.removeSource(source);
     return target;
+  }
+
+  /**
+   * Deletes what was moved out of the downloads folder. The game is safely in the games folder by
+   * now, so failing here doesn't fail the import: a torrent client still seeding the files, or a
+   * share (Unraid's /mnt/user, SMB, Docker Desktop) that hasn't let go of them yet, makes the folder
+   * refuse to go ("ENOTEMPTY: directory not empty") even after every file in it was deleted.
+   */
+  private async removeSource(source: string): Promise<void> {
+    try {
+      await this.fsOps.rm(source, RM_RETRY);
+    } catch (err) {
+      this.log.warn({ source, err: (err as Error).message }, "Imported, but couldn't remove the original from the downloads folder; delete what's left of it by hand");
+    }
+  }
+
+  /**
+   * Finds the staging folder an older failed move left behind (named with a random id) and renames
+   * it to this entry's own staging name. Only when the source is emptied out (its files are gone, so
+   * they must be in staging) and exactly one leftover was last changed around when that try failed.
+   */
+  private async adoptLegacyStaging(source: string, id: number, failedAt: string): Promise<void> {
+    const staging = path.join(this.library.gamesDir, `.import-${id}`);
+    if ((await stat(staging).catch(() => null)) || (await hasData(source))) return;
+    const failed = Date.parse(failedAt);
+    if (!Number.isFinite(failed)) return;
+    const candidates: string[] = [];
+    for (const e of await readdir(this.library.gamesDir, { withFileTypes: true }).catch(() => [])) {
+      const m = /^\.import-(\d+)$/.exec(e.name);
+      if (!m || !e.isDirectory() || Number(m[1]) < FOLDER_ID_BASE || Number(m[1]) === id) continue;
+      const full = path.join(this.library.gamesDir, e.name);
+      if (this.activeStaging.has(full)) continue;
+      const st = await stat(full).catch(() => null);
+      if (!st) continue;
+      // The copy finishes (and the staging folder gets its name) moments before the failed delete is recorded.
+      const changed = Math.max(st.mtimeMs, st.ctimeMs);
+      if (changed <= failed + 5 * 60_000 && changed >= failed - 6 * 3600_000 && (await hasData(full))) candidates.push(full);
+    }
+    if (candidates.length !== 1) {
+      if (candidates.length > 1) this.log.warn({ source, candidates }, "Several leftover imports could belong to this download; not guessing");
+      return;
+    }
+    await this.fsOps.rename(candidates[0]!, staging);
+    this.log.info({ source, from: candidates[0], to: staging }, "Found the files of an earlier failed import");
   }
 }
