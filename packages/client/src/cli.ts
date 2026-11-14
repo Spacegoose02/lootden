@@ -243,7 +243,8 @@ async function main(argv: string[]): Promise<void> {
       if (positional[0] !== "pull") throw new Error("Usage: lootden bios pull");
       const r = await biosFromServer(api, toolsDir());
       console.log(r.added.length ? `Added ${r.added.join(", ")}` : "No BIOS files to add");
-      if (r.skipped.length) console.log(`Skipped (set up their emulator first): ${r.skipped.join(", ")}`);
+      if (r.already.length) console.log(`Already in place: ${r.already.join(", ")}`);
+      for (const p of r.problems) console.log(`Skipped ${p.name}: ${p.reason}`);
       return;
     }
     case "saves":

@@ -43,6 +43,7 @@ class AppCore private constructor(val context: Context) {
     val presence = Presence(this)
     val updater = Updater(this)
     val apps = AndroidApps(this)
+    val bios = Bios(this)
     val io = Executors.newCachedThreadPool()
     private val main = Handler(Looper.getMainLooper())
 
@@ -137,6 +138,7 @@ class AppCore private constructor(val context: Context) {
         "streaming" -> JSONObject().put("hostname", prefs.deviceName).put("sunshine", false).put("moonlight", emulators.moonlightPackage() != null).put("linked", false).put("streamGames", 0)
         "streamGame" -> streamGame()
         "androidEmulators" -> emulators.overview()
+        "biosFromServer" -> bios.pull()
         "setAndroidEmulator" -> { prefs.setEmulator(a.str(0)!!, a.str(1)); emulators.overview() }
         "openStore" -> { openStore(a.str(0)!!); null }
         "openBrowser" -> { openBrowser(a.str(0)); null }

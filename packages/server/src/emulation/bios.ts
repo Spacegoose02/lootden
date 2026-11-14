@@ -32,6 +32,26 @@ export class BiosStore {
     dataDir: string,
   ) {
     this.dir = path.join(dataDir, "bios");
+    this.refile();
+  }
+
+  /**
+   * Files an older LootDen put under the wrong emulator, back where they belong. PS2 BIOS dumps
+   * named like scph39001.bin used to be taken for PS1 ones, and xbox_bios.bin for a PS2 one, so
+   * every PC copied them to the wrong emulator. A file its emulator doesn't take is refiled.
+   */
+  private refile(): void {
+    let rows: Row[];
+    try {
+      rows = this.db.prepare("SELECT * FROM bios_files").all() as unknown as Row[];
+    } catch {
+      return;
+    }
+    for (const r of rows) {
+      if (biosRequirementFor(r.name, r.emulator)) continue;
+      const right = biosRequirementFor(r.name);
+      if (right) this.db.prepare("UPDATE bios_files SET emulator = ? WHERE name = ?").run(right.emulator.id, r.name);
+    }
   }
 
   list(): ServerBiosFile[] {

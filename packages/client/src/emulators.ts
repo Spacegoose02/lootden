@@ -1,11 +1,13 @@
 import { spawn } from "node:child_process";
-import { createWriteStream } from "node:fs";
+import { createHash } from "node:crypto";
+import { createReadStream, createWriteStream } from "node:fs";
 import { chmod, copyFile, mkdir, mkdtemp, readdir, readFile, rename, rm, stat, utimes, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { Readable, Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import {
+  biosRequirementFor,
   EMULATORS,
   emulatorInfo,
   pickRomFile,
@@ -100,17 +102,41 @@ const MANIFEST = "lootden-tools.json";
 const UA = { "User-Agent": "LootDen", Accept: "application/vnd.github+json" };
 
 export async function readTools(toolsDir: string): Promise<ToolsManifest> {
-  try {
-    const m = JSON.parse(await readFile(path.join(toolsDir, MANIFEST), "utf8")) as Partial<ToolsManifest>;
-    return { emulators: m.emulators ?? {}, recomps: m.recomps ?? {}, restored: m.restored ?? {} };
-  } catch {
-    return { emulators: {}, recomps: {}, restored: {} };
+  for (let attempt = 0; ; attempt++) {
+    try {
+      const m = JSON.parse(await readFile(path.join(toolsDir, MANIFEST), "utf8")) as Partial<ToolsManifest>;
+      return { emulators: m.emulators ?? {}, recomps: m.recomps ?? {}, restored: m.restored ?? {} };
+    } catch (err) {
+      // Nothing set up yet. Anything else (a virus scanner holding the file) gets a second try
+      // before it counts as empty, since an empty read written back would forget every emulator.
+      if ((err as NodeJS.ErrnoException).code === "ENOENT" || attempt >= 2) return { emulators: {}, recomps: {}, restored: {} };
+      await new Promise((r) => setTimeout(r, 100));
+    }
   }
 }
 
+let toolsWrites = 0;
+
+/**
+ * Writes the manifest to a side file and swaps it in, so a read at the same moment (the
+ * Emulators page loading while a recomp or core is being set up) never sees a half-written
+ * file. Reading one used to look like nothing was set up, and the next write saved that.
+ */
 export async function writeTools(toolsDir: string, m: ToolsManifest): Promise<void> {
   await mkdir(toolsDir, { recursive: true });
-  await writeFile(path.join(toolsDir, MANIFEST), JSON.stringify(m, null, 2) + "\n");
+  const file = path.join(toolsDir, MANIFEST);
+  const temp = `${file}.${process.pid}.${++toolsWrites}.tmp`;
+  await writeFile(temp, JSON.stringify(m, null, 2) + "\n");
+  try {
+    await rename(temp, file);
+  } catch (err) {
+    // Windows refuses to replace a file another program has open for a moment: try once more.
+    await new Promise((r) => setTimeout(r, 50));
+    await rename(temp, file).catch(async () => {
+      await rm(temp, { force: true });
+      throw err;
+    });
+  }
 }
 
 export const emulatorDir = (toolsDir: string, id: string) => path.join(toolsDir, id);
@@ -442,29 +468,91 @@ export async function addBiosFile(toolsDir: string, emulator: EmulatorInfo, file
   return req;
 }
 
-/** Copies every BIOS file the admin uploaded to the server into place. */
-export async function biosFromServer(api: GameServerClient, toolsDir: string, platform: OS = hostOs()): Promise<{ added: string[]; skipped: string[] }> {
+/** What "Get BIOS files from the server" did, file by file. */
+export interface BiosPull {
+  added: string[];
+  /** Already in place here, the same file. */
+  already: string[];
+  /** Not put in place: the names, with why in problems. */
+  skipped: string[];
+  problems: Array<{ name: string; reason: string }>;
+}
+
+/** The SHA-1 of a file, to tell whether the copy here is the server's. */
+async function sha1Of(file: string): Promise<string> {
+  const hash = createHash("sha1");
+  await pipeline(createReadStream(file), hash);
+  return hash.digest("hex");
+}
+
+/**
+ * Copies every BIOS file the admin uploaded to the server into place, or only one emulator's.
+ * One file failing doesn't stop the rest, and each one that isn't put in place says why.
+ */
+export async function biosFromServer(
+  api: GameServerClient,
+  toolsDir: string,
+  platform: OS = hostOs(),
+  opts: { only?: string; firmware?: boolean } = {},
+): Promise<BiosPull> {
+  const only = opts.only;
   const files = await api.json<ServerBiosFile[]>("/api/emulation/bios");
-  const added: string[] = [];
-  const skipped: string[] = [];
+  const out: BiosPull = { added: [], already: [], skipped: [], problems: [] };
+  const problem = (name: string, reason: string) => {
+    out.skipped.push(name);
+    out.problems.push({ name, reason });
+  };
+  const tools = await readTools(toolsDir);
+  const status = await biosStatus(toolsDir, platform);
   const tmp = await mkdtemp(path.join(os.tmpdir(), "lootden-bios-"));
   try {
     for (const f of files) {
-      const info = emulatorInfo(f.emulator);
-      if (!info) continue;
+      // The server's pick when that emulator takes the file, else what the name says.
+      const found = biosRequirementFor(f.name, f.emulator) ?? biosRequirementFor(f.name);
+      if (only && found?.emulator.id !== only) continue;
+      if (!found) {
+        problem(f.name, "None of the emulators LootDen sets up uses this file");
+        continue;
+      }
+      const { emulator: info, requirement: req } = found;
+      const state = tools.emulators[info.id];
+      if (req.folder === "firmware") {
+        if (!state) {
+          problem(f.name, `Set up ${info.name} first, then get the BIOS files again to install it`);
+          continue;
+        }
+        if (status.find((b) => b.emulator === info.id && b.requirement.id === req.id)?.present) {
+          out.already.push(f.name);
+          continue;
+        }
+        if (opts.firmware === false) {
+          problem(f.name, `Press "Get BIOS files from the server" to install it. ${info.name} opens to do that; close it once it says the firmware is installed`);
+          continue;
+        }
+      } else {
+        const dest = path.join(emulatorDataDir(toolsDir, info.id, platform, state?.exe), req.folder, f.name);
+        const here = await stat(dest).catch(() => null);
+        if (here?.isFile() && here.size === f.size && (await sha1Of(dest).catch(() => "")) === f.sha1) {
+          out.already.push(f.name);
+          continue;
+        }
+      }
       const local = path.join(tmp, f.name);
-      await writeFile(local, await api.download(`/api/emulation/bios/${encodeURIComponent(f.name)}`));
       try {
+        const size = await api.downloadTo(`/api/emulation/bios/${encodeURIComponent(f.name)}`, local);
+        if (f.size && size !== f.size) throw new Error(`The download stopped at ${size} of ${f.size} bytes`);
         await addBiosFile(toolsDir, info, local, platform);
-        added.push(f.name);
-      } catch {
-        skipped.push(f.name);
+        out.added.push(f.name);
+      } catch (err) {
+        problem(f.name, (err as Error).message);
+      } finally {
+        await rm(local, { force: true });
       }
     }
   } finally {
     await rm(tmp, { recursive: true, force: true });
   }
-  return { added, skipped };
+  return out;
 }
 
 function run(cmd: string, args: string[]): Promise<void> {
