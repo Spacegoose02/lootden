@@ -127,7 +127,13 @@ export function DesktopInstall({ game, autoFocus }: { game: GameDetail; autoFocu
   // PS2 through RetroArch (its Play! core) runs few games: point at ARMSX2, which plays far more.
   const armsx2 = androidEmu?.options.find((o) => o.id === "armsx2");
   const androidHint = androidEmu
-    ? game.platform === "ps2" && armsx2 && !armsx2.installed && (androidEmu.using === "RetroArch" || !androidEmu.using)
+    ? game.platform === "ps3"
+      ? androidEmu.using === "ARMSX3"
+        ? "Plays in ARMSX3. Install the PS3 firmware in ARMSX3 once. For folder games, give ARMSX3 All files access (its GitHub build has it); a PKG goes to ARMSX3's installer on its first play."
+        : androidEmu.using
+          ? null
+          : "PS3 games play in ARMSX3: get it from Google Play or GitHub (Profile, This handheld has a button), then install the PS3 firmware in it once. LootDen starts games in it once it's installed."
+      : game.platform === "ps2" && armsx2 && !armsx2.installed && (androidEmu.using === "RetroArch" || !androidEmu.using)
       ? `For PS2, get ARMSX2 from Google Play (Profile, This handheld has a button): it plays far more PS2 games than ${androidEmu.using ? "RetroArch's Play! core" : "anything else"}, and LootDen starts games in it once it's installed.`
       : androidEmu.using === "RetroArch" && androidEmu.core
       ? `Plays in RetroArch with its ${androidEmu.core} core: get it once in RetroArch's Main Menu, Online Updater, Core Downloader. Saves follow you to your PCs.`

@@ -331,9 +331,13 @@ same web UI, full screen and in landscape, with the controller navigation descri
 - **Console games** install to `ROMs/<system>/<game>` on internal storage or an SD card (the app
   asks for All files access the first time, so emulators can open what it downloads) and play
   in the emulator picked under Settings, You, This handheld. LootDen picks the best one
-  installed: DuckStation for PS1, ARMSX2 or NetherSX2/AetherSX2 for PS2, PPSSPP, Dolphin, melonDS, Flycast
-  or Redream, and RetroArch for everything else (download each core once in RetroArch's Online
-  Updater). With none installed, Android asks which app to open the game with.
+  installed: DuckStation for PS1, ARMSX2 or NetherSX2/AetherSX2 for PS2, ARMSX3 for PS3, PPSSPP,
+  Dolphin, melonDS, Flycast or Redream, and RetroArch for everything else (download each core once
+  in RetroArch's Online Updater). With none installed, Android asks which app to open the game with.
+- **PS3** plays in ARMSX3 (Google Play's or GitHub's build). Install the PS3 firmware in ARMSX3 once.
+  Disc images (ISO) open in either build; folder games (`PS3_GAME/USRDIR/EBOOT.BIN`) need ARMSX3's
+  All files access, which the GitHub build has. A PKG game goes to ARMSX3's own package installer
+  on its first Play (with any `.rap`/`.edat` licences beside it), and later Plays start it by title id.
 - **Saves**: RetroArch battery saves go up to the server when you come back to LootDen and come
   down before the next game, shared with the desktop app and the browser player. Standalone
   emulators keep their saves in their own folders, which Android doesn't let other apps read.

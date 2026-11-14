@@ -16,13 +16,14 @@ import java.io.File
 /**
  * The systems LootDen plays on Android: the same ids and file types as
  * packages/shared/src/platforms.ts (keep them in step; a test checks the ids).
- * PS3, Xbox and Xbox 360 aren't here: nothing plays them on an Android handheld yet.
+ * Xbox and Xbox 360 aren't here: nothing plays them on an Android handheld yet. PS3 plays in ARMSX3.
  */
 data class Platform(val id: String, val name: String, val extensions: List<String>)
 
 val PLATFORMS = listOf(
     Platform("ps1", "PlayStation", listOf("m3u", "cue", "chd", "pbp", "iso", "bin", "img", "ecm")),
     Platform("ps2", "PlayStation 2", listOf("chd", "iso", "cso", "zso", "cue", "bin", "gz")),
+    Platform("ps3", "PlayStation 3", listOf("bin", "iso", "pkg")),
     Platform("psp", "PlayStation Portable", listOf("chd", "cso", "iso", "pbp")),
     Platform("nes", "NES", listOf("nes", "fds", "unf", "zip", "7z")),
     Platform("snes", "Super Nintendo", listOf("sfc", "smc", "zip", "7z")),
@@ -40,14 +41,23 @@ val PLATFORMS = listOf(
 
 fun platformById(id: String): Platform? = PLATFORMS.firstOrNull { it.id == id }
 
-/** The file an emulator should open: playlists and cue sheets before their tracks, then the platform's types in order (pickRomFile). */
+/**
+ * The file an emulator should open: playlists and cue sheets before their tracks, then the platform's types in order (pickRomFile).
+ * PS3 folder games open through their EBOOT.BIN.
+ */
 fun pickRom(files: List<String>, platform: Platform): String? {
+    if (platform.id == "ps3") {
+        files.firstOrNull { PS3_EBOOT.containsMatchIn(it.lowercase()) }?.let { return it }
+    }
     for (ext in platform.extensions) {
         val hits = files.filter { it.lowercase().endsWith(".$ext") }
         if (hits.isNotEmpty()) return hits.sortedWith(compareBy<String>({ it.count { c -> c == '/' } }, { it })).first()
     }
     return null
 }
+
+/** A PS3 folder game's start file, as pickRomFile in packages/shared finds it. */
+private val PS3_EBOOT = Regex("(^|/)ps3_game/usrdir/eboot\\.bin$")
 
 /** How a game is handed to an emulator. */
 enum class Handoff {
@@ -57,6 +67,12 @@ enum class Handoff {
     EXTRA,
     /** ACTION_VIEW with a content:// link, to the app's own handler. */
     VIEW,
+    /**
+     * ARMSX3 (PS3): a disc image goes as a content:// link like VIEW, but a folder game goes by its
+     * EBOOT.BIN's path, since the emulator boots the whole folder and a link to one file can't
+     * reach the rest of it. A PKG goes to ARMSX3's package installer first, then starts by title id.
+     */
+    ARMSX3,
 }
 
 data class Emulator(
@@ -107,6 +123,12 @@ val EMULATORS = listOf(
         otherActivities = listOf("kr.co.iefriends.pcsx2.MainActivity"),
     ),
     Emulator("aethersx2", "NetherSX2 / AetherSX2", listOf("xyz.aethersx2.android"), Handoff.EXTRA, listOf("ps2"), "xyz.aethersx2.android.EmulationActivity", "bootPath", store = null),
+    // ARMSX3 (RPCS3 for ARM): GitHub's build is com.armsx3, Google Play's com.armsx3.play. Both take
+    // a game from ACTION_VIEW or a "path"/"title_id" extra on Main (MainActivity is its alias).
+    Emulator(
+        "armsx3", "ARMSX3", listOf("com.armsx3", "com.armsx3.play"), Handoff.ARMSX3, listOf("ps3"), "com.armsx2.Main",
+        store = "com.armsx3.play", otherActivities = listOf("com.armsx2.MainActivity"),
+    ),
     Emulator("ppsspp", "PPSSPP", listOf("org.ppsspp.ppssppgold", "org.ppsspp.ppsspp"), Handoff.VIEW, listOf("psp"), "org.ppsspp.ppsspp.PpssppActivity", store = "org.ppsspp.ppsspp"),
     Emulator("dolphin", "Dolphin", listOf("org.dolphinemu.dolphinemu", "org.dolphinemu.mmjr"), Handoff.EXTRA, listOf("gamecube", "wii"), "org.dolphinemu.dolphinemu.ui.main.MainActivity", "AutoStartFile"),
     Emulator("melonds", "melonDS", listOf("me.magnum.melonds"), Handoff.EXTRA, listOf("nds"), "me.magnum.melonds.ui.emulator.EmulatorActivity", "uri"),
@@ -120,6 +142,7 @@ val EMULATORS = listOf(
 private val PREFERRED = mapOf(
     "ps1" to listOf("duckstation", "retroarch"),
     "ps2" to listOf("armsx2", "aethersx2", "retroarch"),
+    "ps3" to listOf("armsx3"),
     "psp" to listOf("ppsspp", "retroarch"),
     "gamecube" to listOf("dolphin", "retroarch"),
     "wii" to listOf("dolphin", "retroarch"),
@@ -188,6 +211,11 @@ class Emulators(private val context: Context, private val prefs: Prefs) {
         try {
             context.startActivity(intent)
         } catch (err: ActivityNotFoundException) {
+            // An ARMSX3 from before it took packages from other apps: try again once it's updated.
+            if (intent.action == ARMSX3_INSTALL) {
+                prefs.setPs3PackageSent(rom.path, false)
+                throw IllegalStateException("This ARMSX3 can't install PS3 packages from LootDen. Update ARMSX3, or install ${rom.name} from ARMSX3's own menu.")
+            }
             // The emulator moved its game screen in an update: let it open the file its own way.
             if (emu == null || emu.handoff == Handoff.RETROARCH) throw IllegalStateException("Couldn't start ${emu?.name ?: "an emulator"}: ${err.message}")
             try {
@@ -233,6 +261,7 @@ class Emulators(private val context: Context, private val prefs: Prefs) {
                     .putExtra(emu.extra!!, uri.toString())
                     .apply { clipData = ClipData.newRawUri(rom.name, uri) }
             }
+            Handoff.ARMSX3 -> armsx3(emu, pkg, rom)
             Handoff.VIEW -> view(rom).apply {
                 val activity = activityIn(emu, pkg)
                 // A named game screen starts fresh, so a game already open there doesn't keep running instead.
@@ -241,10 +270,81 @@ class Emulators(private val context: Context, private val prefs: Prefs) {
         }
     }
 
+    /**
+     * How ARMSX3 gets a PS3 game. Its game screen is singleTop and takes a new game in onNewIntent,
+     * so it isn't started fresh: tearing it down ends its whole process, the new game's too.
+     */
+    private fun armsx3(emu: Emulator, pkg: String, rom: File): Intent {
+        val screen = ComponentName(pkg, activityIn(emu, pkg)!!)
+        val flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+        val name = rom.name.lowercase()
+        if (name.endsWith(".pkg")) {
+            val titleId = Ps3Pkg.titleId(rom)
+            // The first time, the package (with its updates, DLC and licences beside it) goes to
+            // ARMSX3's installer, which asks the player first. After that it starts by its title id.
+            if (titleId == null || !prefs.ps3PackageSent(rom.path)) {
+                prefs.setPs3PackageSent(rom.path, true)
+                return armsx3Install(pkg, rom)
+            }
+            return Intent(Intent.ACTION_MAIN).setComponent(screen).addFlags(flags).putExtra("title_id", titleId)
+        }
+        // A folder game: ARMSX3 boots the folder its EBOOT.BIN is in, so it needs the path, not a
+        // link to one file. A bare path in "path" (not a file:// link, which Android refuses to hand
+        // to another app) is read with ARMSX3's All files access.
+        if (name == "eboot.bin") return Intent(Intent.ACTION_MAIN).setComponent(screen).addFlags(flags).putExtra("path", rom.path)
+        // A disc image: a content:// link, which ARMSX3 opens itself, so it works without All files access too.
+        return view(rom).setComponent(screen).addFlags(flags)
+    }
+
+    /** ARMSX3's package installer (its com.armsx3.action.INSTALL): the PKGs first, then .rap and .edat licences. */
+    private fun armsx3Install(pkg: String, rom: File): Intent {
+        val dir = rom.parentFile ?: throw IllegalStateException("The game's folder is missing")
+        val all = dir.walkTopDown().filter { it.isFile }.toList()
+        val packages = listOf(rom) + all.filter { it != rom && it.name.lowercase().endsWith(".pkg") }.sortedBy { it.path.lowercase() }
+        val licences = all.filter { f -> listOf(".rap", ".edat").any { f.name.lowercase().endsWith(it) } }.sortedBy { it.path.lowercase() }
+        val uris = (packages + licences).map { uriFor(it) }
+        return Intent(ARMSX3_INSTALL)
+            .setComponent(ComponentName(pkg, "com.armsx2.packages.ExternalInstallActivity"))
+            .setDataAndType(uris.first(), "application/octet-stream")
+            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            .apply {
+                clipData = ClipData.newRawUri(rom.name, uris.first()).also { clip -> uris.drop(1).forEach { clip.addItem(ClipData.Item(it)) } }
+            }
+    }
+
     /** Moonlight (or a fork of it), for streaming PC games from a PC with Sunshine. */
     fun moonlightPackage(): String? = MOONLIGHT.firstOrNull { isInstalled(it) }
 
     companion object {
+        const val ARMSX3_INSTALL = "com.armsx3.action.INSTALL"
         val MOONLIGHT = listOf("com.limelight", "com.limelight.root", "com.limelight.unofficial", "com.alkaidlab.sdream")
+    }
+}
+
+/** PS3 packages: the title id in a PKG's header, the one name ARMSX3 can start an installed package game by. */
+object Ps3Pkg {
+    private const val CONTENT_ID_AT = 0x30
+    private const val CONTENT_ID_LENGTH = 36
+
+    /** "BLUS30001" from a PKG whose content id is "UP0001-BLUS30001_00-…", or null for anything else. */
+    fun titleId(file: File): String? = runCatching {
+        file.inputStream().use { input ->
+            val head = ByteArray(CONTENT_ID_AT + CONTENT_ID_LENGTH)
+            var n = 0
+            while (n < head.size) {
+                val r = input.read(head, n, head.size - n)
+                if (r <= 0) break
+                n += r
+            }
+            if (n < head.size) return null
+            titleIdIn(head)
+        }
+    }.getOrNull()
+
+    fun titleIdIn(head: ByteArray): String? {
+        if (head.size < CONTENT_ID_AT + CONTENT_ID_LENGTH) return null
+        if (head[0] != 0x7f.toByte() || head[1] != 'P'.code.toByte() || head[2] != 'K'.code.toByte() || head[3] != 'G'.code.toByte()) return null
+        val contentId = String(head, CONTENT_ID_AT, CONTENT_ID_LENGTH, Charsets.US_ASCII)
+        return Regex("^[A-Z]{2}[0-9]{4}-([A-Z]{4}[0-9]{5})_").find(contentId)?.groupValues?.get(1)
     }
 }

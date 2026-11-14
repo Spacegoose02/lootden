@@ -115,6 +115,8 @@ class Installer(private val app: AppCore) {
             .put("needsSetup", JSONObject.NULL)
             .put("version", game.opt("version") ?: JSONObject.NULL)
             .put("rom", File(gameDir, rom).path)
+        // A PS3 package downloaded again goes to ARMSX3's installer again on its next play.
+        if (platform.id == "ps3") app.prefs.setPs3PackageSent(File(gameDir, rom).path, false)
         app.library.put(record)
         app.server.activity(gameId, app.prefs.deviceName, "installed")
         app.emit(JSONObject().put("gameId", gameId).put("type", "done").put("gameDir", gameDir.path))
