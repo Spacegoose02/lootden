@@ -231,6 +231,59 @@ describe("accounts and auth", () => {
     await app.close();
   });
 
+  it("signs a linked TinyAuth user into their existing account instead of making a new one", async () => {
+    const { app, ctx } = await makeApp(root, {
+      headerAuth: { userHeader: "remote-user", emailHeader: "remote-email", nameHeader: "remote-name", groupsHeader: "remote-groups", trustedProxies: ["10.0.0.0/8"], adminGroup: "" },
+    });
+    const admin = await ctx.users.create({ username: "boss", password: "password1", role: "admin" });
+    const kid = await ctx.users.create({ username: "kiddo", password: "password1" });
+    const adminHeaders = { authorization: `Bearer ${ctx.auth.createApiToken(admin.id, "t").token}` };
+    const via = (user: string) => ({ url: "/api/me", headers: { "remote-user": user }, remoteAddress: "10.0.0.2" });
+
+    // Admin links kiddo to TinyAuth user "jamie"; jamie signs in as kiddo.
+    const linked = await app.inject({ method: "PATCH", url: `/api/users/${kid.id}`, headers: adminHeaders, payload: { ssoUsername: "jamie" } });
+    assert.equal(linked.statusCode, 200);
+    assert.deepEqual(linked.json().sso, { username: "jamie", oidc: false });
+    assert.equal((await app.inject(via("Jamie"))).json().user.id, kid.id);
+    const before = ctx.users.count();
+
+    // A second account can't take the same TinyAuth user.
+    const clash = await app.inject({ method: "PATCH", url: `/api/users/${admin.id}`, headers: adminHeaders, payload: { ssoUsername: "jamie" } });
+    assert.equal(clash.statusCode, 409);
+
+    // A TinyAuth user named like a local account linked to someone else gets a new account, not that one.
+    await ctx.users.update(admin.id, { ssoUsername: "the-boss" });
+    const other = (await app.inject(via("boss"))).json();
+    assert.notEqual(other.user.id, admin.id);
+    assert.equal(other.user.username, "boss-2");
+    assert.equal(ctx.users.count(), before + 1);
+
+    // Self-service: a local account opened through TinyAuth links the TinyAuth user it sees.
+    const sam = await ctx.users.create({ username: "sam", password: "password1" });
+    const samSession = `gm_session=${ctx.auth.createSession(sam.id).token}`;
+    const seenHeaders = { cookie: samSession, "remote-user": "sammy" };
+    const status = (await app.inject({ url: "/api/me/sso", headers: seenHeaders, remoteAddress: "10.0.0.2" })).json();
+    assert.equal(status.seen, "sammy");
+    assert.equal(status.username, null);
+    const self = await app.inject({ method: "POST", url: "/api/me/sso/header", headers: seenHeaders, remoteAddress: "10.0.0.2" });
+    assert.equal(self.json().username, "sammy");
+    assert.equal((await app.inject(via("sammy"))).json().user.id, sam.id);
+    // Headers from an untrusted address prove nothing.
+    const spoof = await app.inject({ method: "POST", url: "/api/me/sso/header", headers: { cookie: samSession, "remote-user": "jamie" }, remoteAddress: "192.168.1.5" });
+    assert.equal(spoof.statusCode, 400);
+    // Someone else's TinyAuth user can't be claimed.
+    const taken = await app.inject({ method: "POST", url: "/api/me/sso/header", headers: { cookie: samSession, "remote-user": "jamie" }, remoteAddress: "10.0.0.2" });
+    assert.equal(taken.statusCode, 409);
+
+    // Unlinking: jamie no longer opens kiddo.
+    const unlink = await app.inject({ method: "PATCH", url: `/api/users/${kid.id}`, headers: adminHeaders, payload: { ssoUsername: null } });
+    assert.deepEqual(unlink.json().sso, { username: null, oidc: false });
+    assert.notEqual((await app.inject(via("jamie"))).json().user.id, kid.id);
+    const selfUnlink = await app.inject({ method: "DELETE", url: "/api/me/sso", headers: { cookie: samSession } });
+    assert.equal(selfUnlink.json().username, null);
+    await app.close();
+  });
+
   it("serves deterministic gaming avatars and lets users reroll theirs", async () => {
     const { app, ctx } = await makeApp(root);
     const a = await app.inject("/api/avatars/abc123.svg");

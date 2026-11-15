@@ -13,12 +13,15 @@ interface UserRow {
   avatar: string;
   kid_mode: number;
   oidc_subject: string | null;
+  sso_username: string | null;
   created_at: string;
 }
 
 export interface UserRecord extends User {
   passwordHash: string | null;
   oidcSubject: string | null;
+  /** The TinyAuth username this account is linked to. */
+  ssoUsername: string | null;
 }
 
 function toUser(r: UserRow): UserRecord {
@@ -34,13 +37,14 @@ function toUser(r: UserRow): UserRecord {
     createdAt: r.created_at,
     passwordHash: r.password_hash,
     oidcSubject: r.oidc_subject,
+    ssoUsername: r.sso_username ?? null,
   };
 }
 
 /** Strips secrets before a user goes over the wire. */
 export function publicUser(u: UserRecord): User {
-  const { passwordHash: _p, oidcSubject: _o, ...rest } = u;
-  return rest;
+  const { passwordHash: _p, oidcSubject: _o, ssoUsername, ...rest } = u;
+  return { ...rest, sso: { username: ssoUsername, oidc: !!u.oidcSubject } };
 }
 
 export interface NewUser {
@@ -51,6 +55,7 @@ export interface NewUser {
   role?: Role;
   kidMode?: boolean;
   oidcSubject?: string | null;
+  ssoUsername?: string | null;
 }
 
 export class UserRepo {
@@ -79,6 +84,11 @@ export class UserRepo {
     return r && toUser(r);
   }
 
+  bySsoUsername(name: string): UserRecord | undefined {
+    const r = this.db.prepare("SELECT * FROM users WHERE sso_username = ?").get(name.trim()) as UserRow | undefined;
+    return r && toUser(r);
+  }
+
   byOidcSubject(sub: string): UserRecord | undefined {
     const r = this.db.prepare("SELECT * FROM users WHERE oidc_subject = ?").get(sub) as UserRow | undefined;
     return r && toUser(r);
@@ -92,15 +102,15 @@ export class UserRepo {
     const hash = u.password ? await hashPassword(u.password) : null;
     const result = this.db
       .prepare(
-        "INSERT INTO users (username, display_name, email, password_hash, role, avatar, kid_mode, oidc_subject, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO users (username, display_name, email, password_hash, role, avatar, kid_mode, oidc_subject, sso_username, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
       )
-      .run(username, u.displayName?.trim() || username, u.email ?? null, hash, u.role ?? "user", randomAvatarSeed(), u.kidMode ? 1 : 0, u.oidcSubject ?? null, now());
+      .run(username, u.displayName?.trim() || username, u.email ?? null, hash, u.role ?? "user", randomAvatarSeed(), u.kidMode ? 1 : 0, u.oidcSubject ?? null, u.ssoUsername?.trim() || null, now());
     return this.byId(Number(result.lastInsertRowid))!;
   }
 
   async update(
     id: number,
-    patch: { displayName?: string; email?: string | null; role?: Role; kidMode?: boolean; avatar?: string; password?: string | null; oidcSubject?: string },
+    patch: { displayName?: string; email?: string | null; role?: Role; kidMode?: boolean; avatar?: string; password?: string | null; oidcSubject?: string | null; ssoUsername?: string | null },
   ): Promise<UserRecord> {
     const sets: string[] = [];
     const values: Array<string | number | null> = [];
@@ -114,6 +124,7 @@ export class UserRepo {
     if (patch.kidMode !== undefined) set("kid_mode", patch.kidMode ? 1 : 0);
     if (patch.avatar !== undefined) set("avatar", patch.avatar);
     if (patch.oidcSubject !== undefined) set("oidc_subject", patch.oidcSubject);
+    if (patch.ssoUsername !== undefined) set("sso_username", patch.ssoUsername?.trim() || null);
     if (patch.password !== undefined) {
       if (patch.password !== null && patch.password.length < 8) throw new Error("Passwords need at least 8 characters");
       set("password_hash", patch.password ? await hashPassword(patch.password) : null);

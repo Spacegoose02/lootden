@@ -1,10 +1,10 @@
 import type { FastifyInstance } from "fastify";
-import { cleanPolicy, cleanSites, lockedPart, parseRaccoonSeed, type ActivityEvent, type BrowserPolicy, type Role } from "@lootden/shared";
+import { cleanPolicy, cleanSites, lockedPart, parseRaccoonSeed, type ActivityEvent, type BrowserPolicy, type Role, type SsoLinkStatus } from "@lootden/shared";
 import { verifyPassword } from "../auth/crypto.js";
 import { SESSION_COOKIE } from "../auth/service.js";
 import { HttpProblem, requireAdmin, requirePerson, type AppContext } from "../context.js";
 import { avatarSvg, randomAvatarSeed } from "../users/avatars.js";
-import { publicUser } from "../users/repo.js";
+import { publicUser, type UserRecord } from "../users/repo.js";
 
 export function userRoutes(app: FastifyInstance, ctx: AppContext) {
   /** What the person may open in the desktop app's browser; kid profiles are kid-safe unless an admin says otherwise. */
@@ -55,6 +55,42 @@ export function userRoutes(app: FastifyInstance, ctx: AppContext) {
     // Other browsers signed in with the old password are signed out; this one stays.
     ctx.auth.endUserSessions(me.id, req.cookies[SESSION_COOKIE]);
     return { ok: true };
+  });
+
+  // ---- TinyAuth link ------------------------------------------------------------
+
+  const ssoStatus = (me: UserRecord, seen: string | null): SsoLinkStatus => {
+    const holder = seen ? ctx.users.bySsoUsername(seen) : undefined;
+    return {
+      username: me.ssoUsername,
+      oidc: !!me.oidcSubject,
+      oidcEnabled: ctx.oidc.enabled,
+      oidcName: ctx.config.oidc.name || "single sign-on",
+      headerEnabled: !!ctx.config.headerAuth.userHeader,
+      seen,
+      seenTaken: !!holder && holder.id !== me.id,
+    };
+  };
+
+  app.get("/api/me/sso", async (req) => {
+    const me = requirePerson(req);
+    return ssoStatus(me, ctx.auth.headerIdentity(req.socket.remoteAddress ?? "", req.headers)?.username ?? null);
+  });
+
+  /** Links the TinyAuth username this browser is signed in with (sent by the forward-auth proxy). */
+  app.post("/api/me/sso/header", async (req) => {
+    const me = requirePerson(req);
+    const seen = ctx.auth.headerIdentity(req.socket.remoteAddress ?? "", req.headers)?.username;
+    if (!seen) throw new HttpProblem(400, "Open LootDen through TinyAuth first, so it can see which TinyAuth account you're signed in with");
+    const holder = ctx.users.bySsoUsername(seen);
+    if (holder && holder.id !== me.id) throw new HttpProblem(409, `TinyAuth account ${seen} is already linked to ${holder.username}; an admin can move it`);
+    return ssoStatus(await ctx.users.update(me.id, { ssoUsername: seen }), seen);
+  });
+
+  app.delete("/api/me/sso", async (req) => {
+    const me = requirePerson(req);
+    if (!me.passwordHash) throw new HttpProblem(409, "Set a password first, or you won't be able to sign in once TinyAuth is unlinked");
+    return ssoStatus(await ctx.users.update(me.id, { ssoUsername: null, oidcSubject: null }), ctx.auth.headerIdentity(req.socket.remoteAddress ?? "", req.headers)?.username ?? null);
   });
 
   /** The desktop app asks before opening its browser. */
@@ -122,7 +158,10 @@ export function userRoutes(app: FastifyInstance, ctx: AppContext) {
     },
   );
 
-  app.patch<{ Params: { id: string }; Body: { displayName?: string; email?: string | null; role?: Role; kidMode?: boolean; password?: string | null; avatar?: string } }>(
+  app.patch<{
+    Params: { id: string };
+    Body: { displayName?: string; email?: string | null; role?: Role; kidMode?: boolean; password?: string | null; avatar?: string; ssoUsername?: string | null };
+  }>(
     "/api/users/:id",
     async (req) => {
       requireAdmin(req);
@@ -132,7 +171,18 @@ export function userRoutes(app: FastifyInstance, ctx: AppContext) {
       const b = req.body ?? {};
       if (b.role && !["admin", "user"].includes(b.role)) throw new HttpProblem(400, "role is admin or user");
       if (user.role === "admin" && b.role === "user" && ctx.users.adminCount() === 1) throw new HttpProblem(409, "Keep at least one admin");
-      const updated = await ctx.users.update(id, { ...b, avatar: b.avatar === "random" ? randomAvatarSeed() : b.avatar });
+      // Linking to a TinyAuth username: one account per TinyAuth user. A different (or no) username
+      // drops the old provider link too, so the previous TinyAuth account can't still sign in here.
+      let sso: { ssoUsername?: string | null; oidcSubject?: null } = {};
+      if (b.ssoUsername !== undefined) {
+        const name = typeof b.ssoUsername === "string" ? b.ssoUsername.trim() : null;
+        if (name && !/^[^\s]{1,128}$/.test(name)) throw new HttpProblem(400, "TinyAuth usernames have no spaces");
+        const holder = name ? ctx.users.bySsoUsername(name) : undefined;
+        if (holder && holder.id !== id) throw new HttpProblem(409, `TinyAuth account ${name} is already linked to ${holder.username}`);
+        if ((name ?? "").toLowerCase() !== (user.ssoUsername ?? "").toLowerCase() || !name) sso = { ssoUsername: name || null, oidcSubject: null };
+      }
+      const { ssoUsername: _s, ...rest } = b;
+      const updated = await ctx.users.update(id, { ...rest, ...sso, avatar: b.avatar === "random" ? randomAvatarSeed() : b.avatar });
       if (b.password !== undefined) ctx.auth.endUserSessions(id);
       return publicUser(updated);
     },

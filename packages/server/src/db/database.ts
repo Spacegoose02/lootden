@@ -837,6 +837,10 @@ export const MIGRATIONS: string[] = [
     reason TEXT,
     PRIMARY KEY (user_id, game_id)
   );
+  `,  `
+  -- The TinyAuth (forward-auth or OIDC) username an account is linked to, so that sign-in finds it.
+  ALTER TABLE users ADD COLUMN sso_username TEXT COLLATE NOCASE;
+  CREATE UNIQUE INDEX users_sso_username ON users(sso_username);
   `,
 ];
 

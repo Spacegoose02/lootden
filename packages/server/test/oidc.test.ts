@@ -158,6 +158,55 @@ describe("OIDC single sign-on", () => {
     await idp.close();
   });
 
+  it("lets a signed-in person link their account, and uses an admin's link on first sign-in", async () => {
+    const config = (issuer: string) => ({
+      publicUrl: "https://games.example.com",
+      oidc: { issuer, clientId: "gm", clientSecret: "", name: "TinyAuth", scopes: "openid profile", autoCreate: true, adminGroup: "" },
+    });
+    // Self-service: signed in locally, links the TinyAuth account, which then opens this account.
+    let idp = await fakeIdp({ sub: "t-1", preferred_username: "jamie" });
+    let made = await makeApp(root, config(idp.issuer));
+    const pat = await made.ctx.users.create({ username: "pat", password: "password1" });
+    const cookie = `gm_session=${made.ctx.auth.createSession(pat.id).token}`;
+    const start = await made.app.inject({ url: "/api/auth/oidc/link?returnTo=/profile", headers: { cookie } });
+    assert.equal(start.statusCode, 302);
+    const cb = new URL(idp.approve(start.headers.location as string));
+    const done = await made.app.inject({ url: cb.pathname + cb.search, headers: { cookie } });
+    assert.equal(done.headers.location, "/profile?linked=1");
+    assert.equal(made.ctx.users.byId(pat.id)!.oidcSubject, "t-1");
+    assert.equal(made.ctx.users.byId(pat.id)!.ssoUsername, "jamie");
+    const login = await made.app.inject("/api/auth/oidc/login");
+    const cb2 = new URL(idp.approve(login.headers.location as string));
+    const me = (await made.app.inject({ url: "/api/me", headers: { cookie: sessionCookie(await made.app.inject(cb2.pathname + cb2.search)) } })).json();
+    assert.equal(me.user.id, pat.id);
+    assert.equal(made.ctx.users.count(), 1);
+
+    // Linking needs a signed-in person.
+    assert.equal((await made.app.inject("/api/auth/oidc/link")).statusCode, 401);
+    // Another account can't take a provider account that's already linked.
+    const lee = await made.ctx.users.create({ username: "lee", password: "password1" });
+    const leeCookie = `gm_session=${made.ctx.auth.createSession(lee.id).token}`;
+    const s3 = await made.app.inject({ url: "/api/auth/oidc/link", headers: { cookie: leeCookie } });
+    const cb3 = new URL(idp.approve(s3.headers.location as string));
+    const refused = await made.app.inject({ url: cb3.pathname + cb3.search, headers: { cookie: leeCookie } });
+    assert.match(decodeURIComponent(String(refused.headers.location)), /^\/profile\?linkError=.*already linked to pat/);
+    await made.app.close();
+    await idp.close();
+
+    // Admin-made link: the account with TinyAuth username "robin" is used on robin's first sign-in.
+    idp = await fakeIdp({ sub: "t-2", preferred_username: "robin" });
+    made = await makeApp(root, config(idp.issuer));
+    const kid = await made.ctx.users.create({ username: "kiddo", ssoUsername: "robin" });
+    const s4 = await made.app.inject("/api/auth/oidc/login");
+    const cb4 = new URL(idp.approve(s4.headers.location as string));
+    const kidMe = (await made.app.inject({ url: "/api/me", headers: { cookie: sessionCookie(await made.app.inject(cb4.pathname + cb4.search)) } })).json();
+    assert.equal(kidMe.user.id, kid.id);
+    assert.equal(made.ctx.users.byId(kid.id)!.oidcSubject, "t-2");
+    assert.equal(made.ctx.users.count(), 1);
+    await made.app.close();
+    await idp.close();
+  });
+
   it("never takes over a local account by username, or by an email the provider hasn't verified", async () => {
     const config = (issuer: string) => ({
       publicUrl: "https://games.example.com",

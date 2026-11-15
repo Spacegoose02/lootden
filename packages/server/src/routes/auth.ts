@@ -240,15 +240,26 @@ export function authRoutes(app: FastifyInstance, ctx: AppContext) {
     return reply.redirect(await ctx.oidc.start(req.query.returnTo, appNonce));
   });
 
+  /** A signed-in person links their account: they sign in at the provider and come back to returnTo. */
+  app.get<{ Querystring: { returnTo?: string } }>("/api/auth/oidc/link", async (req, reply) => {
+    if (!ctx.oidc.enabled) throw new HttpProblem(404, "Single sign-on is not configured");
+    const me = requirePerson(req);
+    return reply.redirect(await ctx.oidc.start(req.query.returnTo ?? "/profile", undefined, me.id));
+  });
+
   app.get("/api/auth/oidc/callback", async (req, reply) => {
     if (!ctx.oidc.enabled) throw new HttpProblem(404, "Single sign-on is not configured");
+    const url = new URL(req.url, ctx.config.publicUrl);
+    const linking = ctx.oidc.isLinking(url.searchParams.get("state") ?? "");
     try {
-      const { user, returnTo, appNonce } = await ctx.oidc.finish(new URL(req.url, ctx.config.publicUrl));
+      const { user, returnTo, appNonce, linked } = await ctx.oidc.finish(url);
+      if (linked) return reply.redirect(withParam(returnTo, "linked", "1"));
       if (appNonce) return reply.type("text/html").send(handoffPage(`lootden://auth?code=${ctx.oidc.issueHandoff(user.id, appNonce, returnTo)}`));
       startSession(req, reply, user);
       return reply.redirect(returnTo);
     } catch (err) {
       req.log.warn({ err: (err as Error).message }, "OIDC login failed");
+      if (linking) return reply.redirect(withParam(linking, "linkError", (err as Error).message));
       return reply.redirect(`/login?error=${encodeURIComponent((err as Error).message)}`);
     }
   });
@@ -261,6 +272,10 @@ export function authRoutes(app: FastifyInstance, ctx: AppContext) {
     startSession(req, reply, user);
     return reply.redirect(done.returnTo);
   });
+}
+
+function withParam(path: string, key: string, value: string): string {
+  return `${path}${path.includes("?") ? "&" : "?"}${key}=${encodeURIComponent(value)}`;
 }
 
 /** Shown in the system browser after a desktop sign-in: hands the code to the app. */
