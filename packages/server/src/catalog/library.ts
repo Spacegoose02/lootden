@@ -110,6 +110,8 @@ export class Library {
   private lastScanAt: Date | null = null;
   private lastScanMs: number | null = null;
   private scanning: Promise<void> | null = null;
+  /** The scan that starts once the running one ends, for changes made while it ran. */
+  private queuedScan: Promise<void> | null = null;
   private listeners: Array<(games: ScannedGame[]) => void> = [];
   /** Looking inside archives for installers after a scan; scans don't wait for it. */
   private peeking: Promise<void> | null = null;
@@ -132,8 +134,24 @@ export class Library {
     this.listeners.push(listener);
   }
 
-  /** Runs a scan, or joins the one already running. */
+  /**
+   * Runs a scan. While one is already running, a scan is queued to start after it (several calls
+   * share that one): the running scan may have read the games folder before whatever the caller
+   * just put there (an import finishing mid-scan), and joining it would miss that game until the
+   * next periodic scan.
+   */
   rescan(): Promise<void> {
+    if (this.scanning) {
+      this.queuedScan ??= this.scanning.catch(() => {}).then(() => {
+        this.queuedScan = null;
+        return this.scanOnce();
+      });
+      return this.queuedScan;
+    }
+    return this.scanOnce();
+  }
+
+  private scanOnce(): Promise<void> {
     this.scanning ??= (async () => {
       const started = Date.now();
       try {
