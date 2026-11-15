@@ -140,10 +140,10 @@ export function boundDevices(buttons: Record<string, string>): { guids: Array<{ 
 
 // ---- TeknoParrot on this PC ---------------------------------------------------------
 
-/** Folders TeknoParrot is usually unpacked to, checked when the player hasn't pointed LootDen at one. */
-export function teknoParrotCandidates(env: NodeJS.ProcessEnv = process.env): string[] {
+/** Folders TeknoParrot is usually unpacked to, checked when the player hasn't pointed LootDen at one. LootDen's own copy comes first. */
+export function teknoParrotCandidates(env: NodeJS.ProcessEnv = process.env, toolsDir?: string): string[] {
   const drives = ["C:", "D:", "E:"];
-  const out: string[] = [];
+  const out: string[] = toolsDir ? [path.join(toolsDir, "teknoparrot")] : [];
   for (const d of drives) out.push(`${d}\\TeknoParrot`, `${d}\\Games\\TeknoParrot`, `${d}\\Emulators\\TeknoParrot`, `${d}\\Arcade\\TeknoParrot`);
   if (env.USERPROFILE) out.push(path.join(env.USERPROFILE, "TeknoParrot"), path.join(env.USERPROFILE, "Desktop", "TeknoParrot"), path.join(env.USERPROFILE, "Downloads", "TeknoParrot"));
   if (env.LOCALAPPDATA) out.push(path.join(env.LOCALAPPDATA, "TeknoParrot"));
@@ -435,6 +435,8 @@ export interface ArcadeOptions {
   toolsDir: string;
   /** The executable chosen before (from the install manifest), relative to the game folder. */
   executable?: string | null;
+  /** Sets TeknoParrot up when this PC doesn't have it, returning its folder. Without it, the player is asked to. */
+  installTeknoParrot?: () => Promise<string>;
   link?: LinkPlan | null;
   run?: RunText;
   platform?: NodeJS.Platform;
@@ -467,8 +469,12 @@ export class ArcadeSetupNeeded extends Error {
 export async function prepareArcade(gameId: string, gameDir: string, title: string, opts: ArcadeOptions): Promise<ArcadePlan> {
   if ((opts.platform ?? process.platform) !== "win32") throw new Error("Arcade games play through TeknoParrot, which runs on Windows only");
   const state = await readArcadeState(opts.toolsDir);
-  const tpDir = await findTeknoParrot(state.tpDir);
-  if (!tpDir) throw new ArcadeSetupNeeded("Show LootDen where TeknoParrot is first (Emulation, then Emulators, Arcade)", "teknoparrot");
+  let tpDir = await findTeknoParrot(state.tpDir, teknoParrotCandidates(process.env, opts.toolsDir));
+  if (!tpDir && opts.installTeknoParrot) {
+    opts.onEvent?.({ message: "TeknoParrot isn't on this PC yet: setting it up" });
+    tpDir = await opts.installTeknoParrot();
+  }
+  if (!tpDir) throw new ArcadeSetupNeeded("Set up TeknoParrot first (Emulation, then Emulators, Arcade)", "teknoparrot");
   if (tpDir !== state.tpDir) {
     state.tpDir = tpDir;
     await writeArcadeState(opts.toolsDir, state);
@@ -532,8 +538,8 @@ export function runTeknoParrot(exe: string, args: string[]): Promise<number> {
  */
 export async function setControlsInTeknoParrot(toolsDir: string, profile: string, run: RunText = runText): Promise<ArcadeBindingSet> {
   const state = await readArcadeState(toolsDir);
-  const tpDir = await findTeknoParrot(state.tpDir);
-  if (!tpDir) throw new ArcadeSetupNeeded("Show LootDen where TeknoParrot is first", "teknoparrot");
+  const tpDir = await findTeknoParrot(state.tpDir, teknoParrotCandidates(process.env, toolsDir));
+  if (!tpDir) throw new ArcadeSetupNeeded("Set up TeknoParrot first", "teknoparrot");
   // The profile exists before TeknoParrot opens, so the game is in its list.
   await readUserProfile(tpDir, profile);
   await runTeknoParrot(path.join(tpDir, TEKNOPARROT_EXE), []);

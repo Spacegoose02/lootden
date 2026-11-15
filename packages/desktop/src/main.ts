@@ -116,7 +116,12 @@ import {
   captureBindings,
   connectedInputs,
   findTeknoParrot,
+  installTeknoParrot,
+  installTeknoParrotPrerequisites,
   isTeknoParrotDir,
+  managedTeknoParrot,
+  teknoParrotCandidates,
+  teknoParrotPrerequisites,
   lanAddress,
   prepareArcade,
   readArcadeState,
@@ -2223,7 +2228,7 @@ function registerIpc(): void {
     const onEvent = (ev: { message: string }) => send({ gameId, type: "prepare", message: ev.message });
     let plan;
     try {
-      plan = await prepareArcade(gameId, dir, title, { toolsDir: toolsDir(), executable, link, onEvent });
+      plan = await prepareArcade(gameId, dir, title, { toolsDir: toolsDir(), executable, link, onEvent, installTeknoParrot: () => setUpTeknoParrot(onEvent) });
     } catch (err) {
       if (!(err instanceof ArcadeSetupNeeded) || err.need !== "executable") throw err;
       // LootDen couldn't tell which program is the game: ask once, then it's remembered.
@@ -2250,11 +2255,38 @@ function registerIpc(): void {
     return { executable: `TeknoParrot: ${plan.profile}`, profile: plan.profile, bindings: plan.bindings?.name ?? null, linkFields: plan.linkFields, linkSteps: plan.linkSteps };
   }
 
+  /**
+   * Downloads TeknoParrot into the tools folder (or updates LootDen's copy), then installs any of
+   * Microsoft's runtimes it needs that this PC is missing. Returns TeknoParrot's folder.
+   */
+  async function setUpTeknoParrot(onEvent: (ev: { message: string; received?: number; total?: number }) => void) {
+    if (process.platform !== "win32") throw new Error("TeknoParrot runs on Windows only");
+    const key = "emu:teknoparrot";
+    if (running.has(key)) throw new Error("TeknoParrot is already being set up");
+    const controller = new AbortController();
+    running.set(key, controller);
+    let last = 0;
+    const emit = (ev: { message: string; received?: number; total?: number }) => {
+      const now = Date.now();
+      if (ev.total && now - last < 300) return;
+      last = now;
+      onEvent({ message: ev.total ? `${ev.message} (${Math.floor(((ev.received ?? 0) / ev.total) * 100)}%)` : ev.message });
+    };
+    try {
+      const done = await installTeknoParrot({ toolsDir: toolsDir(), sevenZip: await sevenZip(), signal: controller.signal, onEvent: emit });
+      // The runtimes need administrator rights: Windows asks once for all of them.
+      await installTeknoParrotPrerequisites({ toolsDir: toolsDir(), signal: controller.signal, onEvent: emit }).catch((err: Error) => emit({ message: `TeknoParrot is set up, but its runtimes weren't installed: ${err.message}` }));
+      return done.dir;
+    } finally {
+      running.delete(key);
+    }
+  }
+
   /** The TeknoParrot profile a game uses here: the player's pick, else the one LootDen recognises. */
   async function arcadeProfile(gameId: string) {
     const game = await findInstalled(gameId);
     const state = await readArcadeState(toolsDir());
-    const tpDir = await findTeknoParrot(state.tpDir);
+    const tpDir = await findTeknoParrot(state.tpDir, teknoParrotCandidates(process.env, toolsDir()));
     const profiles = tpDir ? await availableProfiles(tpDir) : [];
     const profile = state.games[gameId]?.profile ?? arcadeProfileFor(game.dir, game.title, tpDir ? profiles : undefined);
     return { game, state, tpDir, profiles, profile };
@@ -2264,11 +2296,16 @@ function registerIpc(): void {
   ipcMain.handle("gm:arcade", async (e, gameId?: string) => {
     fromServer(e);
     const state = await readArcadeState(toolsDir());
-    const tpDir = await findTeknoParrot(state.tpDir);
+    const tpDir = await findTeknoParrot(state.tpDir, teknoParrotCandidates(process.env, toolsDir()));
     const connected = await connectedInputs();
+    const windows = process.platform === "win32";
     const base = {
-      supported: process.platform === "win32",
+      supported: windows,
       tpDir,
+      /** LootDen's own TeknoParrot's version; null when it uses one the player installed (or none). */
+      tpManaged: await managedTeknoParrot(toolsDir(), tpDir),
+      tpBusy: running.has("emu:teknoparrot"),
+      prerequisites: windows ? await teknoParrotPrerequisites() : [],
       device: os.hostname(),
       address: lanAddress(),
       connected,
@@ -2292,6 +2329,20 @@ function registerIpc(): void {
       executable: installed.executable ?? null,
       bindings: sets.map(strip),
     };
+  });
+
+  // Downloads TeknoParrot (or updates LootDen's copy) and its runtimes; progress goes out as "emu:teknoparrot".
+  ipcMain.handle("gm:arcade:install", async (e) => {
+    fromServer(e);
+    const dir = await setUpTeknoParrot((ev) => send({ gameId: "emu:teknoparrot", type: "prepare", message: ev.message }));
+    return { dir, version: await managedTeknoParrot(toolsDir(), dir) };
+  });
+
+  // Installs whichever of TeknoParrot's Microsoft runtimes are missing (one Windows permission prompt).
+  ipcMain.handle("gm:arcade:installRuntimes", async (e) => {
+    fromServer(e);
+    if (process.platform !== "win32") throw new Error("TeknoParrot runs on Windows only");
+    return installTeknoParrotPrerequisites({ toolsDir: toolsDir(), onEvent: (ev) => send({ gameId: "emu:teknoparrot", type: "prepare", message: ev.message }) });
   });
 
   ipcMain.handle("gm:arcade:locate", async (e) => {
@@ -2330,7 +2381,7 @@ function registerIpc(): void {
   ipcMain.handle("gm:arcade:setControls", async (e, gameId: string) => {
     fromServer(e);
     const r = await arcadeProfile(String(gameId));
-    if (!r.tpDir) throw new Error("Show LootDen where TeknoParrot is first");
+    if (!r.tpDir) throw new Error("Set up TeknoParrot first");
     if (!r.profile) throw new Error("Pick the game's TeknoParrot profile first");
     const set = await setControlsInTeknoParrot(toolsDir(), r.profile);
     return { id: set.id, name: set.name };
@@ -2340,7 +2391,7 @@ function registerIpc(): void {
   ipcMain.handle("gm:arcade:capture", async (e, gameId: string, name?: string) => {
     fromServer(e);
     const r = await arcadeProfile(String(gameId));
-    if (!r.tpDir) throw new Error("Show LootDen where TeknoParrot is first");
+    if (!r.tpDir) throw new Error("Set up TeknoParrot first");
     if (!r.profile) throw new Error("Pick the game's TeknoParrot profile first");
     const set = await captureBindings(toolsDir(), r.tpDir, r.profile, typeof name === "string" ? name : undefined);
     return { id: set.id, name: set.name };
@@ -2381,8 +2432,8 @@ function registerIpc(): void {
 
   ipcMain.handle("gm:arcade:openTeknoParrot", async (e) => {
     fromServer(e);
-    const tpDir = await findTeknoParrot((await readArcadeState(toolsDir())).tpDir);
-    if (!tpDir) throw new Error("Show LootDen where TeknoParrot is first");
+    const tpDir = await findTeknoParrot((await readArcadeState(toolsDir())).tpDir, teknoParrotCandidates(process.env, toolsDir()));
+    if (!tpDir) throw new Error("Set up TeknoParrot first");
     void runTeknoParrot(path.join(tpDir, TEKNOPARROT_EXE), []).catch(() => {});
     return true;
   });

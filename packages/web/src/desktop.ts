@@ -52,9 +52,20 @@ export interface ArcadeBindingView {
 }
 
 /** TeknoParrot on this PC and, for one game, its profile and controller setups. */
+/** One of the Microsoft runtimes TeknoParrot needs, and whether this PC has it. */
+export interface TeknoParrotRuntime {
+  id: string;
+  name: string;
+  installed: boolean;
+}
+
 export interface ArcadeLocal {
   supported: boolean;
   tpDir: string | null;
+  /** LootDen's own TeknoParrot's version; null when the PC uses one the player installed. Missing in older apps. */
+  tpManaged?: string | null;
+  tpBusy?: boolean;
+  prerequisites?: TeknoParrotRuntime[];
   device: string;
   address: string | null;
   connected: ConnectedInputs;
@@ -414,6 +425,9 @@ export interface DesktopBridge {
   /** Arcade games through TeknoParrot (Windows): missing in apps older than arcade support. */
   arcade?(gameId?: string): Promise<ArcadeLocal>;
   arcadeLocate?(): Promise<string | null>;
+  /** Downloads TeknoParrot and its runtimes, or updates LootDen's copy (apps from 0.40). */
+  arcadeInstall?(): Promise<{ dir: string; version: string | null }>;
+  arcadeInstallRuntimes?(): Promise<TeknoParrotRuntime[]>;
   arcadeSetProfile?(gameId: string, profile: string | null): Promise<boolean>;
   arcadePin?(gameId: string, setId: string | null): Promise<boolean>;
   arcadeSetControls?(gameId: string): Promise<{ id: string; name: string }>;

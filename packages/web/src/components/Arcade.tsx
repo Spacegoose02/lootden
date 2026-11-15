@@ -6,16 +6,41 @@ import { bridgeError, desktop, type ArcadeBindingView, type ArcadeLocal } from "
 /** Whether a saved setup's devices are all plugged in now (the same rule the app uses to pick one). */
 const ready = (b: ArcadeBindingView, local: ArcadeLocal) => bindingSetReady({ ...b, buttons: {} } as ArcadeBindingSet, local.connected);
 
-/** Where TeknoParrot is on this PC, with a way to point LootDen at it. */
+/**
+ * Where TeknoParrot is on this PC. LootDen sets it up itself (from TeknoParrot's own update
+ * service, with Microsoft's runtimes it needs), or the player points it at their own copy.
+ */
 export function TeknoParrotStatus({ local, onChange }: { local: ArcadeLocal; onChange: () => void }) {
   const [error, setError] = useState("");
+  const [busy, setBusy] = useState<"" | "install" | "runtimes">(local.tpBusy ? "install" : "");
+  const [status, setStatus] = useState("");
+  useEffect(() => desktop?.onProgress((p) => p.gameId === "emu:teknoparrot" && p.type === "prepare" && setStatus(p.message)), []);
   if (!local.supported) return <p className="muted small">TeknoParrot runs on Windows only, so arcade games play on the Windows PCs.</p>;
+  const canInstall = Boolean(desktop?.arcadeInstall);
+  const missing = (local.prerequisites ?? []).filter((p) => !p.installed);
+  const run = (kind: "install" | "runtimes", fn: () => Promise<unknown>) => {
+    setBusy(kind);
+    setError("");
+    setStatus("");
+    fn().then(
+      () => {
+        setBusy("");
+        onChange();
+      },
+      (e) => {
+        setBusy("");
+        setError(bridgeError(e));
+      },
+    );
+  };
   return (
     <div>
       {local.tpDir ? (
         <p className="small">
-          TeknoParrot: <code>{local.tpDir}</code>
+          TeknoParrot{local.tpManaged ? ` ${local.tpManaged}, set up by LootDen` : ""}: <code>{local.tpDir}</code>
         </p>
+      ) : canInstall ? (
+        <p className="notice">TeknoParrot isn't on this PC yet. LootDen sets it up the first time an arcade game starts, or now with the button below.</p>
       ) : (
         <p className="notice">
           LootDen didn't find TeknoParrot on this PC. Install it with its own installer from{" "}
@@ -25,8 +50,25 @@ export function TeknoParrotStatus({ local, onChange }: { local: ArcadeLocal; onC
           , run it once so it fetches its parts, then show LootDen its folder.
         </p>
       )}
+      {local.tpDir && missing.length > 0 && (
+        <p className="notice">
+          TeknoParrot needs {missing.map((p) => p.name).join(", ")}, which {missing.length === 1 ? "isn't" : "aren't"} on this PC.
+          {desktop?.arcadeInstallRuntimes ? " LootDen installs them from Microsoft; Windows asks for permission once." : ""}
+        </p>
+      )}
       <div className="inline">
+        {canInstall && (!local.tpDir || local.tpManaged) && (
+          <button className={local.tpDir ? "" : "primary"} disabled={Boolean(busy)} onClick={() => run("install", () => desktop!.arcadeInstall!())}>
+            {busy === "install" ? "Setting up TeknoParrot…" : local.tpDir ? "Update TeknoParrot" : "Install TeknoParrot"}
+          </button>
+        )}
+        {local.tpDir && missing.length > 0 && desktop?.arcadeInstallRuntimes && (
+          <button disabled={Boolean(busy)} onClick={() => run("runtimes", () => desktop!.arcadeInstallRuntimes!())}>
+            {busy === "runtimes" ? "Installing runtimes…" : "Install missing runtimes"}
+          </button>
+        )}
         <button
+          disabled={Boolean(busy)}
           onClick={() =>
             desktop!.arcadeLocate!().then(
               () => onChange(),
@@ -34,10 +76,15 @@ export function TeknoParrotStatus({ local, onChange }: { local: ArcadeLocal; onC
             )
           }
         >
-          {local.tpDir ? "Use another TeknoParrot folder" : "Show LootDen where TeknoParrot is"}
+          {local.tpDir ? "Use another TeknoParrot folder" : "Use a TeknoParrot I already have"}
         </button>
-        {local.tpDir && <button onClick={() => void desktop!.arcadeOpenTeknoParrot!()}>Open TeknoParrot</button>}
+        {local.tpDir && (
+          <button disabled={Boolean(busy)} onClick={() => void desktop!.arcadeOpenTeknoParrot!()}>
+            Open TeknoParrot
+          </button>
+        )}
       </div>
+      {busy && status && <p className="muted small">{status}</p>}
       {error && <p className="error">{error}</p>}
     </div>
   );
