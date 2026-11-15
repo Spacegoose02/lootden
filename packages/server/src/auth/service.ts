@@ -119,11 +119,8 @@ export class AuthService {
     return user ? this.fromUser(user, "session") : null;
   }
 
-  /**
-   * Trusted-header login for forward-auth proxies such as TinyAuth. Off unless
-   * GM_AUTH_HEADER_USER is set, and only honoured from GM_TRUSTED_PROXIES.
-   */
-  async fromHeaders(ip: string, headers: Record<string, string | string[] | undefined>): Promise<Principal | null> {
+  /** The forward-auth identity a trusted proxy sent with this request, if header login is on. */
+  headerIdentity(ip: string, headers: Record<string, string | string[] | undefined>): { username: string; email: string | null; name: string; groups: string[] } | null {
     const h = this.config.headerAuth;
     if (!h.userHeader || h.trustedProxies.length === 0 || !ipAllowed(ip, h.trustedProxies)) return null;
     const first = (name: string) => {
@@ -132,20 +129,46 @@ export class AuthService {
     };
     const username = first(h.userHeader);
     if (!username) return null;
-    const email = first(h.emailHeader) || null;
-    const groups = first(h.groupsHeader).split(/[,\s]+/).filter(Boolean);
-    const isAdmin = !!h.adminGroup && groups.includes(h.adminGroup);
-    let user = this.users.byUsername(username) ?? (email ? this.users.byEmail(email) : undefined);
+    return { username, email: first(h.emailHeader) || null, name: first(h.nameHeader), groups: first(h.groupsHeader).split(/[,\s]+/).filter(Boolean) };
+  }
+
+  /**
+   * Trusted-header login for forward-auth proxies such as TinyAuth. Off unless
+   * GM_AUTH_HEADER_USER is set, and only honoured from GM_TRUSTED_PROXIES.
+   *
+   * The account linked to the TinyAuth username wins. Without a link, an account with the
+   * same username or email is used and linked, unless it's already linked to someone else.
+   */
+  async fromHeaders(ip: string, headers: Record<string, string | string[] | undefined>): Promise<Principal | null> {
+    const id = this.headerIdentity(ip, headers);
+    if (!id) return null;
+    const { username, email } = id;
+    const isAdmin = !!this.config.headerAuth.adminGroup && id.groups.includes(this.config.headerAuth.adminGroup);
+    const unlinked = (u: UserRecord | undefined) => (u && !u.ssoUsername ? u : undefined);
+    let user = this.users.bySsoUsername(username);
+    if (!user) {
+      const match = unlinked(this.users.byUsername(username)) ?? (email ? unlinked(this.users.byEmail(email)) : undefined);
+      if (match) user = await this.users.update(match.id, { ssoUsername: username });
+    }
     if (!user) {
       user = await this.users.create({
-        username: username.replace(/[^\w.@-]/g, "_"),
-        displayName: first(h.nameHeader) || username,
-        email,
+        username: this.freeUsername(username.replace(/[^\w.@-]/g, "_")),
+        displayName: id.name || username,
+        // The email may belong to an account linked to someone else; don't copy it onto a second one.
+        email: email && !this.users.byEmail(email) ? email : null,
         role: isAdmin || this.users.count() === 0 ? "admin" : "user",
+        ssoUsername: username,
       });
     } else if (isAdmin && user.role !== "admin") {
       user = await this.users.update(user.id, { role: "admin" });
     }
     return this.fromUser(user, "header");
+  }
+
+  /** "alex", or "alex-2" when a local account linked to someone else already has the name. */
+  private freeUsername(base: string): string {
+    const name = base.padEnd(2, "_").slice(0, 60);
+    if (!this.users.byUsername(name)) return name;
+    for (let n = 2; ; n++) if (!this.users.byUsername(`${name}-${n}`)) return `${name}-${n}`;
   }
 }

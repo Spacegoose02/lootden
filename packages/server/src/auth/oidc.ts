@@ -8,6 +8,8 @@ interface Pending {
   returnTo: string;
   /** Set when the desktop app started the login in the system browser. */
   appNonce?: string;
+  /** Set when a signed-in person is linking their account instead of signing in. */
+  linkUserId?: number;
   expires: number;
 }
 
@@ -71,13 +73,13 @@ export class OidcService {
     return this.configPromise;
   }
 
-  async start(returnTo = "/", appNonce?: string): Promise<string> {
+  async start(returnTo = "/", appNonce?: string, linkUserId?: number): Promise<string> {
     const cfg = await this.discover();
     const verifier = client.randomPKCECodeVerifier();
     const state = client.randomState();
     const now = Date.now();
     for (const [k, v] of this.pending) if (v.expires < now) this.pending.delete(k);
-    this.pending.set(state, { verifier, returnTo: safeReturn(returnTo), appNonce, expires: now + 10 * 60_000 });
+    this.pending.set(state, { verifier, returnTo: safeReturn(returnTo), appNonce, linkUserId, expires: now + 10 * 60_000 });
     return client
       .buildAuthorizationUrl(cfg, {
         redirect_uri: this.redirectUri,
@@ -89,8 +91,14 @@ export class OidcService {
       .toString();
   }
 
+  /** Where a pending account link returns to, so a failed link goes back there instead of the login page. */
+  isLinking(state: string): string | null {
+    const p = this.pending.get(state);
+    return p?.linkUserId !== undefined ? p.returnTo : null;
+  }
+
   /** Finishes the login and returns the local account (created on first login when allowed). */
-  async finish(callbackUrl: URL): Promise<{ user: UserRecord; returnTo: string; appNonce?: string }> {
+  async finish(callbackUrl: URL): Promise<{ user: UserRecord; returnTo: string; appNonce?: string; linked?: boolean }> {
     const cfg = await this.discover();
     const state = callbackUrl.searchParams.get("state") ?? "";
     const pending = this.pending.get(state);
@@ -105,6 +113,7 @@ export class OidcService {
         // Some providers have no userinfo endpoint; the ID token claims are enough.
       }
     }
+    if (pending.linkUserId !== undefined) return { user: await this.link(pending.linkUserId, claims), returnTo: pending.returnTo, linked: true };
     return { user: await this.provision(claims), returnTo: pending.returnTo, appNonce: pending.appNonce };
   }
 
@@ -128,6 +137,20 @@ export class OidcService {
     return { userId: h.userId, returnTo: h.returnTo };
   }
 
+  /** Links the provider account that just signed in to an existing local account. */
+  private async link(userId: number, claims: Record<string, unknown>): Promise<UserRecord> {
+    const sub = String(claims.sub ?? "");
+    if (!sub) throw new Error("The identity provider returned no subject");
+    const user = this.users.byId(userId);
+    if (!user) throw new Error("That account no longer exists");
+    const holder = this.users.byOidcSubject(sub);
+    if (holder && holder.id !== user.id) throw new Error(`That ${this.config.oidc.name || "single sign-on"} account is already linked to ${holder.username}`);
+    const name = preferredName(claims);
+    const nameHolder = name ? this.users.bySsoUsername(name) : undefined;
+    if (nameHolder && nameHolder.id !== user.id) throw new Error(`The username ${name} is already linked to ${nameHolder.username}`);
+    return this.users.update(user.id, { oidcSubject: sub, ssoUsername: name ?? user.ssoUsername });
+  }
+
   private async provision(claims: Record<string, unknown>): Promise<UserRecord> {
     const sub = String(claims.sub ?? "");
     if (!sub) throw new Error("The identity provider returned no subject");
@@ -137,6 +160,12 @@ export class OidcService {
     const isAdmin = !!this.config.oidc.adminGroup && groups.includes(this.config.oidc.adminGroup);
 
     let user = this.users.byOidcSubject(sub);
+    const name = preferredName(claims);
+    if (!user && name) {
+      // An account an admin (or its owner) linked to this TinyAuth username, not yet used with this provider.
+      const linked = this.users.bySsoUsername(name);
+      if (linked && !linked.oidcSubject) user = await this.users.update(linked.id, { oidcSubject: sub });
+    }
     if (!user) {
       // Link to an existing local account with the same email, unless the provider says it's unverified.
       // Never by username: anyone can pick "admin" as a nickname (or an admin@ address) at many providers.
@@ -155,12 +184,19 @@ export class OidcService {
         email,
         role: isAdmin || this.users.count() === 0 ? "admin" : "user",
         oidcSubject: sub,
+        ssoUsername: name && !this.users.bySsoUsername(name) ? name : null,
       });
     } else if (isAdmin && user.role !== "admin") {
       user = await this.users.update(user.id, { role: "admin" });
     }
     return user;
   }
+}
+
+/** The provider's username for the account (TinyAuth sends preferred_username). */
+function preferredName(claims: Record<string, unknown>): string | null {
+  const v = claims.preferred_username;
+  return typeof v === "string" && v.trim() ? v.trim() : null;
 }
 
 /** Only paths on this server; "//host" would leave it. */

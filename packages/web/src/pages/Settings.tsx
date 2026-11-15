@@ -241,6 +241,7 @@ function Profiles({ say }: { say: Msg }) {
   const [newUser, setNewUser] = useState({ username: "", password: "", kidMode: false, role: "user" });
   const [browserFor, setBrowserFor] = useState<number | null>(null);
   const [limitsFor, setLimitsFor] = useState<number | null>(null);
+  const [ssoFor, setSsoFor] = useState<number | null>(null);
   const load = () => void api.users().then(setUsers, () => {});
   useEffect(load, []);
   const { busy, act } = useAct(say, load);
@@ -270,6 +271,14 @@ function Profiles({ say }: { say: Msg }) {
               </button>
               <button
                 className="ghost small"
+                aria-expanded={ssoFor === u.id}
+                title={u.sso?.username ? `Linked to TinyAuth account ${u.sso.username}` : u.sso?.oidc ? "Linked to a TinyAuth sign-in" : "Link to a TinyAuth account"}
+                onClick={() => setSsoFor(ssoFor === u.id ? null : u.id)}
+              >
+                TinyAuth{u.sso?.username || u.sso?.oidc ? " ✓" : ""}
+              </button>
+              <button
+                className="ghost small"
                 title="For someone who lost their phone or passkey: clears their authenticator app and passkeys so their password works alone"
                 onClick={() => confirm(`Turn off two-step sign-in for ${u.username}?`) && act(() => api.resetMfa(u.id), "Two-step sign-in turned off")}
               >
@@ -281,6 +290,7 @@ function Profiles({ say }: { say: Msg }) {
             </span>
             {limitsFor === u.id && <PlayLimitsEditor user={u} say={say} />}
             {browserFor === u.id && <BrowserRules user={u} say={say} />}
+            {ssoFor === u.id && <SsoEditor user={u} busy={busy} act={act} />}
           </li>
         ))}
       </ul>
@@ -303,6 +313,33 @@ function Profiles({ say }: { say: Msg }) {
         <button disabled={busy}>Add profile</button>
       </form>
     </Card>
+  );
+}
+
+/** Admin: which TinyAuth account signs in as this person. */
+function SsoEditor({ user, busy, act }: { user: User; busy: boolean; act: (fn: () => Promise<unknown>, done: string) => Promise<void> }) {
+  const [name, setName] = useState(user.sso?.username ?? "");
+  const linked = !!user.sso?.username || !!user.sso?.oidc;
+  return (
+    <form
+      className="inline wrap"
+      onSubmit={(e) => {
+        e.preventDefault();
+        void act(() => api.updateUser(user.id, { ssoUsername: name.trim() || null }), name.trim() ? `${user.username} linked to TinyAuth account ${name.trim()}` : "Unlinked");
+      }}
+    >
+      <input placeholder="TinyAuth username" aria-label="TinyAuth username" value={name} onChange={(e) => setName(e.target.value)} />
+      <button disabled={busy}>Link</button>
+      {linked && (
+        <button type="button" className="ghost" disabled={busy} onClick={() => confirm(`Unlink TinyAuth from ${user.username}?`) && act(() => api.updateUser(user.id, { ssoUsername: null }), "Unlinked")}>
+          Unlink
+        </button>
+      )}
+      <small className="muted">
+        {user.sso?.oidc && !user.sso.username ? "Linked through single sign-on. " : ""}
+        When this TinyAuth user signs in, they get this profile instead of a new one.
+      </small>
+    </form>
   );
 }
 

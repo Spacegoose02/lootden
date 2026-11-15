@@ -48,6 +48,7 @@ import type {
   LibraryStats,
   SaveBackup,
   User,
+  SsoLinkStatus,
   UserGameState,
   WorkshopItem,
   WorkshopSettings,
@@ -607,6 +608,10 @@ export const api = {
   tokens: () => call<ApiTokenInfo[]>("GET", "/api/me/tokens"),
   createToken: (name: string) => call<{ id: number; token: string }>("POST", "/api/me/tokens", { name }),
   revokeToken: (id: number) => call("DELETE", `/api/me/tokens/${id}`),
+  /** This account's TinyAuth link, and the TinyAuth sign-in this browser came through. */
+  sso: () => call<SsoLinkStatus>("GET", "/api/me/sso"),
+  linkSsoHeader: () => call<SsoLinkStatus>("POST", "/api/me/sso/header"),
+  unlinkSso: () => call<SsoLinkStatus>("DELETE", "/api/me/sso"),
   myGames: () => call<UserGameState[]>("GET", "/api/me/games"),
 
   home: () => call<HomeData>("GET", "/api/home"),
@@ -674,7 +679,7 @@ export const api = {
   userBrowser: (id: number) => call<BrowserPolicy>("GET", `/api/users/${id}/browser`),
   saveUserBrowser: (id: number, p: Partial<BrowserPolicy>) => call<BrowserPolicy>("PUT", `/api/users/${id}/browser`, p),
   createUser: (u: { username: string; password?: string; displayName?: string; role?: string; kidMode?: boolean }) => call<User>("POST", "/api/users", u),
-  updateUser: (id: number, patch: Partial<{ displayName: string; role: string; kidMode: boolean; password: string | null }>) =>
+  updateUser: (id: number, patch: Partial<{ displayName: string; role: string; kidMode: boolean; password: string | null; ssoUsername: string | null }>) =>
     call<User>("PATCH", `/api/users/${id}`, patch),
   deleteUser: (id: number) => call("DELETE", `/api/users/${id}`),
 

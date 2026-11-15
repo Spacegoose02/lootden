@@ -201,6 +201,23 @@ export interface User {
   kidMode: boolean;
   hasPassword: boolean;
   createdAt: string;
+  /** TinyAuth link: the forward-auth username, and whether a TinyAuth/OIDC sign-in is linked (missing on older servers). */
+  sso?: { username: string | null; oidc: boolean };
+}
+
+/** GET /api/me/sso: this account's TinyAuth link, and the TinyAuth sign-in this browser is using, if any. */
+export interface SsoLinkStatus {
+  username: string | null;
+  oidc: boolean;
+  /** OIDC sign-in is set up, so "Link with <name>" can start one. */
+  oidcEnabled: boolean;
+  oidcName: string;
+  /** Forward-auth login is set up. */
+  headerEnabled: boolean;
+  /** The TinyAuth username the proxy sent with this request, when it's from a trusted proxy. */
+  seen: string | null;
+  /** Another account already holds the seen username. */
+  seenTaken: boolean;
 }
 
 export interface ApiTokenInfo {

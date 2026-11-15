@@ -43,6 +43,20 @@ is a commented copy for Docker Compose.
 | `LOOTDEN_TRUSTED_PROXIES` | Comma-separated addresses or ranges allowed to send those headers. Required for header sign-in |
 | `LOOTDEN_AUTH_HEADER_ADMIN_GROUP` | Group in the groups header that makes someone admin |
 
+**Linking existing profiles to TinyAuth.** So a TinyAuth sign-in opens a profile that already
+exists instead of making a new one:
+
+- Each person can link their own profile under **Profile, TinyAuth sign-in**: **Link with
+  TinyAuth** (OIDC) signs in at TinyAuth and comes back linked, and when LootDen is opened
+  through TinyAuth forward auth, **Link TinyAuth account _name_** links the account the proxy
+  reports. Unlinking needs a password on the profile, so nobody locks themselves out.
+- Admins can link or unlink anyone under **Settings, Profiles, TinyAuth**: type the TinyAuth
+  username. That person's next sign-in, by forward auth or OIDC (`preferred_username`), opens
+  that profile.
+
+One TinyAuth account links to one profile. A profile that isn't linked yet is still matched
+by the same username or email on its first forward-auth sign-in, and then linked.
+
 ### Metadata and library
 
 | Variable | Default | What it does |
