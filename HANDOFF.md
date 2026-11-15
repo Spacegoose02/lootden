@@ -70,6 +70,22 @@ Emulators and BIOS). Linked-race lobby: `server/src/routes/arcade.ts`, in memory
 - Play edits `TeknoParrot/UserProfiles/<Profile>.xml` as text (copied from `GameProfiles/`
   first), sets `<GamePath>`, swaps in the saved `<JoystickButtons>` entries by `InputMapping`,
   then runs `TeknoParrotUi.exe --profile=<Profile>.xml` from the TeknoParrot folder.
+- Setting TeknoParrot up (`client/src/teknoparrot.ts`, IPC `gm:arcade:install` and
+  `gm:arcade:installRuntimes`, also run by Play when no TeknoParrot is found): mirrors
+  TeknoParrot's own installer (github.com/ReaverTeknoGods/TPBootstrapper). It reads
+  `https://teknoparrot.com/api/updates/components` (`[{component, release:{tag_name,name},
+  assets:[{name, browser_download_url}]}]`; assets may also sit inside `release`), skips the
+  big stand-alone emulators (CrediarDolphin, Play, RPCS3, cxbxr, pcsx2x6), only accepts
+  github.com URLs, and unpacks each zip into the folder TPBootstrapper's `UpdaterComponent.cs`
+  gives it (UI in the root, `folderOverride`s, else the component name) under
+  `<tools>/teknoparrot`. Versions per part go in `lootden-parts.json` there, so updates fetch
+  only changed parts. Runtimes: VC++ via `HKLM\...\VisualStudio\14.0\VC\Runtimes\{x64,x86}`
+  `Installed`, .NET 4.8 via `NDP\v4\Full` `Release >= 528040`, DirectX June 2010 via
+  `d3dx9_43.dll` and `xinput1_3.dll` in System32 and SysWOW64; missing ones download from
+  Microsoft (aka.ms vc_redist, download.microsoft.com DirectX, go.microsoft.com .NET 4.8) and
+  run from one `.cmd` elevated with `Start-Process -Verb RunAs` (one UAC prompt).
+  Not verified on a real PC yet: the update service's exact answer shape over time, and that
+  TeknoParrot starts straight into a game on a fresh install without a first-run dialog.
 - Controller setups live in `<tools>/arcade.json` per PC. Devices are matched by USB VID/PID:
   bound DirectInput GUIDs map to VID/PID through
   `HKCU\System\CurrentControlSet\Control\MediaProperties\PrivateProperties\DirectInput\VID_x&PID_y\Calibration\n`

@@ -167,10 +167,15 @@ System folders: `ps1` (or `psx`), `ps2`, `ps3`, `xbox`, `psp`, `nes`, `snes`, `n
   Switch and Switch 2 repacks are Windows installers with an emulator inside: import those as
   PC games, which is what the downloads folder picks for them.
 - **Arcade (TeknoParrot):** PC-based arcade games such as Daytona Championship USA, one
-  folder of dumped files per game, played through TeknoParrot on Windows PCs. TeknoParrot is
-  your own install (get it from teknoparrot.com, run it once so it fetches its parts):
-  LootDen finds it in the usual places or you show it the folder under **Emulators and BIOS,
-  Arcade**. Name a game's folder after its TeknoParrot profile (`Daytona3.teknoparrot`, the
+  folder of dumped files per game, played through TeknoParrot on Windows PCs. On a PC without
+  TeknoParrot, LootDen sets it up itself the first time an arcade game starts (or with
+  **Install TeknoParrot** under **Emulators and BIOS, Arcade**): it downloads TeknoParrot's
+  parts from TeknoParrot's own update service and GitHub releases into the tools folder, the
+  way TeknoParrot's installer does, and installs the Microsoft runtimes it needs that are
+  missing (Visual C++ 2015-2022 32 and 64-bit, DirectX June 2010, .NET Framework 4.8) with one
+  Windows permission prompt. **Update TeknoParrot** downloads only the parts that changed. A
+  TeknoParrot you installed yourself still works: LootDen finds it in the usual places or you
+  show it the folder. Name a game's folder after its TeknoParrot profile (`Daytona3.teknoparrot`, the
   RetroBat convention) or leave its normal name: LootDen knows Daytona's profile and lets you
   pick any other on the game's page. **Play** fills in the game's TeknoParrot profile
   (`UserProfiles/<Profile>.xml`, made from `GameProfiles/` the first time) with the game's

@@ -30,6 +30,7 @@ export { missingSunshineApps, moonlightCommand, streamWithMoonlight, sunshineApp
 export { isRobloxPlayer, RobloxLogWatcher, setRobloxFullscreen, trackRoblox, withFullscreen } from "./roblox.js";
 export * from "./emulators.js";
 export * from "./arcade.js";
+export * from "./teknoparrot.js";
 export { downloadLicences, installLicences, LICENCE_FOLDER, RPCS3_EXDATA } from "./licences.js";
 export * from "./recomps.js";
 export * from "./recompmods.js";
