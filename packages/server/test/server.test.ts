@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
+import { writeFileSync } from "node:fs";
 import { rm } from "node:fs/promises";
+import path from "node:path";
 import { after, before, describe, it } from "node:test";
 import type { GameDetail, GameSummary, User } from "@lootden/shared";
 import { scanLibrary, titleFromSource } from "../src/catalog/scanner.js";
@@ -36,6 +38,25 @@ describe("scanner", () => {
   it("cleans titles", () => {
     assert.equal(titleFromSource("Some_Game.part1.rar", true), "Some Game");
     assert.equal(titleFromSource("Game.Name.v1.2", false), "Game Name v1 2");
+  });
+});
+
+describe("library rescans", () => {
+  it("scans again for a change made while a scan was running, instead of joining it", async () => {
+    const dir = await makeLibrary();
+    const { app, ctx } = await makeApp(dir);
+    let scans = 0;
+    ctx.library.onScanned(() => scans++);
+    const running = ctx.library.rescan();
+    // An import finishing mid-scan: the running scan may already have read the folder.
+    writeFileSync(path.join(dir, "Denizen.zip"), "zip");
+    const afterImport = ctx.library.rescan();
+    const another = ctx.library.rescan();
+    await Promise.all([running, afterImport, another]);
+    assert.equal(scans, 2, "the calls made during the scan share one follow-up scan");
+    assert.ok(ctx.library.list({}).some((g) => g.title === "Denizen"));
+    await app.close();
+    await rm(dir, { recursive: true, force: true });
   });
 });
 
