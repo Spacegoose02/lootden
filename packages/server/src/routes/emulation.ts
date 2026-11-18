@@ -35,10 +35,18 @@ export function emulationRoutes(app: FastifyInstance, ctx: AppContext, ps2Dir: s
     return { info, os, arch, qs: `os=${os}&arch=${arch}` };
   };
 
-  app.get<Want>("/api/recomps/:id/release", async (req) => {
+  // With ?prepare=1 the server also starts fetching the release from GitHub (if it hasn't got it) and says
+  // how far along it is, so the PC asks again until it's cached rather than waiting on one long request.
+  app.get<Want & { Querystring: { prepare?: string } }>("/api/recomps/:id/release", async (req) => {
     const { info, os, arch, qs } = want(req);
+    const download = `/api/recomps/${encodeURIComponent(info.id)}/file?${qs}`;
     try {
-      return { ...(await ctx.recompCache.release(info, os, arch)), download: `/api/recomps/${encodeURIComponent(info.id)}/file?${qs}` };
+      if (req.query.prepare === "1") {
+        const r = await ctx.recompCache.prepare(info, os, arch);
+        if (r.fetch?.error) throw new Error(r.fetch.error);
+        return { ...r, preparing: !r.cached, download };
+      }
+      return { ...(await ctx.recompCache.release(info, os, arch)), download };
     } catch (err) {
       throw new HttpProblem(502, (err as Error).message);
     }
