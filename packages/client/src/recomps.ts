@@ -379,30 +379,74 @@ export async function applyRecompConfig(manifest: RecompManifest, vars: Record<s
   }
 }
 
-/** Runs the recomp's setup step without a window, passing on its "progress 0.4 text" lines. */
-export function runPrepare(exe: string, args: string[], cwd: string, timeoutSec: number, env: Record<string, string>, onLine: (fraction: number | null, text: string) => void): Promise<void> {
+/** The setup step's whole output is kept here (beside the recomp's program), so a failure can be looked into. */
+export const RECOMP_SETUP_LOG = "lootden-setup.log";
+/** More than this is cut from the log; a setup step's output is a few KB. */
+const MAX_LOG_BYTES = 1024 * 1024;
+
+/**
+ * Runs the recomp's setup step without a window, passing on its "progress 0.4 text" lines. Everything it
+ * prints goes to `logFile` too, and a failure names its last line and where the log is.
+ */
+export function runPrepare(exe: string, args: string[], cwd: string, timeoutSec: number, env: Record<string, string>, onLine: (fraction: number | null, text: string) => void, logFile?: string): Promise<void> {
   return new Promise((resolve, reject) => {
+    const log: string[] = [`> ${[exe, ...args].map((a) => (/\s/.test(a) ? JSON.stringify(a) : a)).join(" ")}`, `  in ${cwd}`, ""];
+    let logged = 0;
+    const keep = (line: string) => {
+      if (logged > MAX_LOG_BYTES) return;
+      logged += line.length + 1;
+      log.push(logged > MAX_LOG_BYTES ? "(the rest was cut)" : line);
+    };
+    const save = async () => {
+      if (logFile) await writeFile(logFile, log.join("\n") + "\n").catch(() => {});
+    };
     const child = spawn(exe, args, { cwd, env: { ...process.env, ...env }, stdio: ["ignore", "pipe", "pipe"], windowsHide: true });
     const timer = setTimeout(() => child.kill(), timeoutSec * 1000);
     let rest = "";
+    let errRest = "";
     let lastErr = "";
+    let lastOut = "";
     child.stdout.on("data", (d: Buffer) => {
       const lines = (rest + d.toString()).split(/\r?\n/);
       rest = lines.pop() ?? "";
       for (const l of lines) {
+        keep(l);
+        if (l.trim()) lastOut = l.trim();
         const p = prepareProgress(l);
         if (p) onLine(p.fraction, p.text);
       }
     });
-    child.stderr.on("data", (d: Buffer) => (lastErr = d.toString().trim().split(/\r?\n/).at(-1) ?? lastErr));
+    child.stderr.on("data", (d: Buffer) => {
+      const lines = (errRest + d.toString()).split(/\r?\n/);
+      errRest = lines.pop() ?? "";
+      for (const l of lines) {
+        keep(`[err] ${l}`);
+        if (l.trim()) lastErr = l.trim();
+      }
+    });
     child.on("error", (e) => {
       clearTimeout(timer);
-      reject(e);
+      keep(`could not start: ${e.message}`);
+      void save().then(() => reject(e));
     });
     child.on("close", (code, signal) => {
       clearTimeout(timer);
-      if (code === 0) resolve();
-      else reject(new Error(signal ? `The setup step took longer than ${timeoutSec} seconds and was stopped` : `The setup step failed with exit code ${code}${lastErr ? `: ${lastErr}` : ""}`));
+      if (rest) {
+        keep(rest);
+        if (rest.trim()) lastOut = rest.trim();
+      }
+      if (errRest) {
+        keep(`[err] ${errRest}`);
+        if (errRest.trim()) lastErr = errRest.trim();
+      }
+      keep("");
+      keep(signal ? `stopped after ${timeoutSec} s (${signal})` : `exit code ${code}`);
+      void save().then(() => {
+        if (code === 0) return resolve();
+        const last = lastErr || lastOut;
+        const where = logFile ? ` Its full output is in ${logFile}` : "";
+        reject(new Error(signal ? `The setup step took longer than ${timeoutSec} seconds and was stopped.${where}` : `The setup step failed with exit code ${code}${last ? `: ${last.slice(0, 300)}` : " without saying why"}.${where}`));
+      });
     });
   });
 }
@@ -476,6 +520,7 @@ export async function planRecomp(gameDir: string, recompId: string, opts: Recomp
       emit({ message: prep.label });
       await runPrepare(program, prep.args.map((a) => fillRecompPath(a, vars)), path.dirname(program), prep.timeout, env, (fraction, text) =>
         emit({ message: `${prep.label}${text ? `: ${text}` : ""}${fraction !== null ? ` (${Math.round(fraction * 100)}%)` : ""}` }),
+        path.join(dataDir, RECOMP_SETUP_LOG),
       );
       const t = await readTools(opts.toolsDir);
       if (t.recomps[recompId]) t.recomps[recompId]!.prepared = signature;
