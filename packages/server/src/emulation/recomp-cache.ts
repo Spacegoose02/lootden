@@ -20,6 +20,13 @@ export interface CachedRelease {
   cached: boolean;
 }
 
+/** A release the server is still fetching from GitHub, or the reason it couldn't. */
+export interface RecompFetch {
+  received: number;
+  total: number;
+  error?: string;
+}
+
 interface Latest {
   version: string;
   fileName: string;
@@ -36,6 +43,8 @@ export class RecompCache {
   readonly dir: string;
   private readonly lists = new Map<string, { at: number; latest: Latest }>();
   private readonly fetching = new Map<string, Promise<string>>();
+  /** Progress of each download in flight, and the last failure, by target file. */
+  private readonly progress = new Map<string, RecompFetch>();
 
   constructor(
     dataDir: string,
@@ -82,13 +91,48 @@ export class RecompCache {
     const target = this.where(info, latest);
     const release = { version: latest.version, fileName: latest.fileName, sha256: latest.sha256, cached: true };
     if (await stat(target).then((s) => s.isFile(), () => false)) return { path: target, release };
-    // Two PCs asking at once share one download.
+    return { path: await this.start(info, latest, target), release };
+  }
+
+  /**
+   * Starts fetching the release onto the server without waiting for it, so a PC can ask again until it's
+   * there. A big release takes longer than a reverse proxy (Cloudflare, nginx) lets one request hang, so
+   * PCs that waited on the download itself got a 504 instead of the file.
+   */
+  async prepare(info: RecompInfo, os: RecompOs, arch: RecompArch): Promise<CachedRelease & { fetch?: RecompFetch }> {
+    const latest = await this.latest(info, os, arch);
+    const target = this.where(info, latest);
+    const release = { version: latest.version, fileName: latest.fileName, sha256: latest.sha256 };
+    if (await stat(target).then((s) => s.isFile(), () => false)) return { ...release, cached: true };
+    const failed = this.progress.get(target);
+    if (failed?.error && !this.fetching.has(target)) {
+      // Report the failure once; the next ask tries again.
+      this.progress.delete(target);
+      return { ...release, cached: false, fetch: failed };
+    }
+    this.start(info, latest, target).catch(() => {});
+    return { ...release, cached: false, fetch: { ...(this.progress.get(target) ?? { received: 0, total: 0 }) } };
+  }
+
+  /** Two PCs asking at once share one download. */
+  private start(info: RecompInfo, latest: Latest, target: string): Promise<string> {
     let job = this.fetching.get(target);
     if (!job) {
-      job = this.download(info, latest, target).finally(() => this.fetching.delete(target));
+      this.progress.set(target, { received: 0, total: 0 });
+      job = this.download(info, latest, target).then(
+        (done) => {
+          this.progress.delete(target);
+          return done;
+        },
+        (err: Error) => {
+          this.progress.set(target, { received: 0, total: 0, error: err.message });
+          throw err;
+        },
+      );
+      job.finally(() => this.fetching.delete(target)).catch(() => {});
       this.fetching.set(target, job);
     }
-    return { path: await job, release };
+    return job;
   }
 
   private async download(info: RecompInfo, latest: Latest, target: string): Promise<string> {
@@ -97,10 +141,13 @@ export class RecompCache {
     const res = await this.fetchImpl(latest.url, { headers: { "User-Agent": "LootDen" }, redirect: "follow" });
     if (!res.ok || !res.body) throw new Error(`Downloading ${latest.fileName} failed with ${res.status}`);
     const hash = createHash("sha256");
+    const meter = this.progress.get(target) ?? { received: 0, total: 0 };
+    meter.total = Number(res.headers.get("content-length") ?? 0) || 0;
     let size = 0;
     const body = Readable.fromWeb(res.body as import("node:stream/web").ReadableStream<Uint8Array>);
     body.on("data", (chunk: Buffer) => {
       size += chunk.length;
+      meter.received = size;
       hash.update(chunk);
       if (size > MAX_BYTES) body.destroy(new Error(`${latest.fileName} is bigger than a recomp should be`));
     });

@@ -189,6 +189,37 @@ describe("recomps through the server, for Xbox 360, with mods", { skip: process.
     assert.equal(githubDownloads, 1);
     assert.equal((await api.json<{ cached: boolean }>("/api/recomps/unleashedrecomp/release?os=linux&arch=x64")).cached, true);
 
+    // A big release the server is still fetching: each ask answers at once with how far along it is, so no
+    // request sits waiting long enough for a reverse proxy to give up on it (a 504).
+    let letGo!: () => void;
+    const held = new Promise<void>((r) => (letGo = r));
+    serverGitHub = (async (url: string | URL | Request) => {
+      const u = String(url);
+      if (u.includes("api.github.com"))
+        return Response.json([{ tag_name: "v2", prerelease: false, draft: false, assets: [{ name: "Slow-Linux-x64.zip", browser_download_url: "https://example.test/slow.zip", digest }] }]);
+      const body = new ReadableStream<Uint8Array>({
+        async start(c) {
+          c.enqueue(new Uint8Array(bytes.subarray(0, 10)));
+          await held;
+          c.enqueue(new Uint8Array(bytes.subarray(10)));
+          c.close();
+        },
+      });
+      return new Response(body, { headers: { "Content-Length": String(bytes.length) } });
+    }) as typeof fetch;
+    await api.json("/api/recomps", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ repo: "someone/SlowRecomp", platform: "x360", titles: ["Sonic Unleashed"] }) });
+    const slowAdded = (await api.recomps()).added;
+    const first = await api.json<{ cached: boolean; preparing: boolean }>("/api/recomps/slowrecomp/release?os=linux&arch=x64&prepare=1");
+    assert.deepEqual([first.cached, first.preparing], [false, true]);
+    const slowEvents: Array<{ message: string; received?: number; total?: number }> = [];
+    const installing = installRecomp("slowrecomp", { api, added: slowAdded, toolsDir: path.join(work, "tools-slow"), sevenZip, platform: "linux", arch: "x64", fetchImpl: noGitHubHere, serverPollMs: 20, onEvent: (e) => slowEvents.push(e) });
+    await new Promise((r) => setTimeout(r, 150));
+    const waiting = slowEvents.filter((e) => e.message.includes("server is downloading"));
+    assert.ok(waiting.length > 1, JSON.stringify(slowEvents));
+    assert.deepEqual([waiting.at(-1)!.received, waiting.at(-1)!.total], [10, bytes.length]);
+    letGo();
+    assert.equal((await installing).version, "v2");
+
     // A file that doesn't match GitHub's checksum never reaches a PC.
     serverGitHub = (async (url: string | URL | Request) =>
       String(url).includes("api.github.com")

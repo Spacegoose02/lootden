@@ -51,7 +51,17 @@ export type RecompOptions = ToolsOptions & {
   added?: RecompInfo[];
   /** The LootDen server: recomps download through it (fetched from GitHub once for the whole house), else straight from GitHub. */
   api?: GameServerClient;
+  /** How often to ask the server whether it has finished fetching a release, and how long to wait in all (tests shorten these). */
+  serverPollMs?: number;
+  serverWaitMs?: number;
 };
+
+const sleep = (ms: number, signal?: AbortSignal) =>
+  new Promise<void>((resolve, reject) => {
+    if (signal?.aborted) return reject(signal.reason ?? new Error("Cancelled"));
+    const t = setTimeout(resolve, ms);
+    signal?.addEventListener("abort", () => (clearTimeout(t), reject(signal.reason ?? new Error("Cancelled"))), { once: true });
+  });
 
 /** A recomp by id: LootDen's own, one the server lists, or one set up here before (so it plays offline). */
 async function resolveInfo(id: string, opts: { toolsDir: string; added?: RecompInfo[] }): Promise<RecompInfo> {
@@ -146,11 +156,25 @@ export async function installRecomp(id: string, opts: RecompOptions & { arch?: R
   if (opts.api) {
     const api = opts.api;
     try {
-      const r = await api.json<{ version: string; fileName: string; sha256: string | null; cached: boolean; download: string }>(`/api/recomps/${encodeURIComponent(id)}/release?os=${platform}&arch=${arch}`);
+      type ServerRelease = { version: string; fileName: string; sha256: string | null; cached: boolean; download: string; preparing?: boolean; fetch?: { received: number; total: number } };
+      const ask = () => api.json<ServerRelease>(`/api/recomps/${encodeURIComponent(id)}/release?os=${platform}&arch=${arch}&prepare=1`);
+      let r = await ask();
+      const fresh = !r.cached;
+      // The server fetches a new release from GitHub on its own while this PC asks how it's going. Waiting on one
+      // long request instead timed out behind reverse proxies (a 504) for big releases.
+      const giveUp = Date.now() + (opts.serverWaitMs ?? 30 * 60 * 1000);
+      while (r.preparing && !r.cached) {
+        if (Date.now() > giveUp) throw new Error("The server is taking too long to fetch it");
+        const f = r.fetch;
+        emit({ message: `Your LootDen server is downloading ${info.name} ${r.version} from GitHub`, ...(f && f.total ? { received: f.received, total: f.total } : {}) });
+        await sleep(opts.serverPollMs ?? 3000, opts.signal);
+        r = await ask();
+      }
       release = { version: r.version, fileName: r.fileName, sha256: r.sha256, url: api.urlFor(r.download) };
       getter = ((url: string | URL | Request, init: RequestInit = {}) => fetch(url, { ...init, headers: api.headers((init.headers ?? {}) as Record<string, string>) })) as Fetch;
-      from = r.cached ? "your LootDen server" : "GitHub, through your LootDen server";
-    } catch {
+      from = r.cached && !fresh ? "your LootDen server" : "GitHub, through your LootDen server";
+    } catch (err) {
+      if (opts.signal?.aborted) throw err;
       // An older server, or it can't reach GitHub: go to GitHub from here.
     }
   }
