@@ -107,7 +107,7 @@ import { ShelfStore } from "./users/shelves.js";
 import { HelperService, type HelperAi } from "./helper/service.js";
 import { helperRoutes } from "./routes/helper.js";
 
-export const VERSION = "0.41.0";
+export const VERSION = "0.41.1";
 
 /** Routes reachable without signing in. */
 // The Steam sign-in callback finds its person by a one-time state value (it may land in a browser nobody is signed in to).
