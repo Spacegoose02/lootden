@@ -81,6 +81,11 @@ class Prefs(private val context: Context) {
         get() = str("theme")
         set(v) = putStr("theme", v)
 
+    /** Play sessions the server couldn't be told about (offline), as JSON objects, sent when it's back. */
+    var pendingPlays: String?
+        get() = str("pendingPlays")
+        set(v) = putStr("pendingPlays", v)
+
     /** The name this device shows under on the PCs page and Now Playing. */
     val deviceName: String
         get() = Settings.Global.getString(context.contentResolver, Settings.Global.DEVICE_NAME)?.takeIf { it.isNotBlank() }

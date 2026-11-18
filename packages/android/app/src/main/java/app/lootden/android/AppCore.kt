@@ -44,6 +44,7 @@ class AppCore private constructor(val context: Context) {
     val updater = Updater(this)
     val apps = AndroidApps(this)
     val bios = Bios(this)
+    val covers = Covers(context, server)
     val io = Executors.newCachedThreadPool()
     private val main = Handler(Looper.getMainLooper())
 
@@ -51,6 +52,8 @@ class AppCore private constructor(val context: Context) {
     @Volatile var sink: ((String) -> Unit)? = null
     @Volatile var activity: MainActivity? = null
     @Volatile var session: Session? = null
+    /** The offline library is showing: skip the calls to the server that would only time out. */
+    @Volatile var offline = false
     private var beating = false
 
     fun ui(block: () -> Unit) {
@@ -113,7 +116,7 @@ class AppCore private constructor(val context: Context) {
     private fun JSONArray.str(i: Int): String? = if (isNull(i)) null else optString(i)
 
     @SuppressLint("QueryPermissionsNeeded")
-    private fun dispatch(method: String, a: JSONArray): Any? = when (method) {
+    internal fun dispatch(method: String, a: JSONArray): Any? = when (method) {
         "info" -> JSONObject()
             .put("platform", "android")
             .put("version", BuildConfig.VERSION_NAME)
@@ -124,7 +127,13 @@ class AppCore private constructor(val context: Context) {
         "drives" -> JSONArray(drives())
         "chooseFolder" -> activity?.pickFolder()
         "setInstallDir" -> a.str(0)!!.also { prefs.installDir = it }
-        "installed" -> { apps.forgetRemoved(); library.forPage() }
+        "installed" -> {
+            apps.forgetRemoved()
+            // Online: keep the covers for the offline library.
+            val ids = library.all().map { it.optString("gameId") }
+            io.execute { covers.refresh(ids) }
+            library.forPage()
+        }
         "install" -> installer.install(a.str(0)!!, a.str(1))
         "cancel" -> installer.cancel(a.str(0)!!).let { null }
         "play" -> play(a.str(0)!!)
@@ -150,6 +159,7 @@ class AppCore private constructor(val context: Context) {
         "uninstallApp" -> { apps.uninstallPackage(a.str(0)!!); null }
         "storeGames" -> apps.storeGames()
         "launchStore" -> { launchStore(a.str(0)!!); null }
+        "goOffline" -> goOffline()
         "offlineTheme" -> { prefs.theme = a.optJSONObject(0)?.let { t -> JSONObject().also { o -> t.keys().forEach { k -> t.optString(k).takeIf { v -> v.length < 64 }?.let { v -> o.put(k, v) } } }.toString() }; null }
         else -> throw IllegalArgumentException("The Android app doesn't do $method yet")
     }
@@ -174,13 +184,13 @@ class AppCore private constructor(val context: Context) {
         val rom = File(g.getString("rom"))
         val emu = emulators.choiceFor(platform)
         val retro = emu?.id == "retroarch"
-        if (retro) runCatching { saves.restore(gameId, rom) }
+        if (retro && !offline) runCatching { saves.restore(gameId, rom) }
         val before = if (retro) saves.snapshot(rom) else emptyMap()
         val android = platform == AndroidApps.PLATFORM
         if (android) apps.launch(g.optString("package"))
         // PS3: licences an admin added since the install. Offline, the ones already here still go.
         val dir = g.optString("dir").takeIf { it.isNotEmpty() }?.let(::File)
-        if (platform == "ps3" && dir != null) runCatching { Ps3Licences.pull(server, gameId, dir) }
+        if (platform == "ps3" && dir != null && !offline) runCatching { Ps3Licences.pull(server, gameId, dir) }
         val started = if (android) null else emulators.launch(platform, rom, dir)
         session = Session(gameId, g.optString("title", gameId), platform, rom, started?.id, System.currentTimeMillis(), before)
         emit(JSONObject().put("gameId", gameId).put("type", "playing"))
@@ -196,9 +206,11 @@ class AppCore private constructor(val context: Context) {
         emit(JSONObject().put("gameId", s.gameId).put("type", "stopped").put("seconds", seconds))
         // A start that bounced straight back (no emulator, a missing core) isn't play time.
         if (seconds < 5) return
+        val endedAt = Iso.now()
         io.execute {
-            server.activity(s.gameId, prefs.deviceName, "played", seconds)
-            if (s.emulatorId == "retroarch") {
+            if (!server.activity(s.gameId, prefs.deviceName, "played", seconds, endedAt)) keepPlay(s.gameId, seconds, endedAt)
+            // Offline: no save backup this time; the next session online backs the folder up.
+            if (s.emulatorId == "retroarch" && !offline) {
                 runCatching { saves.backup(s.gameId, s.rom, s.savesBefore) }
                     .onSuccess { b -> if (b != null) emit(JSONObject().put("gameId", s.gameId).put("type", "saves").put("backupId", b.optLong("id")).put("size", b.optLong("size"))) }
                     .onFailure { emit(JSONObject().put("gameId", s.gameId).put("type", "saves").put("error", it.message ?: "Couldn't back up the save")) }
@@ -215,8 +227,61 @@ class AppCore private constructor(val context: Context) {
         // An Android game: Android asks the player to confirm removing the app itself.
         g.optString("package").takeIf { it.isNotEmpty() && g.optString("platform") == AndroidApps.PLATFORM && apps.isInstalled(it) }?.let { apps.uninstallPackage(it) }
         library.remove(gameId)
+        covers.forget(gameId)
         server.activity(gameId, prefs.deviceName, "uninstalled")
         return true
+    }
+
+    // ---- Offline ------------------------------------------------------------------------------
+
+    /** The web UI's requests stopped getting through: show the offline library if the server really is gone. */
+    private fun goOffline(): Boolean {
+        if (offline || server.up()) return false
+        ui { activity?.showOffline() }
+        return true
+    }
+
+    @Synchronized
+    private fun pending(): JSONArray = runCatching { JSONArray(prefs.pendingPlays ?: "[]") }.getOrDefault(JSONArray())
+
+    /** Play time the server couldn't take, kept until it's back (the last 200 sessions at most). */
+    @Synchronized
+    fun keepPlay(gameId: String, seconds: Long, endedAt: String) {
+        val list = pending()
+        list.put(JSONObject().put("gameId", gameId).put("seconds", seconds).put("endedAt", endedAt))
+        val start = maxOf(0, list.length() - 200)
+        prefs.pendingPlays = JSONArray((start until list.length()).map { list.get(it) }).toString()
+    }
+
+    fun pendingPlays(): Int = pending().length()
+
+    /** Back online: sends the play time recorded while offline, keeping whatever still doesn't go through. */
+    @Synchronized
+    fun sendPendingPlays() {
+        val list = pending()
+        if (list.length() == 0) return
+        val left = JSONArray()
+        for (i in 0 until list.length()) {
+            val p = list.getJSONObject(i)
+            if (!server.activity(p.optString("gameId"), prefs.deviceName, "played", p.optLong("seconds"), p.optString("endedAt"))) left.put(p)
+        }
+        prefs.pendingPlays = if (left.length() == 0) null else left.toString()
+    }
+
+    /** What the offline page lists: the games installed here (with their kept covers) and the Android games. */
+    fun offlineLibrary(): JSONObject {
+        val games = JSONArray(library.all().map { g ->
+            JSONObject(g.toString()).apply {
+                remove("rom")
+                covers.dataUrl(g.optString("gameId"))?.let { put("cover", it) }
+            }
+        })
+        return JSONObject()
+            .put("games", games)
+            .put("stores", runCatching { apps.storeGames() }.getOrDefault(JSONArray()))
+            .put("theme", prefs.theme?.let { runCatching { JSONObject(it) }.getOrNull() } ?: JSONObject.NULL)
+            .put("server", prefs.serverUrl)
+            .put("pendingPlays", pendingPlays())
     }
 
     private fun streamGame(): JSONObject {

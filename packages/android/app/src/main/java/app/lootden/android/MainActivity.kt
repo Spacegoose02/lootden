@@ -20,6 +20,7 @@ import android.webkit.ValueCallback
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
+import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -52,6 +53,10 @@ class MainActivity : Activity() {
     private var fileCallback: ValueCallback<Array<Uri>>? = null
     private var folderLatch: CountDownLatch? = null
     @Volatile private var folderResult: String? = null
+    /** Bumped by each start, so an older server check that answers late doesn't open its page. */
+    private var starting = 0
+    /** Set when the page shown next replaces the one before it, so Back doesn't return to it. */
+    private var freshHistory = false
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -79,13 +84,17 @@ class MainActivity : Activity() {
         CookieManager.getInstance().setAcceptCookie(true)
         CookieManager.getInstance().setAcceptThirdPartyCookies(web, true)
         web.addJavascriptInterface(SetupBridge(), "LootDenSetup")
+        web.addJavascriptInterface(OfflineBridge(), "LootDenOfflineNative")
         web.webViewClient = Client()
         web.webChromeClient = Chrome()
         web.setDownloadListener { url, userAgent, contentDisposition, mimeType, _ -> download(url, userAgent, contentDisposition, mimeType) }
         setContentView(web)
         immersive()
 
-        core.sink = { text -> if (listening) proxy?.postMessage(text) }
+        core.sink = { text ->
+            if (core.offline) web.evaluateJavascript("window.__lootdenOffline && window.__lootdenOffline.event($text)", null)
+            else if (listening) proxy?.postMessage(text)
+        }
         core.startHeartbeat()
         start(intent?.data)
     }
@@ -129,15 +138,47 @@ class MainActivity : Activity() {
     private val origin: String
         get() = core.prefs.serverUrl.let { runCatching { Uri.parse(it).let { u -> "${u.scheme}://${u.authority}" } }.getOrDefault("") }
 
-    /** Opens the server (or the connect page), and a lootden://install/<id> link's game. */
-    private fun start(link: Uri?) {
+    /**
+     * Opens the server (or the connect page), and a lootden://install/<id> link's game. The server
+     * is asked first: away from it, the offline library opens instead of the web app, whose page
+     * the WebView (or its service worker) may still have cached and would show with nothing behind it.
+     */
+    fun start(link: Uri?) {
+        val run = ++starting
         if (core.prefs.serverUrl.isEmpty()) {
+            core.offline = false
             web.loadUrl("file:///android_asset/connect.html")
             return
         }
-        bridgeFor(origin)
-        val game = link?.takeIf { it.scheme == "lootden" && it.host == "install" }?.lastPathSegment
-        web.loadUrl(if (game != null) "$origin/games/${Uri.encode(game)}?install=1" else "$origin/")
+        core.io.execute {
+            val up = core.server.up()
+            if (up) core.io.execute { core.sendPendingPlays() }
+            core.ui {
+                if (run != starting || isDestroyed) return@ui
+                if (!up) return@ui showOffline()
+                val wasOffline = core.offline
+                core.offline = false
+                freshHistory = wasOffline
+                bridgeFor(origin)
+                val game = link?.takeIf { it.scheme == "lootden" && it.host == "install" }?.lastPathSegment
+                web.loadUrl(if (game != null) "$origin/games/${Uri.encode(game)}?install=1" else "$origin/")
+            }
+        }
+    }
+
+    /** The games on this handheld, playable while the server can't be reached. */
+    fun showOffline() {
+        starting++
+        if (core.offline && currentUrl.startsWith(OFFLINE_PAGE)) return
+        core.offline = true
+        freshHistory = true
+        // The desktop app's own page (copied in at build time), with window.lootdenOffline first in its head.
+        val shim = assets.open("offline-android.js").bufferedReader().use { it.readText() }
+        val page = assets.open("offline.html").bufferedReader().use { it.readText() }
+            .replace("../build/icon.png", "icon.png")
+            .replace("this PC", "this handheld")
+            .replaceFirst("<head>", "<head><script>$shim</script>")
+        web.loadDataWithBaseURL(OFFLINE_PAGE, page, "text/html", "utf-8", OFFLINE_PAGE)
     }
 
     private var proxy: androidx.webkit.JavaScriptReplyProxy? = null
@@ -173,6 +214,8 @@ class MainActivity : Activity() {
     }
 
     fun changeServer() {
+        starting++
+        core.offline = false
         core.prefs.serverUrl = ""
         web.loadUrl("file:///android_asset/connect.html")
     }
@@ -207,6 +250,36 @@ class MainActivity : Activity() {
         }
     }
 
+    /** window.lootdenOffline on the offline page only; nothing on the server's pages can call it. */
+    inner class OfflineBridge {
+        @JavascriptInterface
+        fun call(id: Int, method: String, argsJson: String) {
+            val args = runCatching { JSONArray(argsJson) }.getOrDefault(JSONArray())
+            core.ui {
+                if (!core.offline || currentUrl.startsWith("http") || isDestroyed) return@ui
+                core.io.execute {
+                    val (ok, value) = try {
+                        true to when (method) {
+                            "library" -> core.offlineLibrary()
+                            "play" -> core.dispatch("play", args)
+                            "launchStore" -> core.dispatch("launchStore", args)
+                            "openFolder" -> core.dispatch("openFolder", args)
+                            "changeServer" -> { core.ui { changeServer() }; null }
+                            "retry" -> core.server.up().also { up -> if (up) core.ui { if (core.offline) start(null) } }
+                            else -> throw IllegalArgumentException("The offline page doesn't do $method")
+                        }
+                    } catch (err: Throwable) {
+                        false to (err.message ?: err.toString())
+                    }
+                    val v = if (ok) (value ?: JSONObject.NULL).let { if (it is String) JSONObject.quote(it) else it.toString() } else JSONObject.quote(value?.toString() ?: "")
+                    core.ui {
+                        if (core.offline && !isDestroyed) web.evaluateJavascript("window.__lootdenOffline && window.__lootdenOffline.reply($id, $ok, $v)", null)
+                    }
+                }
+            }
+        }
+    }
+
     private inner class Client : WebViewClient() {
         override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
             val url = request.url
@@ -232,10 +305,23 @@ class MainActivity : Activity() {
             }
         }
 
+        override fun onPageFinished(view: WebView, url: String) {
+            if (freshHistory) {
+                freshHistory = false
+                view.clearHistory()
+            }
+        }
+
+        /** The server stopped answering mid-way: the offline library, rather than Android's error page. */
         override fun onReceivedError(view: WebView, request: WebResourceRequest, error: WebResourceError) {
             if (!request.isForMainFrame || origin.isEmpty() || !request.url.toString().startsWith(origin)) return
-            val q = "error=${Uri.encode("${error.description}. Check the handheld is on the same network as the server.")}&server=${Uri.encode(origin)}"
-            view.loadUrl("file:///android_asset/connect.html?$q")
+            showOffline()
+        }
+
+        /** A reverse proxy answering for a server that's down (502, 503, 504): offline too, once the server's checked. */
+        override fun onReceivedHttpError(view: WebView, request: WebResourceRequest, response: WebResourceResponse) {
+            if (!request.isForMainFrame || response.statusCode !in 502..504 || origin.isEmpty() || !request.url.toString().startsWith(origin)) return
+            core.io.execute { if (!core.server.up()) core.ui { showOffline() } }
         }
     }
 
@@ -313,7 +399,7 @@ class MainActivity : Activity() {
 
     @Deprecated("Back handling without androidx.activity")
     override fun onBackPressed() {
-        if (web.canGoBack()) web.goBack() else moveTaskToBack(true)
+        if (!core.offline && web.canGoBack()) web.goBack() else moveTaskToBack(true)
     }
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
@@ -325,6 +411,7 @@ class MainActivity : Activity() {
     companion object {
         private const val PICK_FILE = 1
         private const val PICK_FOLDER = 2
+        private const val OFFLINE_PAGE = "file:///android_asset/offline.html"
 
         /** content://…/tree/primary:ROMs → /storage/emulated/0/ROMs; 1234-ABCD:Games → /storage/1234-ABCD/Games. */
         fun treePath(tree: Uri): String? {
