@@ -20,7 +20,7 @@ val keystoreProps = Properties().apply {
 fun signingValue(env: String, prop: String): String? = System.getenv(env)?.takeIf { it.isNotBlank() } ?: keystoreProps.getProperty(prop)
 val storePath = signingValue("LOOTDEN_ANDROID_KEYSTORE", "storeFile")
 
-// The built-in browser's toolbar, start page and blocked page are the desktop app's own, copied in.
+// The built-in browser's toolbar, start page and blocked page, and the offline library, are the desktop app's own, copied in.
 abstract class DesktopPages : DefaultTask() {
     @get:InputFiles
     abstract val pages: ConfigurableFileCollection
@@ -38,7 +38,12 @@ abstract class DesktopPages : DefaultTask() {
 }
 
 val desktopPages = tasks.register<DesktopPages>("desktopPages") {
-    pages.from(rootDir.resolve("../desktop/setup/browser.html"), rootDir.resolve("../desktop/setup/blocked.html"))
+    pages.from(
+        rootDir.resolve("../desktop/setup/browser.html"),
+        rootDir.resolve("../desktop/setup/blocked.html"),
+        rootDir.resolve("../desktop/setup/offline.html"),
+        rootDir.resolve("../desktop/build/icon.png"),
+    )
 }
 
 androidComponents {

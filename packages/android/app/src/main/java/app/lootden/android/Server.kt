@@ -66,13 +66,31 @@ class Server(private val prefs: Prefs) {
         return JSONObject(c.inputStream.bufferedReader().use { it.readText() }).also { c.disconnect() }
     }
 
-    /** Install, uninstall and play time, for the family board and stats. Never throws. */
-    fun activity(gameId: String, device: String, event: String, seconds: Long? = null) {
+    /** Install, uninstall and play time, for the family board and stats. Never throws; false when the server didn't take it. */
+    fun activity(gameId: String, device: String, event: String, seconds: Long? = null, endedAt: String? = null): Boolean =
         runCatching {
             val body = JSONObject().put("gameId", gameId).put("device", device).put("event", event)
-            if (seconds != null) body.put("seconds", seconds).put("endedAt", Iso.now())
+            if (seconds != null) body.put("seconds", seconds).put("endedAt", endedAt ?: Iso.now())
             text("/api/me/activity", "POST", body)
-        }
+        }.isSuccess
+
+    /**
+     * Whether the server answers like a LootDen server, within a few seconds. A reverse proxy's
+     * error page, or a cached copy of the web app with nothing behind it, counts as down.
+     */
+    fun up(): Boolean {
+        if (base.isEmpty()) return false
+        return runCatching {
+            val c = URL("$base/api/health").openConnection() as HttpURLConnection
+            c.connectTimeout = 5_000
+            c.readTimeout = 5_000
+            c.useCaches = false
+            try {
+                c.responseCode == 200 && JSONObject(c.inputStream.bufferedReader().use { it.readText() }).has("version")
+            } finally {
+                c.disconnect()
+            }
+        }.getOrDefault(false)
     }
 
     companion object {

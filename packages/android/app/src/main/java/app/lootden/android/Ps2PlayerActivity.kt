@@ -106,7 +106,8 @@ class Ps2PlayerActivity : Activity() {
             val seconds = (SystemClock.elapsedRealtime() - startedAt) / 1000
             if (seconds >= 5) {
                 val id = gameId
-                core.io.execute { core.server.activity(id, core.prefs.deviceName, "played", seconds) }
+                val endedAt = Iso.now()
+                core.io.execute { if (!core.server.activity(id, core.prefs.deviceName, "played", seconds, endedAt)) core.keepPlay(id, seconds, endedAt) }
             }
             web.destroy()
         }

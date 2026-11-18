@@ -604,6 +604,26 @@ and `client/test/family.test.ts`.
   the page shows the selected game big with its cover blurred behind, an Offline badge, a
   clock and controller hints in handheld mode.
 
+## Offline mode on Android
+
+The Android app had no offline mode: away from the server, the WebView (or the web app's
+service worker) still opened the cached page shell, whose API calls all failed, so the app
+was a black screen.
+
+- `MainActivity.start` asks `/api/health` (`Server.up`, 5 second timeout) before loading the
+  server. When it doesn't answer, `showOffline` loads the desktop app's `offline.html`
+  (copied in at build time with `desktop/build/icon.png`, like the browser pages) with
+  `assets/offline-android.js` first in its head, which gives it `window.lootdenOffline`
+  through `LootDenOfflineNative` (only while the offline page is showing).
+- A main-frame load error, a 502/503/504 from a proxy with the server down, and the web
+  UI's `goOffline` bridge call switch to the offline page too. Try again and the 30 second
+  auto-retry open the server once it answers; Back on the offline page leaves the app.
+- Covers are kept in `files/covers` when the Installed list loads online (weekly) and sent
+  to the page as data URLs. Android games from `storeGames` are listed too.
+- Play time the server couldn't take is kept in prefs (`pendingPlays`) and sent the next
+  time the server answers. Save restores, save backups and PS3 licence pulls are skipped
+  offline.
+
 ## Offline mode (0.13.2)
 
 Offline mode for the desktop app. Before, a PC away from the server (a handheld out of the
