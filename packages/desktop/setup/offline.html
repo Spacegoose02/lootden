@@ -35,7 +35,7 @@
       button.ghost { background: color-mix(in srgb, var(--panel) 80%, transparent); color: var(--text); font-weight: 600; border: 1px solid var(--border); }
       button:disabled { opacity: 0.6; cursor: default; }
       :focus-visible { outline: 3px solid var(--accent2); outline-offset: 3px; }
-      .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 1rem; }
+      .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(var(--card, 160px), 1fr)); gap: 1rem; }
       .card { background: color-mix(in srgb, var(--panel) 75%, transparent); border: 1px solid var(--border); border-radius: 14px; overflow: hidden; display: flex; flex-direction: column; transition: transform 0.15s, box-shadow 0.15s, border-color 0.15s; backdrop-filter: blur(8px); }
       .card:focus-within { transform: translateY(-4px); border-color: var(--accent2); box-shadow: 0 0 0 1px var(--accent2), 0 0 26px color-mix(in srgb, var(--accent2) 45%, transparent); }
       .card :focus-visible { outline-offset: 2px; }
@@ -66,9 +66,50 @@
       /* No system title bar: the top strip moves the window, the buttons sit at its right. */
       html[data-lootden-frame="hidden"] body::before { content: ""; position: fixed; inset: 0 0 auto 0; height: var(--lootden-titlebar, 40px); -webkit-app-region: drag; z-index: 3; }
       html[data-handheld="on"] body { font-size: 19px; }
-      html[data-handheld="on"] .grid { grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); }
+      html[data-handheld="on"] { --card: 190px; }
       html:not([data-handheld="on"]) .hints { display: none; }
-      @media (max-width: 720px) { .spotlight { display: none; } .grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); } }
+      .folder .ico { display: none; }
+      @media (max-width: 720px) { .spotlight { display: none; } html, html[data-handheld="on"] { --card: 140px; } }
+      /* Short screens (a handheld such as the Retroid Pocket, landscape): cards sized by the screen's height,
+         so a cover never fills it, and a header that scrolls away instead of taking a third of it. */
+      @media (max-height: 560px) {
+        html[data-handheld="on"] body, body { font-size: 15px; }
+        html, html[data-handheld="on"] { --card: clamp(96px, 22vh, 150px); }
+        header { position: static; padding: 0.4rem 1rem; gap: 0.6rem; }
+        header img { width: 28px; height: 28px; }
+        header { flex-wrap: nowrap; }
+        header h1 { display: none; }
+        header button { padding: 0.4em 0.9em; font-size: 0.85rem; white-space: nowrap; }
+        .status { font-size: 0.72rem; line-height: 1.35; min-width: 0; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+        main { padding: 0.6rem 1rem 3rem; }
+        .spotlight { display: none; }
+        .bar { margin-bottom: 0.6rem; gap: 0.5rem; }
+        .bar h3, #count { display: none; }
+        .bar .chips { margin-right: auto; }
+        input { flex: 0 1 14rem; min-width: 8rem; padding: 0.4em 0.8em; }
+        .grid { gap: 0.75rem; }
+        .cover { padding: 0.5rem; font-size: 0.85rem; }
+        .info { padding: 0.4rem 0.5rem 0.5rem; gap: 0.25rem; }
+        .meta { font-size: 0.72rem; }
+        .actions button { padding: 0.3em 0.7em; font-size: 0.8rem; }
+        .folder .ico { display: inline; }
+        .folder .lbl { display: none; }
+        .hints { bottom: 0.5rem; right: 0.75rem; font-size: 0.75rem; }
+        .error:empty { min-height: 0; margin: 0; }
+      }
+      /* The handheld's own settings (the Android app), kept on the device so they work offline. */
+      .settings { position: fixed; inset: 0; z-index: 5; display: grid; place-items: center; padding: 1rem; background: rgba(0, 0, 0, 0.6); backdrop-filter: blur(6px); }
+      .settings[hidden] { display: none; }
+      .sheet { width: min(46rem, 100%); max-height: 100%; overflow-y: auto; background: color-mix(in srgb, var(--panel) 92%, var(--bg)); border: 1px solid var(--border); border-radius: 16px; padding: 1rem 1.25rem 1.25rem; box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5); }
+      .sheet-top { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.25rem; }
+      .sheet-top h2 { margin: 0 auto 0 0; font-size: 1.25rem; }
+      .sheet h3 { margin: 1rem 0 0.4rem; font-size: 0.78rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--accent2); }
+      .sheet p { margin: 0.2rem 0 0.5rem; }
+      .row { display: flex; align-items: center; gap: 0.5rem 0.75rem; flex-wrap: wrap; padding: 0.45rem 0; border-top: 1px solid color-mix(in srgb, var(--border) 60%, transparent); }
+      .row .label { flex: 1 1 12rem; min-width: 0; }
+      .row .label small { display: block; color: var(--muted); font-size: 0.8rem; overflow-wrap: anywhere; }
+      .sheet .chips button { padding: 0.3em 0.8em; font-size: 0.82rem; }
+      @media (max-height: 560px) { .settings { padding: 0.5rem; } .sheet { padding: 0.75rem 1rem 1rem; } }
       @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
     </style>
   </head>
@@ -83,6 +124,7 @@
       <span class="clock" id="clock"></span>
       <button id="retry">Try again</button>
       <button class="ghost" id="change">Change server</button>
+      <button class="ghost" id="open-settings" hidden>⚙ Settings</button>
     </header>
     <main>
       <section class="spotlight" id="spotlight" aria-live="polite"></section>
@@ -95,7 +137,18 @@
       <p class="error" id="err" role="alert"></p>
       <div class="grid" id="grid"></div>
     </main>
-    <div class="hints" aria-hidden="true"><span><kbd>A</kbd>Select</span><span><kbd>Y</kbd>Try again</span></div>
+    <div class="settings" id="settings" role="dialog" aria-modal="true" aria-labelledby="settings-title" hidden>
+      <div class="sheet">
+        <div class="sheet-top">
+          <h2 id="settings-title">Settings</h2>
+          <button class="ghost" id="close-settings">Done</button>
+        </div>
+        <p class="message">These are kept on this device, so they work without your server. The rest of Settings comes back with the server.</p>
+        <p class="error" id="settings-err" role="alert"></p>
+        <div id="settings-body"></div>
+      </div>
+    </div>
+    <div class="hints" aria-hidden="true"><span><kbd>A</kbd>Select</span><span><kbd>Y</kbd>Try again</span><span id="hint-settings" hidden><kbd>≡</kbd>Settings</span></div>
     <script>
       const off = window.lootdenOffline;
       const $ = (id) => document.getElementById(id);
@@ -170,8 +223,9 @@
           play.title = g.needsSetup ? "Run the installer while connected to your server first" : "";
           play.addEventListener("click", () => start(g.gameId));
           const folder = document.createElement("button");
-          folder.className = "ghost";
-          folder.textContent = "Folder";
+          folder.className = "ghost folder";
+          folder.setAttribute("aria-label", "Folder");
+          folder.append(Object.assign(document.createElement("span"), { className: "ico", textContent: "📁" }), Object.assign(document.createElement("span"), { className: "lbl", textContent: "Folder" }));
           folder.title = "Open the game's folder";
           folder.addEventListener("click", () => off.openFolder(g.gameId).catch((x) => ($("err").textContent = cleanError(x))));
           actions.append(play, folder);
@@ -254,7 +308,7 @@
           render();
           const newest = games.filter((g) => g.kind === "lootden").sort((a, b) => String(b.installedAt).localeCompare(String(a.installedAt)))[0];
           if (newest) spotlight(newest);
-          if (!document.activeElement || document.activeElement === document.body) document.querySelector(".grid button:not(:disabled)")?.focus();
+          if (!document.activeElement || document.activeElement === document.body) document.querySelector(".grid button:not(:disabled)")?.focus({ preventScroll: true });
         } catch (x) {
           $("err").textContent = cleanError(x);
         }
@@ -296,9 +350,113 @@
         }
       }, 1000);
 
+      // ---- Settings (the Android app: what it keeps on the handheld, so it works offline) ----
+      const hasSettings = typeof off?.settings === "function";
+      let settingsOpen = false;
+      let settingsClosedAt = 0;
+      let beforeSettings = null;
+      const LINKS = [["auto", "Automatic"], ["on", "LootDen's browser"], ["off", "Android's browser"]];
+
+      function chipGroup(label, choices, current, onPick) {
+        const box = Object.assign(document.createElement("div"), { className: "chips" });
+        box.setAttribute("role", "radiogroup");
+        box.setAttribute("aria-label", label);
+        for (const [value, text] of choices) {
+          const b = Object.assign(document.createElement("button"), { textContent: text });
+          b.setAttribute("role", "radio");
+          b.setAttribute("aria-checked", String(value === current));
+          b.addEventListener("click", () => value !== current && onPick(value));
+          box.append(b);
+        }
+        return box;
+      }
+
+      function settingRow(title, detail, ...controls) {
+        const row = Object.assign(document.createElement("div"), { className: "row" });
+        const label = Object.assign(document.createElement("div"), { className: "label", textContent: title });
+        if (detail) label.append(Object.assign(document.createElement("small"), { textContent: detail }));
+        row.append(label, ...controls);
+        return row;
+      }
+
+      const heading = (text) => Object.assign(document.createElement("h3"), { textContent: text });
+      const action = (text, onClick) => {
+        const b = Object.assign(document.createElement("button"), { className: "ghost", textContent: text });
+        b.addEventListener("click", onClick);
+        return b;
+      };
+
+      /** Runs a settings call, then shows what it answers, keeping the controller's place. */
+      async function settingsCall(fn) {
+        $("settings-err").textContent = "";
+        const focused = document.activeElement;
+        const path = focused && $("settings-body").contains(focused) ? [...$("settings-body").querySelectorAll("button")].indexOf(focused) : -1;
+        try {
+          renderSettings(await fn());
+        } catch (x) {
+          $("settings-err").textContent = cleanError(x);
+        }
+        if (path >= 0) [...$("settings-body").querySelectorAll("button")][path]?.focus();
+      }
+
+      function renderSettings(st) {
+        const body = $("settings-body");
+        body.replaceChildren(
+          heading("This handheld"),
+          settingRow(st.device || "This device", `LootDen ${st.version || ""}`.trim()),
+          settingRow("Install folder", `${st.installDir || "Not set"}. New installs go here; games already installed stay where they are.`, action("Change folder", () => settingsCall(() => off.chooseInstallDir()))),
+          settingRow("Update the app on its own", "Checks for a new version when your server is back.", chipGroup("Update the app on its own", [[true, "On"], [false, "Off"]], !!st.autoUpdate, (v) => settingsCall(() => off.settings({ autoUpdate: v })))),
+          settingRow("Open links in", "Links from LootDen's pages.", chipGroup("Open links in", LINKS, st.browserLinks || "auto", (v) => settingsCall(() => off.settings({ browserLinks: v })))),
+          settingRow("Server", st.server || "", action("Change server", () => off.changeServer())),
+          heading("Emulators"),
+        );
+        for (const p of st.emulators ?? []) {
+          const picked = p.picked ?? "";
+          const choices = [["", "Best installed"], ...p.options.filter((o) => o.installed || o.id === picked).map((o) => [o.id, o.installed ? o.name : `${o.name} (not installed)`]), ["ask", "Ask each time"]];
+          const using = p.using ? `Plays in ${p.using}${p.core ? ` (${p.core} core)` : ""}` : "No emulator installed: Android asks which app to use";
+          body.append(settingRow(p.name, using, chipGroup(`Emulator for ${p.name}`, choices, picked, (v) => settingsCall(() => off.setEmulator(p.platform, v || null)))));
+        }
+      }
+
+      async function openSettings() {
+        if (!hasSettings || settingsOpen) return;
+        settingsOpen = true;
+        beforeSettings = document.activeElement;
+        $("settings").hidden = false;
+        $("settings-err").textContent = "";
+        $("close-settings").focus();
+        await settingsCall(() => off.settings());
+        if (settingsOpen && document.activeElement === $("close-settings")) $("settings-body").querySelector("button")?.focus();
+      }
+
+      function closeSettings() {
+        if (!settingsOpen) return false;
+        settingsOpen = false;
+        settingsClosedAt = performance.now();
+        $("settings").hidden = true;
+        (beforeSettings?.isConnected ? beforeSettings : $("open-settings")).focus();
+        return true;
+      }
+
+      // Android's Back (which a controller's B can send too): closes Settings rather than leaving the app.
+      window.lootdenOfflineBack = () => closeSettings() || performance.now() - settingsClosedAt < 500;
+
+      if (hasSettings) {
+        $("open-settings").hidden = false;
+        $("hint-settings").hidden = false;
+        // Change server lives in Settings here, leaving the header room on a small screen.
+        $("change").hidden = true;
+        $("open-settings").addEventListener("click", openSettings);
+        $("close-settings").addEventListener("click", closeSettings);
+        $("settings").addEventListener("click", (e) => e.target === $("settings") && closeSettings());
+        // Back from the folder picker or another app: emulators may have been installed meanwhile.
+        document.addEventListener("visibilitychange", () => settingsOpen && document.visibilityState === "visible" && settingsCall(() => off.settings()));
+      }
+
       // Controllers and arrow keys move between buttons; A or Enter presses.
       function move(dx, dy) {
-        const items = [...document.querySelectorAll("button:not(:disabled), input")];
+        const scope = settingsOpen ? $("settings") : document;
+        const items = [...scope.querySelectorAll("button:not(:disabled), input")].filter((el) => el.getClientRects().length);
         const cur = document.activeElement;
         if (!items.includes(cur)) return items[0]?.focus();
         const r = cur.getBoundingClientRect();
@@ -318,6 +476,7 @@
       }
       const KEYS = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
       document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape" && closeSettings()) return e.preventDefault();
         if (!KEYS[e.key] || (e.target.tagName === "INPUT" && (e.key === "ArrowLeft" || e.key === "ArrowRight"))) return;
         e.preventDefault();
         move(...KEYS[e.key]);
@@ -339,6 +498,7 @@
             a: pad.buttons[0]?.pressed,
             b: pad.buttons[1]?.pressed,
             y: pad.buttons[3]?.pressed,
+            start: pad.buttons[9]?.pressed,
           };
           const pressed = (k) => now[k] && !held[k];
           const t = performance.now();
@@ -353,13 +513,18 @@
           dir("down", 0, 1);
           dir("left", -1, 0);
           dir("right", 1, 0);
-          // B leaves the search box, then clears the launcher filter.
-          if (pressed("b")) {
+          // Start (the menu button) opens and closes Settings.
+          if (pressed("start") && hasSettings) {
+            if (settingsOpen) closeSettings();
+            else void openSettings();
+          }
+          // B closes Settings, else leaves the search box, else clears the launcher filter.
+          if (pressed("b") && !closeSettings()) {
             if (document.activeElement?.tagName === "INPUT") document.activeElement.blur();
             else if (launcher) (launcher = ""), render();
           }
           if (pressed("a")) document.activeElement?.click();
-          if (pressed("y")) void retry(false);
+          if (pressed("y") && !settingsOpen) void retry(false);
           held = now;
           break;
         }
