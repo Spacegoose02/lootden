@@ -265,6 +265,10 @@ class MainActivity : Activity() {
                             "launchStore" -> core.dispatch("launchStore", args)
                             "openFolder" -> core.dispatch("openFolder", args)
                             "changeServer" -> { core.ui { changeServer() }; null }
+                            // The page's Settings: what the app keeps on this handheld, so they work offline.
+                            "settings" -> core.offlineSettings(args.optJSONObject(0))
+                            "chooseInstallDir" -> { pickFolder()?.let { core.prefs.installDir = it }; core.offlineSettings(null) }
+                            "setEmulator" -> { core.dispatch("setAndroidEmulator", args); core.offlineSettings(null) }
                             "retry" -> core.server.up().also { up -> if (up) core.ui { if (core.offline) start(null) } }
                             else -> throw IllegalArgumentException("The offline page doesn't do $method")
                         }
@@ -399,7 +403,14 @@ class MainActivity : Activity() {
 
     @Deprecated("Back handling without androidx.activity")
     override fun onBackPressed() {
-        if (!core.offline && web.canGoBack()) web.goBack() else moveTaskToBack(true)
+        if (!core.offline) {
+            if (web.canGoBack()) web.goBack() else moveTaskToBack(true)
+            return
+        }
+        // Offline: Back (or a controller's B sending it) closes the page's Settings first.
+        web.evaluateJavascript("!!(window.lootdenOfflineBack && window.lootdenOfflineBack())") { closed ->
+            if (closed != "true" && !isDestroyed) moveTaskToBack(true)
+        }
     }
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {

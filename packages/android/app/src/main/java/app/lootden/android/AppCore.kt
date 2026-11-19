@@ -284,6 +284,19 @@ class AppCore private constructor(val context: Context) {
             .put("pendingPlays", pendingPlays())
     }
 
+    /** The offline page's Settings: this device's own settings, which need no server. [patch] as appSettings takes. */
+    fun offlineSettings(patch: JSONObject?): JSONObject {
+        val app = appSettings(patch)
+        return JSONObject()
+            .put("device", prefs.deviceName)
+            .put("version", BuildConfig.VERSION_NAME)
+            .put("server", prefs.serverUrl)
+            .put("installDir", prefs.installDir)
+            .put("autoUpdate", app.optBoolean("autoUpdate"))
+            .put("browserLinks", app.optString("browserLinks"))
+            .put("emulators", emulators.overview())
+    }
+
     private fun streamGame(): JSONObject {
         val pkg = emulators.moonlightPackage()
         if (pkg == null) {

@@ -36,7 +36,7 @@
         native.call(id, name, JSON.stringify(args.map((a) => (a === undefined ? null : a))));
       });
   const api = {};
-  for (const name of ["library", "play", "launchStore", "openFolder", "retry", "changeServer"]) api[name] = call(name);
+  for (const name of ["library", "play", "launchStore", "openFolder", "retry", "changeServer", "settings", "chooseInstallDir", "setEmulator"]) api[name] = call(name);
   window.lootdenOffline = api;
   window.lootden = {
     android: true,
