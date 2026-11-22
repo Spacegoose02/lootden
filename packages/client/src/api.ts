@@ -164,7 +164,7 @@ export class GameServerClient {
    * Uploads a zipped game in parts. `ticket` is a library refresh's one-time ticket, which lets
    * the upload through without an admin profile.
    */
-  async uploadPrepared(gameId: string, zipPath: string, version?: string, onProgress?: (sent: number, total: number) => void, ticket?: string): Promise<GameDetail> {
+  async uploadPrepared(gameId: string, zipPath: string, version?: string, onProgress?: (sent: number, total: number) => void, ticket?: string, signal?: AbortSignal): Promise<GameDetail> {
     const auth = (extra: Record<string, string> = {}) => this.headers(ticket ? { ...extra, "x-lootden-ticket": ticket } : extra);
     const { open, stat } = await import("node:fs/promises");
     const { randomUUID } = await import("node:crypto");
@@ -177,6 +177,7 @@ export class GameServerClient {
       let sent = 0;
       let failures = 0;
       while (sent < total || sent === 0) {
+        if (signal?.aborted) throw new Error("Cancelled");
         const chunk = Buffer.alloc(Math.min(UPLOAD_PART_BYTES, total - sent));
         await file.read(chunk, 0, chunk.length, sent);
         const res = await fetch(`${this.base}${upload}?offset=${sent}`, {

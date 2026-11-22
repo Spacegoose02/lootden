@@ -78,6 +78,9 @@ describe("background activity", () => {
       message: "Downloading",
       received: 5,
       total: 10,
+      unit: "bytes",
+      rate: null,
+      etaSeconds: null,
       cancellable: true,
       startedAt: "2026-01-01T00:00:00.000Z",
     });
@@ -86,5 +89,26 @@ describe("background activity", () => {
     assert.deepEqual(board.list(), []);
     assert.equal(seen.length, 3);
     assert.equal(seen[2]!.length, 0);
+  });
+});
+
+describe("background job speed", () => {
+  it("works out the speed and time left as a job counts up, and starts afresh on a new step", () => {
+    let now = Date.parse("2026-01-01T00:00:00Z");
+    const board = new ActivityBoard(undefined, () => new Date(now));
+    board.start("upload:g1", { kind: "upload", title: "Big Game", gameId: "g1", gameTitle: "Big Game" });
+    board.update("upload:g1", { message: "Zipping", received: 0, total: 1000 });
+    assert.equal(board.get("upload:g1")!.rate, null);
+    now += 1000;
+    board.update("upload:g1", { received: 100 });
+    assert.equal(board.get("upload:g1")!.rate, 100);
+    assert.equal(board.get("upload:g1")!.etaSeconds, 9);
+    // The upload has a different total: its speed is measured from scratch.
+    board.update("upload:g1", { message: "Uploading", received: 0, total: 900 });
+    assert.equal(board.get("upload:g1")!.rate, null);
+    assert.equal(board.get("upload:g1")!.etaSeconds, null);
+    // A step with nothing to count clears them.
+    board.update("upload:g1", { message: "Finishing", received: null, total: null });
+    assert.equal(board.get("upload:g1")!.rate, null);
   });
 });

@@ -248,11 +248,43 @@ export async function adoptFolder(dir: string, game: GameRef): Promise<Installed
  * Deletes an installed game folder. Refuses any folder without our manifest, so a
  * wrong path can never wipe something the app did not install.
  */
-export async function uninstallGame(dir: string): Promise<InstalledGame> {
+export async function uninstallGame(dir: string, onProgress?: (p: { done: number; total: number; files: number; totalFiles: number }) => void): Promise<InstalledGame> {
   const m = await readManifest(dir);
   if (!m) throw new Error(`${dir} is not a LootDen install (no ${MANIFEST_NAME}); not deleting it`);
   const s = await stat(dir);
   if (!s.isDirectory()) throw new Error(`${dir} is not a folder`);
+  if (onProgress) await deleteFilesCounting(dir, onProgress);
   await rm(dir, { recursive: true, force: true });
   return m;
+}
+
+/**
+ * Deletes a folder's files a few at a time, reporting bytes and files gone, so a big game's
+ * uninstall shows how far it has got. Folders (and anything that fails) are left for rm.
+ */
+async function deleteFilesCounting(dir: string, onProgress: (p: { done: number; total: number; files: number; totalFiles: number }) => void): Promise<void> {
+  const files: Array<{ path: string; size: number }> = [];
+  const walk = async (d: string): Promise<void> => {
+    for (const e of await readdir(d, { withFileTypes: true }).catch(() => [])) {
+      const p = path.join(d, e.name);
+      if (e.isDirectory()) await walk(p);
+      else files.push({ path: p, size: e.isFile() ? await stat(p).then((x) => x.size, () => 0) : 0 });
+    }
+  };
+  await walk(dir);
+  const total = files.reduce((n, f) => n + f.size, 0);
+  let done = 0;
+  let count = 0;
+  onProgress({ done, total, files: 0, totalFiles: files.length });
+  let next = 0;
+  const worker = async () => {
+    while (next < files.length) {
+      const f = files[next++]!;
+      await rm(f.path, { force: true }).catch(() => {});
+      done += f.size;
+      count++;
+      onProgress({ done, total, files: count, totalFiles: files.length });
+    }
+  };
+  await Promise.all(Array.from({ length: 8 }, worker));
 }

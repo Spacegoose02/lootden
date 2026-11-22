@@ -3338,8 +3338,29 @@ label.field {
   background: var(--panel-solid);
   border: 1px solid var(--accent-2);
 }
-.app-update-banner span {
+.app-update-banner > span {
   flex: 1 1 200px;
+}
+/* A background job's slim progress bar, under its status line. */
+.job-meter {
+  display: block;
+  height: 4px;
+  margin-top: 0.35rem;
+  border-radius: 999px;
+  background: var(--bg-2);
+  overflow: hidden;
+}
+.job-meter span {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent-2), var(--accent));
+  transition: width 0.4s ease;
+}
+/* A long step's status line inside the game page's bar: smaller, and allowed to wrap. */
+.meter.meter-long span {
+  font-size: 0.78rem;
+  padding: 0 0.75rem;
+  text-align: center;
 }
 
 /* ---------- Phones ------------------------------------------------------------ */

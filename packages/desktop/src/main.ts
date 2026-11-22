@@ -48,6 +48,7 @@ import {
   PeerShare,
   DownloadQueue,
   ActivityBoard,
+  progressLine,
   StoreGamesCache,
   RateLimiter,
   clockMinutes,
@@ -1259,6 +1260,8 @@ function showTaskbarProgress(p: { gameId?: string; type?: string; index?: number
   if (p.type === "start") taskbar.set(p.gameId, 0);
   else if (p.type === "download" && p.count && p.total) taskbar.set(p.gameId, Math.min(1, ((p.index ?? 0) + (p.received ?? 0) / p.total) / p.count));
   else if (p.type === "extract" && taskbar.has(p.gameId)) taskbar.set(p.gameId, 1);
+  else if (p.type === "prepare" && !(p as { done?: boolean }).done && p.total) taskbar.set(p.gameId, Math.min(1, (p.received ?? 0) / p.total));
+  else if (p.type === "prepare" && (p as { done?: boolean }).done) taskbar.delete(p.gameId);
   else if (p.type === "done" || p.type === "error" || p.type === "cancelled") taskbar.delete(p.gameId);
   else return;
   if (!win || win.isDestroyed()) return;
@@ -1677,7 +1680,9 @@ function registerIpc(): void {
 
   ipcMain.handle("gm:cancel", (e, gameId: string) => {
     fromServer(e);
-    running.get(gameId)?.abort();
+    // A background job's Cancel names the job ("upload:<game>"); the work is keyed by its game.
+    const job = activity.get(gameId);
+    running.get(job && job.kind !== "update" && job.kind !== "dlc" && job.gameId ? job.gameId : gameId)?.abort();
     queue.cancel(gameId);
   });
 
@@ -1722,12 +1727,22 @@ function registerIpc(): void {
     fromServer(e);
     const game = await findInstalled(gameId);
     const api = await client().catch(() => null);
+    const id = `verify:${gameId}`;
+    if (activity.get(id)) throw new Error("Already checking this game's files");
+    activity.start(id, { kind: "verify", title: game.title, gameId, gameTitle: game.title, message: "Checking files", cancellable: false, unit: "files" });
     let last = 0;
-    return verifyGame(api, gameId, game.dir, (done, total) => {
-      if (Date.now() - last < 250 && done < total) return;
-      last = Date.now();
-      send({ gameId, type: "verify", done, total });
-    });
+    try {
+      return await verifyGame(api, gameId, game.dir, (done, total) => {
+        if (Date.now() - last < 250 && done < total) return;
+        last = Date.now();
+        activity.update(id, { received: done, total });
+        const job = activity.get(id);
+        activity.update(id, { message: progressLine("Checking files", { done, total, unit: "files", rate: job?.rate, etaSeconds: job?.etaSeconds }) });
+        send({ gameId, type: "verify", done, total });
+      });
+    } finally {
+      activity.end(id);
+    }
   });
 
   /** Repair: downloads the broken files again (or unpacks them to one side), under the speed limit. */
@@ -1737,6 +1752,8 @@ function registerIpc(): void {
     const game = await findInstalled(gameId);
     const controller = new AbortController();
     running.set(gameId, controller);
+    const id = `repair:${gameId}`;
+    activity.start(id, { kind: "repair", title: game.title, gameId, gameTitle: game.title, message: "Repairing" });
     try {
       let last = 0;
       const n = await repairGame(await client(), gameId, game.dir, (Array.isArray(files) ? files : []).map(String), {
@@ -1746,12 +1763,16 @@ function registerIpc(): void {
         onProgress: (step, received, total) => {
           if (Date.now() - last < 250) return;
           last = Date.now();
+          activity.update(id, { received: total ? (received ?? 0) : null, total: total || null });
+          const job = activity.get(id);
+          activity.update(id, { message: total ? progressLine(step, { done: received ?? 0, total, rate: job?.rate, etaSeconds: job?.etaSeconds }) : step });
           send({ gameId, type: "repair", step, received: received ?? 0, total: total ?? 0 });
         },
       });
       send({ gameId, type: "repaired", files: n });
       return { repaired: n };
     } finally {
+      activity.end(id);
       running.delete(gameId);
     }
   });
@@ -2646,31 +2667,44 @@ function registerIpc(): void {
 
   // ---- Disc and installer games: install once here, upload the installed folder -------
 
-  const prepareStep = (gameId: string) => {
+  /**
+   * Zipping and uploading an installed game. Each step goes to the game's page (a status line
+   * and bar) and onto the activity board, so it also shows on every other page and in
+   * Downloads, and is there again when you come back to the game's page. Call end() when done.
+   */
+  const prepareJob = (gameId: string, title: string, cancellable = true) => {
+    const id = `upload:${gameId}`;
+    activity.start(id, { kind: "upload", title, gameId, gameTitle: title, message: "Starting…", cancellable });
     let last = 0;
-    return (st: PrepareStep) => {
-      const message =
-        st.step === "download"
-          ? st.event.type === "download"
-            ? `Downloading ${st.event.file} (${Math.floor((st.event.received / Math.max(st.event.total, 1)) * 100)}%)`
-            : st.event.type === "extract"
-              ? `Unpacking ${st.event.archive}`
-              : null
-          : st.step === "unpack-disc"
-            ? `Unpacking ${st.file}`
-            : st.step === "install"
-              ? "Running the installer. Finish it, then come back here."
-              : st.step === "zip"
-                ? "Zipping the installed game"
-                : st.step === "upload"
-                  ? `Uploading ${(st.bytes / 1024 ** 3).toFixed(1)} GB to the server${st.sent ? ` (${Math.floor((st.sent / Math.max(st.bytes, 1)) * 100)}%)` : ""}`
-                  : "Done";
-      if (!message) return;
+    let lastStep = "";
+    const show = (message: string, done: number | null, total: number | null, extra: { files?: number; totalFiles?: number } = {}) => {
       const now = Date.now();
-      if ((st.step === "download" || (st.step === "upload" && st.sent && st.sent < st.bytes)) && now - last < 500) return;
+      // Counting steps are paced; a new step, or the end of one, always goes through.
+      const stepKey = message.split(":")[0]!;
+      if (done !== null && total && done < total && stepKey === lastStep && now - last < 500) return;
       last = now;
-      send({ gameId, type: "prepare", message });
+      lastStep = stepKey;
+      activity.update(id, { message, received: done, total });
+      const job = activity.get(id);
+      const line = done !== null && total ? progressLine(message, { done, total, rate: job?.rate, etaSeconds: job?.etaSeconds, ...extra }) : message;
+      activity.update(id, { message: line });
+      send({ gameId, type: "prepare", message: line, received: done ?? undefined, total: total ?? undefined });
     };
+    const onStep = (st: PrepareStep) => {
+      if (st.step === "download") {
+        if (st.event.type === "download") show(`Downloading ${st.event.file}`, st.event.received, Math.max(st.event.total, 1));
+        else if (st.event.type === "extract") show(`Unpacking ${st.event.archive}`, null, null);
+      } else if (st.step === "unpack-disc") show(`Unpacking ${st.file}`, null, null);
+      else if (st.step === "install") {
+        show("Running the installer. Finish it, then come back here.", null, null);
+        activity.update(id, { cancellable: false });
+      } else if (st.step === "zip") {
+        activity.update(id, { cancellable });
+        if (st.total === undefined) show("Zipping the installed game (counting its files)", null, null);
+        else show("Zipping the installed game", st.done ?? 0, Math.max(st.total, 1), { files: st.files, totalFiles: st.totalFiles });
+      } else if (st.step === "upload") show("Uploading to the server", st.sent ?? 0, Math.max(st.bytes, 1));
+    };
+    return { onStep, end: () => activity.end(id) };
   };
 
   /** Full 7-Zip (reads ISOs) when installed, else the bundled 7za. */
@@ -2683,11 +2717,15 @@ function registerIpc(): void {
     const controller = new AbortController();
     running.set(gameId, controller);
     const workDir = path.join(settings.get().installDir, `.prepare-${gameId}`);
+    let job: ReturnType<typeof prepareJob> | null = null;
     try {
-      const game = await prepareGame(await client(), gameId, {
+      const api = await client();
+      job = prepareJob(gameId, (await api.getGame(gameId).catch(() => null))?.title ?? "Installed game");
+      const game = await prepareGame(api, gameId, {
         workDir,
         sevenZip: await prepSevenZip(),
-        onStep: prepareStep(gameId),
+        signal: controller.signal,
+        onStep: job.onStep,
         runInstaller: (setup, target, args) => runElevated(setup, args),
         confirmInstalled: (suggested) => askInstalledFolder(suggested, "Upload this folder"),
       });
@@ -2697,23 +2735,32 @@ function registerIpc(): void {
       send({ gameId, type: "prepare", message: (err as Error).message, done: true, error: true });
       throw err;
     } finally {
+      job?.end();
       running.delete(gameId);
     }
   });
 
   ipcMain.handle("gm:uploadFolder", async (e, gameId: string) => {
     fromServer(e);
+    if (running.has(gameId)) throw new Error("Already working on this game");
     const r = await dialog.showOpenDialog(win!, { title: "Folder with the installed game", properties: ["openDirectory"] });
     if (r.canceled) return null;
     const workDir = path.join(settings.get().installDir, `.prepare-${gameId}`);
+    const controller = new AbortController();
+    running.set(gameId, controller);
+    let job: ReturnType<typeof prepareJob> | null = null;
     try {
-      const game = await uploadInstalledFolder(await client(), gameId, r.filePaths[0]!, { workDir, sevenZip: await prepSevenZip(), onStep: prepareStep(gameId) });
+      const api = await client();
+      job = prepareJob(gameId, (await api.getGame(gameId).catch(() => null))?.title ?? path.basename(r.filePaths[0]!));
+      const game = await uploadInstalledFolder(api, gameId, r.filePaths[0]!, { workDir, sevenZip: await prepSevenZip(), signal: controller.signal, onStep: job.onStep });
       send({ gameId, type: "prepare", message: "Uploaded. Everyone now gets the installed version.", done: true, newId: game.id });
       return game;
     } catch (err) {
       send({ gameId, type: "prepare", message: (err as Error).message, done: true, error: true });
       throw err;
     } finally {
+      job?.end();
+      running.delete(gameId);
       await rm(workDir, { recursive: true, force: true }).catch(() => {});
     }
   });
@@ -2883,10 +2930,12 @@ function registerIpc(): void {
     const local = await findInstalled(gameId);
     if (!local.installedDir) throw new Error("Run the installer first");
     if (running.has(gameId)) throw new Error("Already working on this game");
-    running.set(gameId, new AbortController());
+    const controller = new AbortController();
+    running.set(gameId, controller);
     const workDir = path.join(path.dirname(local.dir), `.prepare-${gameId}`);
+    const job = prepareJob(gameId, local.title);
     try {
-      const game = await uploadInstalledFolder(await client(), gameId, local.installedDir, { workDir, sevenZip: await prepSevenZip(), onStep: prepareStep(gameId) });
+      const game = await uploadInstalledFolder(await client(), gameId, local.installedDir, { workDir, sevenZip: await prepSevenZip(), signal: controller.signal, onStep: job.onStep });
       // The server game has a new id now; keep this PC's copy linked to it.
       await saveManifest(local.dir, { gameId: game.id, title: game.title, source: game.source, needsSetup: null });
       send({ gameId, type: "prepare", message: "Uploaded. Everyone now gets the installed version.", done: true, newId: game.id });
@@ -2895,6 +2944,7 @@ function registerIpc(): void {
       send({ gameId, type: "prepare", message: (err as Error).message, done: true, error: true });
       throw err;
     } finally {
+      job.end();
       running.delete(gameId);
       await rm(workDir, { recursive: true, force: true }).catch(() => {});
     }
@@ -2914,11 +2964,13 @@ function registerIpc(): void {
     if (running.has(cmd.gameId)) return fail(`This PC is already working on ${cmd.title}.`);
     const local = (await listInstalled(await searchDirs())).find((g) => g.gameId === cmd.gameId);
     if (!local) return fail(`${cmd.title} isn't installed on this PC any more.`);
-    running.set(cmd.gameId, new AbortController());
+    const controller = new AbortController();
+    running.set(cmd.gameId, controller);
     const workDir = path.join(path.dirname(local.dir), `.refresh-${cmd.gameId}`);
+    const job = prepareJob(cmd.gameId, cmd.title);
     playNotice(cmd.gameId, `Uploading ${cmd.title} to the library`, `${cmd.from} asked for this PC's copy (v${cmd.version}). It's zipped and uploaded in the background.`);
     try {
-      const game = await uploadInstalledFolder(api, cmd.gameId, local.installedDir ?? local.dir, { workDir, sevenZip: await prepSevenZip(), version: cmd.version, ticket: cmd.ticket, onStep: prepareStep(cmd.gameId) });
+      const game = await uploadInstalledFolder(api, cmd.gameId, local.installedDir ?? local.dir, { workDir, sevenZip: await prepSevenZip(), version: cmd.version, ticket: cmd.ticket, signal: controller.signal, onStep: job.onStep });
       // The library entry has a new id now; this copy is it, at the version that was uploaded.
       await saveManifest(local.dir, { gameId: game.id, title: game.title, source: game.source, needsSetup: null, version: cmd.version, versionSetBy: versionTag("update"), exeStamp: await exeStampOf(local) });
       copiesCache = null;
@@ -2928,6 +2980,7 @@ function registerIpc(): void {
       send({ gameId: cmd.gameId, type: "prepare", message: (err as Error).message, done: true, error: true });
       fail((err as Error).message);
     } finally {
+      job.end();
       running.delete(cmd.gameId);
       await rm(workDir, { recursive: true, force: true }).catch(() => {});
     }
@@ -2947,7 +3000,27 @@ function registerIpc(): void {
         (game.installedDir && path.relative(game.dir, game.installedDir).startsWith("..") ? `\n\nThe game the installer put in ${game.installedDir} stays; remove it with Windows' Apps settings.` : ""),
     });
     if (response !== 0) return false;
-    await uninstallGame(game.dir);
+    // Deleting a big game takes a while: count it down on the page and the activity board.
+    const id = `uninstall:${gameId}`;
+    activity.start(id, { kind: "uninstall", title: game.title, gameId, gameTitle: game.title, message: "Counting files", cancellable: false });
+    let last = 0;
+    try {
+      await uninstallGame(game.dir, (p) => {
+        if (Date.now() - last < 300 && p.files < p.totalFiles) return;
+        last = Date.now();
+        activity.update(id, { received: p.done, total: p.total });
+        const job = activity.get(id);
+        const message = progressLine("Deleting", { ...p, rate: job?.rate, etaSeconds: job?.etaSeconds });
+        activity.update(id, { message });
+        send({ gameId, type: "prepare", message, received: p.done, total: p.total });
+      });
+      send({ gameId, type: "prepare", message: `Deleted ${game.title}`, done: true });
+    } catch (err) {
+      send({ gameId, type: "prepare", message: (err as Error).message, done: true, error: true });
+      throw err;
+    } finally {
+      activity.end(id);
+    }
     // Offline, or a game the server no longer has: the files are gone either way.
     await (await clientOrOffline()).reportActivity({ gameId, device: os.hostname(), event: "uninstalled" }).catch(() => false);
     return true;

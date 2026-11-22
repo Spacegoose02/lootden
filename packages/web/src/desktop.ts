@@ -207,21 +207,30 @@ export type Progress =
   /** The mod list's page checks (gameId is "truck-mods:<game>"). */
   | { gameId: string; type: "truckModCheck"; game: TruckGame; done: number; total: number; line: string; finished: boolean }
   | { gameId: string; type: "saves"; backupId?: number; size?: number; error?: string }
-  | { gameId: string; type: "prepare"; message: string; done?: boolean; error?: boolean; newId?: string }
+  /** A step of a long job on this game (zipping, uploading, deleting); received and total when it can be counted. */
+  | { gameId: string; type: "prepare"; message: string; done?: boolean; error?: boolean; newId?: string; received?: number; total?: number }
   /** Play time heads-ups and time's up (shown by FunLayer, not on the game's page). */
   | { gameId: string; type: "limit"; title: string; message: string }
   | ({ gameId: "lootden-app"; type: "appUpdate" } & AppUpdate);
 
-/** An update or DLC the desktop app is applying in the background. */
+/**
+ * A long job the desktop app runs in the background: an update or DLC being applied, an
+ * installed game being zipped and uploaded, files being checked or repaired, a game being deleted.
+ */
 export interface ActivityItem {
   id: string;
-  kind: "update" | "dlc";
+  kind: "update" | "dlc" | "upload" | "verify" | "repair" | "uninstall";
   title: string;
   gameId: string | null;
   gameTitle: string | null;
   message: string;
   received: number | null;
   total: number | null;
+  /** What received and total count (older apps leave it out: bytes). */
+  unit?: "bytes" | "files";
+  /** Per second lately, and seconds left; null until known (older apps leave them out). */
+  rate?: number | null;
+  etaSeconds?: number | null;
   /** It can still be stopped (not once files are being copied in). */
   cancellable: boolean;
   startedAt: string;
@@ -551,8 +560,9 @@ export const androidApp = desktop?.android === true;
 export const bridgeError = (e: unknown) => String((e as Error)?.message ?? e).replace(/^Error invoking remote method '[^']+': (Error: )?/, "");
 
 /**
- * Updates and DLC the desktop app is applying now. They run in the app, not the page, so this
- * picks them up again on any page, including after leaving the one they were started from.
+ * Background jobs the desktop app is running now (updates, DLC, uploads, file checks, deletes).
+ * They run in the app, not the page, so this picks them up again on any page, including after
+ * leaving the one they were started from.
  */
 export function useActivity(): ActivityItem[] {
   const [items, setItems] = useState<ActivityItem[]>([]);
