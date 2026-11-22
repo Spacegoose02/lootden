@@ -10,7 +10,8 @@ export type PrepareStep =
   | { step: "download"; event: InstallEvent }
   | { step: "unpack-disc"; file: string }
   | { step: "install"; setup: string; target: string }
-  | { step: "zip"; folder: string }
+  /** Zipping: bytes and files done so far out of the folder's total (absent on the first step). */
+  | { step: "zip"; folder: string; done?: number; total?: number; files?: number; totalFiles?: number; current?: string }
   | { step: "upload"; bytes: number; sent?: number }
   | { step: "done"; game: GameDetail };
 
@@ -20,6 +21,8 @@ export interface PrepareOptions {
   sevenZip: SevenZip;
   version?: string;
   onStep?: (s: PrepareStep) => void;
+  /** Stops zipping or uploading. */
+  signal?: AbortSignal;
   /** Runs the setup program and resolves when it closes. The desktop app shows it to the user. */
   runInstaller: (setup: string, target: string, args: string[]) => Promise<void>;
   /**
@@ -61,17 +64,87 @@ export async function installerArgs(setup: string, target: string): Promise<stri
   return [];
 }
 
+export interface ZipProgress {
+  /** Bytes read from the folder so far, and in all. */
+  done: number;
+  total: number;
+  /** Files zipped so far, and in all. */
+  files: number;
+  totalFiles: number;
+  /** The file 7-Zip is on. */
+  current?: string;
+}
+
+const ZIP_SKIP_ANYWHERE = ".lootden-backup";
+
+/** The files zipFolder takes from a folder, and their size. */
+export async function measureFolder(folder: string, top = true): Promise<{ bytes: number; files: number }> {
+  let bytes = 0;
+  let files = 0;
+  for (const e of await readdir(folder, { withFileTypes: true }).catch(() => [])) {
+    if (e.name === ZIP_SKIP_ANYWHERE || (top && (e.name === MANIFEST_NAME || e.name === LEGACY_MANIFEST_NAME))) continue;
+    const p = path.join(folder, e.name);
+    if (e.isDirectory()) {
+      const sub = await measureFolder(p, false);
+      bytes += sub.bytes;
+      files += sub.files;
+    } else if (e.isFile()) {
+      bytes += await stat(p).then((x) => x.size, () => 0);
+      files++;
+    }
+  }
+  return { bytes, files };
+}
+
+/**
+ * Reads 7-Zip's progress output (-bsp1): "  12% 345 + Data\\file.pak", redrawn in place with
+ * backspaces. Returns the latest percent, files done and file name in a chunk, if any.
+ */
+export function parseSevenZipProgress(chunk: string): { percent: number; files?: number; current?: string } | null {
+  let found: { percent: number; files?: number; current?: string } | null = null;
+  for (const part of chunk.split(/[\b\r\n]+/)) {
+    const m = part.match(/^\s*(\d{1,3})%(?:\s+(\d+))?(?:\s+[+U=]\s+(.+?))?\s*$/);
+    if (m) found = { percent: Math.min(100, Number(m[1])), files: m[2] ? Number(m[2]) : undefined, current: m[3] || undefined };
+  }
+  return found;
+}
+
 /**
  * Zips a folder's contents with 7-Zip (store-fast: games barely compress). LootDen's own
  * files stay out: update backups, and the install manifest (it names this PC's copy).
+ * Reports how far it has got (measured from the folder, paced by 7-Zip's own percent).
  */
-export function zipFolder(sevenZip: SevenZip, folder: string, zipPath: string): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const child = spawn(sevenZip.path, ["a", "-tzip", "-mx1", "-bd", "-y", zipPath, "*", "-xr!.lootden-backup", `-x!${MANIFEST_NAME}`, `-x!${LEGACY_MANIFEST_NAME}`], { cwd: folder, stdio: ["ignore", "ignore", "pipe"], windowsHide: true });
+export async function zipFolder(sevenZip: SevenZip, folder: string, zipPath: string, opts: { onProgress?: (p: ZipProgress) => void; signal?: AbortSignal } = {}): Promise<void> {
+  const size = opts.onProgress ? await measureFolder(folder) : { bytes: 0, files: 0 };
+  opts.signal?.throwIfAborted();
+  await new Promise<void>((resolve, reject) => {
+    const child = spawn(sevenZip.path, ["a", "-tzip", "-mx1", "-bso0", "-bsp1", "-y", zipPath, "*", `-xr!${ZIP_SKIP_ANYWHERE}`, `-x!${MANIFEST_NAME}`, `-x!${LEGACY_MANIFEST_NAME}`], {
+      cwd: folder,
+      stdio: ["ignore", "pipe", "pipe"],
+      windowsHide: true,
+    });
     let err = "";
+    let best = 0;
+    let files = 0;
+    child.stdout.on("data", (d: Buffer) => {
+      const p = parseSevenZipProgress(d.toString());
+      if (!p) return;
+      // 7-Zip's percent can step back a little; the bar shouldn't.
+      best = Math.max(best, p.percent);
+      if (p.files !== undefined) files = Math.max(files, Math.min(p.files, size.files));
+      opts.onProgress?.({ done: Math.round((best / 100) * size.bytes), total: size.bytes, files, totalFiles: size.files, current: p.current });
+    });
     child.stderr.on("data", (d) => (err += d.toString()));
+    const abort = () => child.kill();
+    opts.signal?.addEventListener("abort", abort, { once: true });
     child.on("error", reject);
-    child.on("close", (code) => (code === 0 ? resolve() : reject(new Error(`7-Zip exited with code ${code}: ${err.trim()}`))));
+    child.on("close", (code) => {
+      opts.signal?.removeEventListener("abort", abort);
+      if (opts.signal?.aborted) return reject(new Error("Cancelled"));
+      if (code !== 0) return reject(new Error(`7-Zip exited with code ${code}: ${err.trim()}`));
+      opts.onProgress?.({ done: size.bytes, total: size.bytes, files: size.files, totalFiles: size.files });
+      resolve();
+    });
   });
 }
 
@@ -80,7 +153,7 @@ export async function uploadInstalledFolder(
   api: GameServerClient,
   gameId: string,
   folder: string,
-  opts: Pick<PrepareOptions, "workDir" | "sevenZip" | "version" | "onStep"> & { ticket?: string },
+  opts: Pick<PrepareOptions, "workDir" | "sevenZip" | "version" | "onStep" | "signal"> & { ticket?: string },
 ): Promise<GameDetail> {
   const s = await stat(folder).catch(() => null);
   if (!s?.isDirectory() || (await readdir(folder)).length === 0) throw new Error(`${folder} is empty or missing`);
@@ -88,10 +161,14 @@ export async function uploadInstalledFolder(
   const zip = path.join(opts.workDir, "upload.zip");
   await rm(zip, { force: true });
   opts.onStep?.({ step: "zip", folder });
-  await zipFolder(opts.sevenZip, folder, zip);
-  opts.onStep?.({ step: "upload", bytes: (await stat(zip)).size });
-  const game = await api.uploadPrepared(gameId, zip, opts.version, (sent, bytes) => opts.onStep?.({ step: "upload", bytes, sent }), opts.ticket);
-  await rm(zip, { force: true });
+  let game: GameDetail;
+  try {
+    await zipFolder(opts.sevenZip, folder, zip, { signal: opts.signal, onProgress: (p) => opts.onStep?.({ step: "zip", folder, ...p }) });
+    opts.onStep?.({ step: "upload", bytes: (await stat(zip)).size });
+    game = await api.uploadPrepared(gameId, zip, opts.version, (sent, bytes) => opts.onStep?.({ step: "upload", bytes, sent }), opts.ticket, opts.signal);
+  } finally {
+    await rm(zip, { force: true }).catch(() => {});
+  }
   opts.onStep?.({ step: "done", game });
   return game;
 }
@@ -109,6 +186,7 @@ export async function prepareGame(api: GameServerClient, gameId: string, opts: P
       keepArchives: false,
       sevenZipPath: opts.sevenZip.path,
       report: false,
+      signal: opts.signal,
       onEvent: (event) => opts.onStep?.({ step: "download", event }),
     });
     const title = (await api.getGame(gameId)).title;

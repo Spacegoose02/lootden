@@ -4,6 +4,7 @@ import { ANDROID_PLATFORM, EMULATORS, platformFor, recompsFor, RECOMP_LOOKS, typ
 import { api, formatBytes } from "../api";
 import { useAuth } from "../auth";
 import { androidApp, bridgeError, desktop, useDesktopGame, type AndroidEmulatorChoice, type Drive, type GameBananaModView, type RecompLookView, type RecompModsView, type RecompSettingView, type RecompSetup } from "../desktop";
+import { GameJobStatus, useGameJob } from "./BackgroundJobs";
 import { VerifyFiles } from "./DownloadQueue";
 import { GameRunner } from "./LinuxSteam";
 import { LaunchOptionsPanel, PlayWithButtons, useLaunchOptions } from "./LaunchOptions";
@@ -11,6 +12,7 @@ import { LaunchOptionsPanel, PlayWithButtons, useLaunchOptions } from "./LaunchO
 /** Install / play / uninstall panel shown inside the desktop app. */
 export function DesktopInstall({ game, autoFocus }: { game: GameDetail; autoFocus: boolean }) {
   const { installed, loose, progress, refresh, setProgress } = useDesktopGame(game.id);
+  const job = useGameJob(game.id);
   const { me } = useAuth();
   const navigate = useNavigate();
   const [drives, setDrives] = useState<Drive[]>([]);
@@ -149,6 +151,8 @@ export function DesktopInstall({ game, autoFocus }: { game: GameDetail; autoFocu
   const pct = downloading ? (p.received / Math.max(1, p.total)) * 100 : 0;
 
   const setupMessage = p?.type === "prepare" ? p : null;
+  // A finished job's last word stays; while one runs, the activity board's copy is shown (it survives leaving the page).
+  const lastMessage = setupMessage && (setupMessage.done || !job) ? setupMessage : null;
 
   // Downloaded, but it's still the installer: run it once here before anything can be played.
   if (installed && installed.needsSetup && !installed.installedDir && (installed.platform ?? "pc") === "pc") {
@@ -172,7 +176,7 @@ export function DesktopInstall({ game, autoFocus }: { game: GameDetail; autoFocu
           This download is {what}, not the game yet. {bridge.runSetup ? "Run installer sets it up in an Installed folder inside" : "Update the app to run it from here, or run setup.exe yourself in"} <code>{installed.dir}</code>
           {bridge.runSetup ? ", then Play starts the game." : "."}
         </p>
-        {setupMessage && <p className={setupMessage.error ? "error small" : "notice small"}>{setupMessage.message}</p>}
+        <GameJobStatus job={job} last={lastMessage} notice />
         {error && <p className="error small">{error}</p>}
       </div>
     );
@@ -229,13 +233,13 @@ export function DesktopInstall({ game, autoFocus }: { game: GameDetail; autoFocu
         </div>
         {canUpload && (
           <p className="notice small">
-            <button className="small" disabled={busy} onClick={() => run(() => bridge.uploadInstalled!(game.id))}>
+            <button className="small" disabled={busy || !!job} onClick={() => run(() => bridge.uploadInstalled!(game.id))}>
               Upload installed game
             </button>{" "}
             The server still has the installer. Uploading this installed copy means everyone after you gets a ready-to-play download.
           </p>
         )}
-        {setupMessage && <p className={setupMessage.error ? "error small" : "muted small"}>{setupMessage.message}</p>}
+        <GameJobStatus job={job} last={lastMessage} />
         {androidHint && <p className="muted small">{androidHint}</p>}
         <p className="muted small">
           Installed in <code>{installed.installedDir ?? installed.dir}</code>

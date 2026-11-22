@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import type { GameDetail } from "@lootden/shared";
 import { useAuth } from "../auth";
 import { bridgeError, desktop } from "../desktop";
+import { GameJobStatus, useGameJob } from "./BackgroundJobs";
 
 /**
  * Disc images and installers: an admin installs the game once with the app, which zips the
@@ -14,6 +15,8 @@ export function PreparePanel({ game }: { game: GameDetail }) {
   const [status, setStatus] = useState<{ message: string; error?: boolean } | null>(null);
   const [busy, setBusy] = useState(false);
   const [platform, setPlatform] = useState("");
+  // The zip and upload run in the desktop app; coming back to this page picks them up again.
+  const job = useGameJob(game.id);
 
   useEffect(() => {
     if (!desktop) return;
@@ -33,10 +36,13 @@ export function PreparePanel({ game }: { game: GameDetail }) {
   const run = (fn: () => Promise<unknown>) => {
     setBusy(true);
     setStatus(null);
-    fn().catch((e) => {
+    fn().then(
+      (r) => r === null && setBusy(false), // the folder picker was closed
+      (e) => {
       setStatus({ message: bridgeError(e), error: true });
       setBusy(false);
-    });
+      },
+    );
   };
 
   return (
@@ -57,19 +63,19 @@ export function PreparePanel({ game }: { game: GameDetail }) {
           </p>
           <div className="inline">
             {platform === "win32" && desktop.prepare && (
-              <button className="primary" disabled={busy} onClick={() => run(() => desktop!.prepare!(game.id))}>
+              <button className="primary" disabled={busy || !!job} onClick={() => run(() => desktop!.prepare!(game.id))}>
                 Install here and upload
               </button>
             )}
             {desktop.uploadFolder && (
-              <button disabled={busy} onClick={() => run(() => desktop!.uploadFolder!(game.id))}>
+              <button disabled={busy || !!job} onClick={() => run(() => desktop!.uploadFolder!(game.id))}>
                 Upload an installed folder
               </button>
             )}
           </div>
         </>
       )}
-      {status && <p className={status.error ? "error" : "notice"}>{status.message}</p>}
+      {job ? <GameJobStatus job={job} last={null} notice /> : status && <p className={status.error ? "error" : "notice"}>{status.message}</p>}
     </section>
   );
 }

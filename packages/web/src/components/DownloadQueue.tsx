@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { BackgroundJobsList } from "./BackgroundJobs";
+import { BackgroundJobsList, useGameJob } from "./BackgroundJobs";
 import { bridgeError, desktop, type DownloadSettings, type QueueItem, type VerifyResult } from "../desktop";
 
 /**
@@ -121,6 +121,10 @@ export function VerifyFiles({ gameId }: { gameId: string }) {
   const bridge = desktop;
   const [result, setResult] = useState<VerifyResult | null>(null);
   const [state, setState] = useState<{ busy: string | null; note: string | null; error: boolean }>({ busy: null, note: null, error: false });
+  // Checking and repairing run in the desktop app: the game page shows their bar (and picks it up
+  // again after you come back), so this keeps to the buttons and the result.
+  const job = useGameJob(gameId);
+  const working = !!state.busy || job?.kind === "verify" || job?.kind === "repair";
   useEffect(() => {
     if (!bridge) return;
     return bridge.onProgress((p) => {
@@ -154,15 +158,15 @@ export function VerifyFiles({ gameId }: { gameId: string }) {
   };
   return (
     <span className="inline">
-      <button className="ghost" disabled={!!state.busy} onClick={() => void verify()} title="Check the game's files and fix missing or damaged ones">
-        {state.busy && !broken.length ? "Checking…" : "Verify files"}
+      <button className="ghost" disabled={working} onClick={() => void verify()} title="Check the game's files and fix missing or damaged ones">
+        {(state.busy && !broken.length) || job?.kind === "verify" ? "Checking…" : "Verify files"}
       </button>
       {broken.length > 0 && (
-        <button className="secondary" disabled={!!state.busy} onClick={() => void repair()}>
+        <button className="secondary" disabled={working} onClick={() => void repair()}>
           Repair {broken.length} file{broken.length === 1 ? "" : "s"}
         </button>
       )}
-      {(state.busy || state.note) && <span className={state.error ? "error small" : "muted small"}>{state.busy ?? state.note}</span>}
+      {((state.busy && !job) || state.note) && <span className={state.error ? "error small" : "muted small"}>{(!job && state.busy) || state.note}</span>}
     </span>
   );
 }
