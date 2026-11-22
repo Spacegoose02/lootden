@@ -25,6 +25,17 @@ interface HistorySlot {
 
 const seconds = (t: string) => t.split(":").reduce((acc, n) => acc * 60 + Number(n), 0);
 
+/**
+ * A queue slot's status. SABnzbd marks only the job it's on right now "Downloading" and can work
+ * on several at once; "Fetching"/"Grabbing" is it fetching the NZB, and the checks run in the queue.
+ */
+function queueState(status: string, queuePaused: boolean): ActiveDownload["state"] {
+  if (status === "Paused" || queuePaused) return "paused";
+  if (status === "Downloading" || status === "Fetching" || status === "Grabbing") return "downloading";
+  if (status === "Checking" || status === "QuickCheck" || status === "Verifying" || status === "Repairing") return "checking";
+  return "queued";
+}
+
 /** SABnzbd JSON API. */
 export class SabnzbdClient implements DownloadClient {
   readonly name = "sabnzbd" as const;
@@ -61,33 +72,51 @@ export class SabnzbdClient implements DownloadClient {
   }
 
   async list(): Promise<ActiveDownload[]> {
-    const [{ queue }, { history }] = await Promise.all([
-      this.api<{ queue: { slots: QueueSlot[]; kbpersec: string } }>({ mode: "queue", cat: this.s.category }),
-      this.api<{ history: { slots: HistorySlot[] } }>({ mode: "history", category: this.s.category, limit: "50" }),
+    // Not filtered by category: SABnzbd files a job under its default category when ours doesn't
+    // exist there (or a sorter/indexer rule changes it), and a filtered list then never shows the
+    // job we're tracking, so it sat as "Waiting for client" while SABnzbd downloaded it.
+    const [{ queue }, ours, all] = await Promise.all([
+      this.api<{ queue: { slots: QueueSlot[]; kbpersec: string; paused?: boolean } }>({ mode: "queue", limit: "500" }),
+      this.s.category
+        ? this.api<{ history: { slots: HistorySlot[] } }>({ mode: "history", category: this.s.category, limit: "50" })
+        : Promise.resolve({ history: { slots: [] as HistorySlot[] } }),
+      this.api<{ history: { slots: HistorySlot[] } }>({ mode: "history", limit: "100" }),
     ]);
     const speed = Number(queue.kbpersec) * 1024;
-    const active = queue.slots.map((s): ActiveDownload => ({
-      client: this.name,
-      id: s.nzo_id,
-      name: s.filename,
-      sizeBytes: Number(s.mb) * 1024 * 1024,
-      progress: Number(s.percentage) / 100,
-      downloadSpeed: s.status === "Downloading" ? speed : 0,
-      etaSeconds: s.status === "Downloading" ? seconds(s.timeleft) : null,
-      state: s.status === "Paused" ? "paused" : s.status === "Downloading" ? "downloading" : "queued",
-      path: null,
-    }));
-    const done = history.slots.map((s): ActiveDownload => ({
-      client: this.name,
-      id: s.nzo_id,
-      name: s.name,
-      sizeBytes: s.bytes,
-      progress: s.status === "Completed" ? 1 : 0.99,
-      downloadSpeed: 0,
-      etaSeconds: null,
-      state: s.status === "Completed" ? "completed" : s.status === "Failed" ? "failed" : "checking",
-      path: s.storage,
-    }));
+    const outside = (cat: string | undefined) => !!this.s.category && (cat ?? "").toLowerCase() !== this.s.category.toLowerCase();
+    const active = queue.slots.map((s): ActiveDownload => {
+      const state = queueState(s.status, !!queue.paused);
+      return {
+        client: this.name,
+        id: s.nzo_id,
+        name: s.filename,
+        sizeBytes: Number(s.mb) * 1024 * 1024,
+        progress: Number(s.percentage) / 100,
+        downloadSpeed: state === "downloading" && s.status === "Downloading" ? speed : 0,
+        etaSeconds: state === "downloading" && s.timeleft ? seconds(s.timeleft) : null,
+        state,
+        path: null,
+        ...(outside(s.cat) ? { outsideCategory: true } : {}),
+      };
+    });
+    const seen = new Set(queue.slots.map((s) => s.nzo_id));
+    const done: ActiveDownload[] = [];
+    for (const s of [...ours.history.slots, ...all.history.slots]) {
+      if (seen.has(s.nzo_id)) continue;
+      seen.add(s.nzo_id);
+      done.push({
+        client: this.name,
+        id: s.nzo_id,
+        name: s.name,
+        sizeBytes: s.bytes,
+        progress: s.status === "Completed" ? 1 : 0.99,
+        downloadSpeed: 0,
+        etaSeconds: null,
+        state: s.status === "Completed" ? "completed" : s.status === "Failed" ? "failed" : "checking",
+        path: s.storage,
+        ...(outside(s.category) ? { outsideCategory: true } : {}),
+      });
+    }
     return [...active, ...done];
   }
 

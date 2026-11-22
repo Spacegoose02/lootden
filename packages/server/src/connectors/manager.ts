@@ -103,6 +103,8 @@ export function mapPath(p: string, mappings: ConnectorSettings["import"]["pathMa
 
 /** Imports from the downloads folder get ids above this; downloads LootDen sent use their own row id. */
 const FOLDER_ID_BASE = 1_000_000_000;
+/** How long a SABnzbd job may be missing from SABnzbd before we call it gone. */
+const STALE_MS = 30 * 60_000;
 
 /** The same id every time for one folder entry, so a retry finds the staging copy an earlier try left behind. */
 export function folderImportId(name: string): number {
@@ -243,19 +245,28 @@ export class DownloadManager {
     };
   }
 
-  /** Finds the client's entry for one of our rows: SABnzbd by nzo id, qBittorrent by our tag. */
+  /**
+   * Finds the client's entry for one of our rows: SABnzbd by nzo id, qBittorrent by our tag.
+   * SABnzbd jobs we have no usable id for (it didn't hand one back) fall back to the job name,
+   * which we set when sending it.
+   */
   private match(r: Row, live: Array<ActiveDownload & { tags?: string }>): ActiveDownload | null {
-    if (!r.external_id) return null;
-    return (
-      live.find((d) => d.client === r.client && (d.id.toLowerCase() === r.external_id!.toLowerCase() || (d.tags ?? "").split(/,\s*/).includes(r.external_id!))) ?? null
-    );
+    const id = r.external_id?.toLowerCase();
+    const byId = id ? live.find((d) => d.client === r.client && (d.id.toLowerCase() === id || (d.tags ?? "").split(/,\s*/).includes(r.external_id!))) : undefined;
+    if (byId) return byId;
+    if (r.client !== "sabnzbd" || r.external_id) return null;
+    const name = r.name.trim().toLowerCase();
+    return live.find((d) => d.client === "sabnzbd" && d.name.trim().toLowerCase() === name) ?? null;
   }
 
-  private async liveAll(): Promise<ActiveDownload[]> {
-    const out: ActiveDownload[] = [];
+  /** Everything the configured clients report, and which of them answered. */
+  private async liveAll(): Promise<ActiveDownload[] & { read?: Set<ActiveDownload["client"]> }> {
+    const out: ActiveDownload[] & { read?: Set<ActiveDownload["client"]> } = [];
+    out.read = new Set();
     for (const c of this.clients().filter((x) => x.configured)) {
       try {
         out.push(...(await c.list()));
+        out.read.add(c.name);
       } catch (err) {
         this.log.warn({ client: c.name, err: (err as Error).message }, "Could not read download client");
       }
@@ -272,7 +283,7 @@ export class DownloadManager {
       if (l) used.add(l);
       return this.toRecord(r, l);
     });
-    return { downloads, other: live.filter((l) => !used.has(l)) };
+    return { downloads, other: live.filter((l) => !used.has(l) && !l.outsideCategory) };
   }
 
   async control(id: number, action: "pause" | "resume" | "remove", deleteFiles = false): Promise<void> {
@@ -444,7 +455,14 @@ export class DownloadManager {
     let imported = false;
     for (const r of pending) {
       const l = this.match(r, live);
-      if (!l) continue;
+      if (!l) {
+        // SABnzbd answered and has no trace of it in its queue or recent history: it was deleted
+        // there, or finished so long ago it dropped out. Say so instead of "Waiting" forever.
+        // (Torrent clients are left alone: they're listed by category and can lag a new add.)
+        if (r.client === "sabnzbd" && live.read?.has("sabnzbd") && Date.now() - Date.parse(r.added_at) > STALE_MS)
+          this.db.prepare("UPDATE downloads SET status = 'failed', error = ? WHERE id = ?").run("SABnzbd no longer has this download (deleted there, or gone from its history)", r.id);
+        continue;
+      }
       const source = sources.get(r.id) ?? null;
       // Moved into the library already (by hand from the downloads folder, or a run before this
       // one): the client now reports the files missing, which isn't a failure.
