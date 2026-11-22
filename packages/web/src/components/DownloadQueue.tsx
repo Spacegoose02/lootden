@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { BackgroundJobsList } from "./BackgroundJobs";
 import { bridgeError, desktop, type DownloadSettings, type QueueItem, type VerifyResult } from "../desktop";
 
 /**
@@ -74,6 +75,7 @@ export function DownloadQueuePanel() {
         {!!s?.sharingNow && <span className="muted small"> · sending to {s.sharingNow} now</span>}
       </label>
       {error && <p className="error small">{error}</p>}
+      <BackgroundJobsList />
       {items.length > 0 && (
         <ol className="list download-queue">
           {items.map((i, n) => (

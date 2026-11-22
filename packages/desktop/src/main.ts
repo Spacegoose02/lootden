@@ -47,6 +47,8 @@ import {
   installFromPeer,
   PeerShare,
   DownloadQueue,
+  ActivityBoard,
+  StoreGamesCache,
   RateLimiter,
   clockMinutes,
   repairGame,
@@ -206,6 +208,11 @@ const queue = new DownloadQueue({
     send({ gameId: "downloads:queue", type: "queue", items });
   },
 });
+/**
+ * Long jobs that aren't downloads in the queue (applying an update or DLC), kept here rather
+ * than in the page so they carry on, and stay visible, when you move to another page.
+ */
+const activity = new ActivityBoard((items) => send({ gameId: "downloads:activity", type: "activity", items }));
 let pendingDeepLink: string | null = process.argv.find(isDeepLink) ?? null;
 let tray: Tray | null = null;
 /** Set once the app is really quitting, so closing the window stops hiding it. */
@@ -568,7 +575,10 @@ async function flushPendingPlays(): Promise<void> {
 const nowRunning = new Map<string, { game: RunningGame; stop?: AbortController }>();
 /** Other launchers' games seen running, and when each was first seen. */
 const storeSince = new Map<string, string>();
-let storeGamesCache: { at: number; games: LocalStoreGame[] } | null = null;
+/** This PC's store games, kept between lookups and runs of the app; set once the app is ready. */
+let storeGames: StoreGamesCache;
+/** The latest list of this PC's store games, for the places that can't wait for a lookup. */
+let lastStoreGames: LocalStoreGame[] = [];
 let heartbeatTimer: NodeJS.Timeout | null = null;
 let beating = false;
 /** Installs a game from the server; set once the IPC handlers exist. */
@@ -754,12 +764,25 @@ async function openStoreLink(url: string): Promise<void> {
   child.unref();
 }
 
-async function storeGamesForPresence(): Promise<LocalStoreGame[]> {
-  if (storeGamesCache && Date.now() - storeGamesCache.at < 10 * 60_000) return storeGamesCache.games;
+/**
+ * This PC's store games from the cache: the last scan straight away, rescanned in the background
+ * once it's older than maxAgeMs (pages hear about changes as a "storeGames" progress event).
+ */
+async function localStoreGames(maxAgeMs?: number): Promise<LocalStoreGame[]> {
   const { disabled, folders } = settings.get().storeScan;
-  const games = await scanStoreGames(STORE_SCANNERS, process.platform, { disabled, folders }).catch(() => [] as LocalStoreGame[]);
-  storeGamesCache = { at: Date.now(), games };
-  return games;
+  lastStoreGames = await storeGames.get({ disabled, folders }, maxAgeMs);
+  return lastStoreGames;
+}
+
+/** Scans this PC's launchers now (a game was just installed, or the scan settings changed). */
+async function rescanStoreGames(): Promise<LocalStoreGame[]> {
+  const { disabled, folders } = settings.get().storeScan;
+  lastStoreGames = await storeGames.refresh({ disabled, folders });
+  return lastStoreGames;
+}
+
+async function storeGamesForPresence(): Promise<LocalStoreGame[]> {
+  return localStoreGames(10 * 60_000).catch(() => [] as LocalStoreGame[]);
 }
 
 /** Closes everything running from these folders (games from other launchers). */
@@ -804,7 +827,7 @@ function runCommand(cmd: PcCommand): void {
   setTimeout(() => {
     if (mine?.stop) return mine.stop.abort();
     const m = /^store:([^:]+):(.+)$/.exec(cmd.gameId);
-    const store = m && storeGamesCache?.games.find((g) => g.addon === m[1] && g.externalId === m[2]);
+    const store = m && lastStoreGames.find((g) => g.addon === m[1] && g.externalId === m[2]);
     if (store) void closeFolders([store.installDir]).catch(() => {});
   }, 60_000);
 }
@@ -1018,7 +1041,7 @@ function closeRunning(gameId: string): void {
   const mine = nowRunning.get(gameId);
   if (mine?.stop) return mine.stop.abort();
   const m = /^store:([^:]+):(.+)$/.exec(gameId);
-  const store = m && storeGamesCache?.games.find((g) => g.addon === m[1] && g.externalId === m[2]);
+  const store = m && lastStoreGames.find((g) => g.addon === m[1] && g.externalId === m[2]);
   if (store) void closeFolders([store.installDir]).catch(() => {});
 }
 
@@ -1949,8 +1972,7 @@ function registerIpc(): void {
     if (playing.has(gameId) || launching.has(gameId)) throw new Error("That game is already running");
     let local = (await storeGamesForPresence()).find((g) => g.addon === addon && g.externalId === externalId);
     if (!local) {
-      storeGamesCache = null;
-      local = (await storeGamesForPresence()).find((g) => g.addon === addon && g.externalId === externalId);
+      local = (await rescanStoreGames().catch(() => [] as LocalStoreGame[])).find((g) => g.addon === addon && g.externalId === externalId);
     }
     if (!local?.installDir) throw new Error("That game isn't installed on this PC, so its launch options can't run");
     const profile = launchProfile(launchKey({ addon, externalId }));
@@ -2759,7 +2781,11 @@ function registerIpc(): void {
     });
     const controller = new AbortController();
     running.set(updateId, controller);
-    const step = (message: string, extra: object = {}) => send({ gameId: updateId, type: "prepare", message, ...extra });
+    activity.start(updateId, { kind: update.kind === "dlc" ? "dlc" : "update", title: update.title, gameId: update.baseGameId, gameTitle: game.title });
+    const step = (message: string, extra: object = {}) => {
+      activity.update(updateId, { message, received: null, total: null });
+      send({ gameId: updateId, type: "prepare", message, ...extra });
+    };
     let last = 0;
     const sevenZip = await sevenZipPath();
     const options = (force: boolean) => ({
@@ -2773,12 +2799,18 @@ function registerIpc(): void {
         await runElevated(setup, args);
       },
       onEvent: (ev: InstallEvent | { type: "apply"; mode: string; target: string }) => {
-        if (ev.type === "apply") return step(ev.mode === "files" ? `Copying the update into ${ev.target}` : "Running the update's setup program");
+        if (ev.type === "apply") {
+          // Files are being copied in: stopping now would leave the game half updated.
+          activity.update(updateId, { cancellable: false });
+          return step(ev.mode === "files" ? `Copying the update into ${ev.target}` : "Running the update's setup program");
+        }
         if (ev.type === "download") {
           const now = Date.now();
           if (now - last < 250 && ev.received < ev.total) return;
           last = now;
+          activity.update(updateId, { message: "Downloading", received: ev.received, total: ev.total });
         }
+        if (ev.type === "extract") activity.update(updateId, { message: `Unpacking ${ev.archive}`, received: null, total: null });
         send({ gameId: updateId, ...(ev.type === "start" ? { type: "start", gameDir: ev.gameDir, totalBytes: ev.game.sizeBytes } : ev) });
       },
     });
@@ -2788,6 +2820,7 @@ function registerIpc(): void {
         applied = await applyUpdate(api, updateId, game, options(false));
       } catch (err) {
         if (!(err instanceof UpdateMismatchError)) throw err;
+        activity.update(updateId, { message: "Waiting for you to choose whether to apply it anyway" });
         const { response } = await dialog.showMessageBox(win!, {
           type: "warning",
           buttons: ["Apply anyway", "Cancel"],
@@ -2814,7 +2847,14 @@ function registerIpc(): void {
       throw err;
     } finally {
       running.delete(updateId);
+      activity.end(updateId);
     }
+  });
+
+  /** Updates and DLC being applied on this PC now, so any page can show them. */
+  ipcMain.handle("gm:activity", (e) => {
+    fromServer(e);
+    return activity.list();
   });
 
   ipcMain.handle("gm:undoUpdate", async (e, updateId: string) => {
@@ -2950,8 +2990,8 @@ function registerIpc(): void {
   });
   ipcMain.handle("gm:storeGames", async (e) => {
     fromServer(e);
-    const { disabled, folders } = settings.get().storeScan;
-    const games = await scanStoreGames(STORE_SCANNERS, process.platform, { disabled, folders });
+    // From the cache: only the first look on this PC waits for the launchers to be read.
+    const games = await localStoreGames();
     void cacheStoreCovers(games).catch(() => {});
     return games;
   });
@@ -2971,6 +3011,7 @@ function registerIpc(): void {
       const disabled = Array.isArray(patch.disabled) ? patch.disabled.filter((d): d is string => typeof d === "string" && known.has(d)) : cur.disabled;
       const folders = Array.isArray(patch.folders) ? cur.folders.filter((f) => (patch.folders as unknown[]).includes(f)) : cur.folders;
       settings.update({ storeScan: { disabled: [...new Set(disabled)], folders } });
+      void rescanStoreGames().catch(() => {});
     }
     return storeScanView();
   });
@@ -2980,7 +3021,10 @@ function registerIpc(): void {
     const dir = r.canceled ? null : r.filePaths[0];
     if (dir) {
       const cur = settings.get().storeScan;
-      if (!cur.folders.includes(dir)) settings.update({ storeScan: { ...cur, folders: [...cur.folders, dir] } });
+      if (!cur.folders.includes(dir)) {
+        settings.update({ storeScan: { ...cur, folders: [...cur.folders, dir] } });
+        void rescanStoreGames().catch(() => {});
+      }
     }
     return storeScanView();
   });
@@ -3240,8 +3284,7 @@ function registerIpc(): void {
     const covers = await readdir(coversDir()).catch(() => [] as string[]);
     const games = await listInstalled(await searchDirs());
     // Steam, Epic, GOG and the other launchers' games play offline too, through the launcher.
-    const { disabled, folders } = settings.get().storeScan;
-    const stores = await scanStoreGames(STORE_SCANNERS, process.platform, { disabled, folders }).catch(() => []);
+    const stores = await localStoreGames().catch(() => [] as LocalStoreGame[]);
     return {
       server: origin(),
       pendingPlays: settings.get().pendingPlays.length,
@@ -3486,6 +3529,17 @@ app.userAgentFallback = app.userAgentFallback.replace(/ (?:Electron|LootDen|@loo
 
 void app.whenReady().then(async () => {
   settings = new SettingsStore(path.join(app.getPath("userData"), "settings.json"));
+  storeGames = new StoreGamesCache({
+    file: path.join(app.getPath("userData"), "store-games.json"),
+    scan: (o) => scanStoreGames(STORE_SCANNERS, process.platform, o),
+    onUpdate: (games) => {
+      lastStoreGames = games;
+      send({ gameId: "stores:local", type: "storeGames", games });
+      void cacheStoreCovers(games).catch(() => {});
+    },
+  });
+  // Brings the saved list up to date in the background, so the first page that shows store games doesn't wait.
+  void localStoreGames(0).catch(() => {});
   registerIpc();
   void applyPeerShare();
   truckMods = new TruckMods({ settings: () => settings, client, send, fromServer }, () => (existsSync(bundled7za()) ? bundled7za() : ""));

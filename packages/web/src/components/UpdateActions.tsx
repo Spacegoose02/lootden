@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { compareVersion, effectiveVersion, versionLabel as v, type GameSummary } from "@lootden/shared";
 import { formatBytes } from "../api";
-import { bridgeError, desktop, type InstalledGame, type Progress } from "../desktop";
+import { bridgeError, desktop, useActivity, type InstalledGame, type Progress } from "../desktop";
 
 const REASON_LABEL = { admin: "set by admin", folder: "folder", name: "name", size: "size", content: "files" } as const;
 
@@ -61,14 +61,23 @@ export function UpdateActions({
   const [error, setError] = useState("");
   const [progress, setProgress] = useState<Progress | null>(null);
   const [message, setMessage] = useState("");
+  // The app applies the update, not this page: when you come back to the page, this is how it
+  // knows the update is still going (and when it finishes).
+  const job = useActivity().find((a) => a.id === update.id) ?? null;
+  const working = busy || !!job;
 
   useEffect(
     () =>
       desktop?.onProgress((p) => {
         if (p.gameId !== update.id) return;
         setProgress(p);
-        if (p.type === "prepare") setMessage(p.message);
+        if (p.type === "prepare") {
+          setMessage(p.message);
+          // Finished while you were on another page: show the result and the game's new version.
+          if (p.done) onChange();
+        }
       }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [update.id],
   );
 
@@ -105,7 +114,8 @@ export function UpdateActions({
     try {
       await fn();
     } catch (e) {
-      setError(bridgeError(e));
+      const why = bridgeError(e);
+      if (why !== "Cancelled") setError(why);
     } finally {
       setBusy(false);
       setProgress(null);
@@ -114,39 +124,49 @@ export function UpdateActions({
   };
 
   const p = progress;
-  const pct = p?.type === "download" ? (p.received / Math.max(1, p.total)) * 100 : 0;
+  // After coming back to the page there's no live event yet; the app's own record has the step.
+  const received = p?.type === "download" ? p.received : job?.received ?? null;
+  const total = p?.type === "download" ? p.total : job?.total ?? null;
+  const pct = received !== null && total ? (received / Math.max(1, total)) * 100 : 0;
+  const status = message || (job && !busy && received === null && p?.type !== "extract" ? job.message : "");
   return (
     <div className="pkg-actions">
       {applied ? (
         <div className="inline">
           <span className="badge badge-kid">Applied {new Date(applied.appliedAt).toLocaleDateString()}</span>
           {applied.mode === "files" && latest?.id === applied.id && bridge.undoUpdate && (
-            <button className="button small" disabled={busy} onClick={() => run(() => bridge.undoUpdate!(update.id))}>
+            <button className="button small" disabled={working} onClick={() => run(() => bridge.undoUpdate!(update.id))}>
               Undo
             </button>
           )}
         </div>
       ) : (
         <div className="inline">
-          <button className={`button small${problem ? "" : " primary"}`} disabled={busy} onClick={() => run(() => bridge.applyUpdate!(update.id))}>
-            {busy ? "Applying…" : problem ? "Apply anyway…" : update.kind === "dlc" ? "Add to game" : "Apply update"}
+          <button className={`button small${problem ? "" : " primary"}`} disabled={working} onClick={() => run(() => bridge.applyUpdate!(update.id))}>
+            {working ? "Applying…" : problem ? "Apply anyway…" : update.kind === "dlc" ? "Add to game" : "Apply update"}
           </button>
+          {working && job?.cancellable && (
+            <button className="button small ghost" onClick={() => void bridge.cancel(update.id)}>
+              Cancel
+            </button>
+          )}
           <span className="muted small">
             {problem ?? `To ${local.title}${have ? ` (${v(have)})` : ""} · ${formatBytes(update.sizeBytes)}`}
           </span>
         </div>
       )}
-      {busy && p?.type === "download" && (
+      {working && received !== null && total !== null && (
         <div className="meter">
           <div style={{ width: `${pct}%` }} />
           <span>
-            Downloading · {formatBytes(p.received)} of {formatBytes(p.total)}
+            Downloading · {formatBytes(received)} of {formatBytes(total)}
           </span>
         </div>
       )}
-      {busy && p?.type === "extract" && <p className="muted small">Unpacking {p.archive}</p>}
+      {working && p?.type === "extract" && <p className="muted small">Unpacking {p.archive}</p>}
+      {working && <p className="muted small">It keeps going if you leave this page.</p>}
       {/* A failure comes back as both the last status line and the thrown error; show it once. */}
-      {message && !error && <p className={`small${p?.type === "prepare" && p.error ? " error" : " muted"}`}>{message}</p>}
+      {status && !error && <p className={`small${p?.type === "prepare" && p.error ? " error" : " muted"}`}>{status}</p>}
       {error && <p className="error small">{error}</p>}
     </div>
   );

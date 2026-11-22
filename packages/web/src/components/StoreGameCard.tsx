@@ -71,6 +71,13 @@ export function useStoreGames(enabled = true) {
       () => setLocal([]),
     );
     api.storeGamesCustom().then((l) => setCustom(new Map(l.map((c) => [storeKey(c), c]))), () => {});
+    // The app answers from its last look through the launchers and checks again in the
+    // background; a game installed or removed since then arrives here.
+    return desktop?.onProgress((p) => {
+      if (p.type !== "storeGames") return;
+      setLocal(p.games);
+      setScanned(true);
+    });
   }, [enabled]);
   const installed = new Map(local.map((l) => [storeKey(l), l]));
   // Roblox games an admin picked play through the Roblox app, so in the app they're ready to play like an installed game.
