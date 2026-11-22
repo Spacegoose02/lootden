@@ -115,6 +115,8 @@ export class WebBrowser {
   private htmlFullscreen = false;
   /** Whether the window was full screen before the page made it so, to put it back after. */
   private wasFullscreen = false;
+  /** A second layout once Windows has settled the window's new size. */
+  private settle: ReturnType<typeof setTimeout> | undefined;
   /** Sites allowed the camera or microphone this session. */
   private mediaAllowed = new Set<string>();
   private configured = new Set<string>();
@@ -187,14 +189,24 @@ export class WebBrowser {
       this.push();
     });
     shellView.webContents.on("before-input-event", (e, input) => this.shortcut(e, input));
+    // The toolbar and start page fill the window: if their page dies the whole window goes blank, so load it again.
+    shellView.webContents.on("render-process-gone", () => {
+      if (this.shell === shellView && !shellView.webContents.isDestroyed()) void shellView.webContents.loadFile(this.deps.shellPage).catch(() => {});
+    });
     void shellView.webContents.loadFile(this.deps.shellPage);
 
     this.tabs = [];
     this.newTab(target);
     win.on("resize", () => this.layout());
-    win.on("enter-full-screen", () => this.push());
-    win.on("leave-full-screen", () => this.push());
+    // Full screen changes, and the Xbox full screen experience switching apps, can leave the
+    // views drawn for the old size or not drawn at all (a blank grey window): draw them again.
+    win.on("enter-full-screen", () => (this.repaint(), this.push()));
+    win.on("leave-full-screen", () => (this.repaint(), this.push()));
+    win.on("show", () => this.repaint());
+    win.on("restore", () => this.repaint());
+    win.on("focus", () => this.repaint());
     win.on("closed", () => {
+      clearTimeout(this.settle);
       for (const t of this.tabs) t.view?.webContents.close();
       this.tabs = [];
       this.win = null;
@@ -217,6 +229,37 @@ export class WebBrowser {
     if (this.isOpen) this.win!.close();
   }
 
+  /** Puts the browser back in front, when Windows shows LootDen's own window (hidden behind it) instead. */
+  reveal(): void {
+    if (!this.isOpen) return;
+    const win = this.win!;
+    if (win.isMinimized()) win.restore();
+    win.show();
+    win.focus();
+    this.repaint();
+  }
+
+  /** Lays the views out again and has them draw a fresh frame, now and once the window's size has settled. */
+  repaint(): void {
+    if (!this.isOpen) return;
+    const draw = () => {
+      if (!this.isOpen) return;
+      this.layout();
+      for (const view of [this.shell, this.tab?.view]) if (view && !view.webContents.isDestroyed()) view.webContents.invalidate();
+    };
+    draw();
+    clearTimeout(this.settle);
+    this.settle = setTimeout(draw, 300);
+  }
+
+  /** The page's full screen is over (it left, crashed or went away): the toolbar comes back, and the window goes back as it was. */
+  private endHtmlFullscreen(): void {
+    if (!this.htmlFullscreen) return;
+    this.htmlFullscreen = false;
+    if (this.win && !this.wasFullscreen && this.win.isFullScreen()) this.win.setFullScreen(false);
+    this.layout();
+  }
+
   // ---- Tabs ---------------------------------------------------------------------------
 
   private get tab(): Tab | undefined {
@@ -235,6 +278,7 @@ export class WebBrowser {
     if (at < 0) return;
     const [tab] = this.tabs.splice(at, 1);
     if (tab!.view) {
+      if (at === this.active) this.endHtmlFullscreen();
       this.win?.contentView.removeChildView(tab!.view);
       tab!.view.webContents.close();
     }
@@ -248,7 +292,7 @@ export class WebBrowser {
     if (at < 0 || !this.win) return;
     for (const t of this.tabs) if (t.view && t.id !== id) this.win.contentView.removeChildView(t.view);
     this.active = at;
-    this.htmlFullscreen = false;
+    this.endHtmlFullscreen();
     const view = this.tabs[at]!.view;
     if (view) this.win.contentView.addChildView(view, 0);
     this.layout();
@@ -272,6 +316,7 @@ export class WebBrowser {
   home(): void {
     const tab = this.tab;
     if (!tab?.view) return;
+    this.endHtmlFullscreen();
     this.win?.contentView.removeChildView(tab.view);
     tab.view.webContents.close();
     Object.assign(tab, { view: null, title: "New tab", url: "", favicon: "" });
@@ -353,11 +398,13 @@ export class WebBrowser {
       this.layout();
     });
     wc.on("leave-html-full-screen", () => {
-      this.htmlFullscreen = false;
-      if (this.win && !this.wasFullscreen && this.win.isFullScreen()) this.win.setFullScreen(false);
+      this.endHtmlFullscreen();
       this.layout();
     });
     wc.on("render-process-gone", () => {
+      // A page that dies in full screen (a video, a game) says nothing more: without this the
+      // dead page would keep covering the whole window, with no toolbar to get out.
+      if (this.tab === tab) this.endHtmlFullscreen();
       tab.title = "This page crashed. Reload to try again.";
       this.push();
     });
@@ -468,6 +515,9 @@ export class WebBrowser {
   private layout(): void {
     if (!this.win || !this.shell) return;
     const { width, height } = this.win.getContentBounds();
+    // Minimized or hidden windows can report no size: laying out then would squash every view
+    // to nothing, and they'd stay that way when the window comes back.
+    if (width <= 0 || height <= 0) return;
     const view = this.tab?.view;
     if (view && this.htmlFullscreen) {
       this.shell.setBounds({ x: 0, y: 0, width, height: 0 });
