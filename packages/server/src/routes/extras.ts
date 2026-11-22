@@ -89,7 +89,11 @@ export function extraRoutes(app: FastifyInstance, ctx: AppContext) {
   });
   app.get<{ Params: { id: string } }>("/api/games/:id/version", async (req) => {
     visible(req, req.params.id);
-    return ctx.versions.get(req.params.id);
+    const stored = ctx.versions.get(req.params.id);
+    // An update was added to the library since the last check (so "this copy is" would be
+    // wrong): check again now, falling back to the old answer if the store can't be reached.
+    if (stored && ctx.versions.stale(stored)) return ctx.versions.check(req.params.id).catch(() => stored);
+    return stored;
   });
   app.post<{ Params: { id: string } }>("/api/games/:id/version", async (req) => {
     requireAdmin(req);
