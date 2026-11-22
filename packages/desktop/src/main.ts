@@ -1416,8 +1416,11 @@ function looksHandheld(): boolean {
 }
 
 const handheldActive = (s: DesktopSettings) => s.handheld === "on" || (s.handheld === "auto" && looksHandheld());
-/** Everything a little larger, so text and buttons read at arm's length on a 7-8" screen. */
-const HANDHELD_ZOOM = 1.2;
+/**
+ * No extra page zoom: Windows already scales a handheld's screen (the Ally runs at 150%), and touch
+ * mode adds bigger hit targets on top. Zooming as well made icons, buttons and covers far too large.
+ */
+const HANDHELD_ZOOM = 1;
 
 function applyHandheld(): void {
   if (!win) return;
