@@ -3473,6 +3473,17 @@ async function createWindow(): Promise<void> {
     if (update.state === "ready" && !busy() && settings.get().autoUpdate) void installNow();
   });
   win.on("closed", () => (win = null));
+  // LootDen hides behind the built-in browser. The Xbox full screen experience can still bring
+  // this hidden window up when switching back to LootDen, as a blank grey screen in front of the
+  // browser: put the browser back in front instead. (Everything that means to show LootDen
+  // closes the browser first; the in-game menu is the one thing that shows it over the browser.)
+  win.on("show", () => {
+    if (!browser?.isOpen || overlayOpen) return;
+    browser.reveal();
+    setImmediate(() => {
+      if (browser?.isOpen && !overlayOpen && win && !win.isDestroyed()) win.hide();
+    });
+  });
   // Zoom is kept per page load, and the server's address can change.
   win.webContents.on("did-finish-load", () => win?.webContents.setZoomFactor(handheldActive(settings.get()) ? HANDHELD_ZOOM : 1));
   win.on("enter-full-screen", sendFrame);
@@ -3511,6 +3522,12 @@ app.on("second-instance", (_e, argv) => {
   if (argv.includes("--browser")) void browser.open();
 });
 app.on("before-quit", () => (quitting = true));
+// The graphics process restarting (a driver hiccup, a full screen change) can leave windows blank until something redraws them.
+app.on("child-process-gone", (_e, details) => {
+  if (details.type !== "GPU") return;
+  if (win && !win.isDestroyed()) win.webContents.invalidate();
+  browser?.repaint();
+});
 app.on("will-quit", () => {
   globalShortcut.unregisterAll();
   padWatch.stop();
