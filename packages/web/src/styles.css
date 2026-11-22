@@ -851,28 +851,29 @@ main {
 }
 
 /* ---------- Touch / handheld mode -----------------------------------------
-   Bigger hit targets and type for the ROG Ally, Steam Deck and tablets. */
+   Slightly bigger hit targets and type for the ROG Ally, Steam Deck, Android handhelds and
+   tablets. Kept modest: a handheld's screen is already scaled up by the system. */
 
 :root[data-touch="on"] body {
-  font-size: 17px;
+  font-size: 15.5px;
 }
 :root[data-touch="on"] button,
 :root[data-touch="on"] .button,
 :root[data-touch="on"] input,
 :root[data-touch="on"] select {
-  min-height: 48px;
-  padding-inline: 1.25em;
+  min-height: 40px;
+  padding-inline: 1em;
 }
 :root[data-touch="on"] .nav a {
-  padding: 0.75em 1.2em;
+  padding: 0.55em 0.9em;
 }
 :root[data-touch="on"] .grid {
-  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
-  gap: 1rem;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 0.8rem;
 }
 :root[data-touch="on"] .row-track {
-  grid-auto-columns: clamp(170px, 19vw, 230px);
-  gap: 1rem;
+  grid-auto-columns: clamp(130px, 14vw, 180px);
+  gap: 0.8rem;
 }
 :root[data-touch="on"] .card:hover {
   transform: none;
@@ -3345,7 +3346,7 @@ label.field {
 
 :root[data-touch="on"] .nav-measure a,
 :root[data-touch="on"] .nav-more {
-  padding: 0.75em 1.2em;
+  padding: 0.55em 0.9em;
 }
 @media (max-width: 720px) {
   /* Two covers a row, in touch mode too (its bigger tiles left one per row). */
@@ -3807,32 +3808,43 @@ html[data-lootden-frame] .lightbox {
   padding: 1.25rem 2.25rem;
 }
 
-/* The same setting sizes the covers in rows and grids. In handheld mode Normal is a step
-   smaller than before, so a 7-8" screen shows more than four games across. Phones keep their own sizes. */
-@media (min-width: 721px) {
+/* The same setting sizes the covers in rows and grids. Handhelds in landscape get these sizes too,
+   even when their screen is narrower than 721px, so Small really is small there. Phones in
+   portrait keep their own sizes. */
+@media (min-width: 721px), (orientation: landscape) and (min-width: 560px) {
   :root[data-poster="small"] .row-track,
   :root[data-poster="off"] .row-track {
-    grid-auto-columns: clamp(110px, 11vw, 150px);
+    grid-auto-columns: clamp(100px, 10vw, 140px);
   }
   :root[data-poster="small"] .grid,
   :root[data-poster="off"] .grid {
-    grid-template-columns: repeat(auto-fill, minmax(125px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
   }
   :root[data-poster="large"] .row-track {
-    grid-auto-columns: clamp(170px, 19vw, 240px);
+    grid-auto-columns: clamp(160px, 18vw, 230px);
   }
   :root[data-poster="large"] .grid {
-    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
   }
-  :root[data-touch="on"][data-poster="normal"] .row-track {
-    grid-auto-columns: clamp(150px, 15vw, 196px);
+  :root[data-touch="on"][data-poster="normal"] .row-track,
+  :root[data-handheld="on"][data-poster="normal"] .row-track {
+    grid-auto-columns: clamp(120px, 13vw, 170px);
   }
-  :root[data-touch="on"][data-poster="normal"] .grid {
-    grid-template-columns: repeat(auto-fill, minmax(165px, 1fr));
+  :root[data-touch="on"][data-poster="normal"] .grid,
+  :root[data-handheld="on"][data-poster="normal"] .grid {
+    grid-template-columns: repeat(auto-fill, minmax(135px, 1fr));
   }
   :root[data-touch="on"][data-poster="small"] .row-track,
-  :root[data-touch="on"][data-poster="off"] .row-track {
-    grid-auto-columns: clamp(125px, 12.5vw, 165px);
+  :root[data-touch="on"][data-poster="off"] .row-track,
+  :root[data-handheld="on"][data-poster="small"] .row-track,
+  :root[data-handheld="on"][data-poster="off"] .row-track {
+    grid-auto-columns: clamp(92px, 9.5vw, 125px);
+  }
+  :root[data-touch="on"][data-poster="small"] .grid,
+  :root[data-touch="on"][data-poster="off"] .grid,
+  :root[data-handheld="on"][data-poster="small"] .grid,
+  :root[data-handheld="on"][data-poster="off"] .grid {
+    grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
   }
 }
 
@@ -5176,8 +5188,8 @@ html[data-lootden-frame] .lightbox {
   opacity: 0.3;
 }
 :root[data-touch="on"] .quick-item {
-  padding: 0.85rem 1rem;
-  font-size: 1.05rem;
+  padding: 0.7rem 0.9rem;
+  font-size: 1rem;
 }
 
 /* Settings: You and the admin groups as tabs along the top, each with a few sections. */
@@ -5244,8 +5256,8 @@ html[data-lootden-frame] .lightbox {
   box-shadow: inset 0 -2px 0 var(--accent);
 }
 :root[data-touch="on"] .subnav a {
-  padding: 0.6rem 1.1rem;
-  font-size: 1.05rem;
+  padding: 0.5rem 0.9rem;
+  font-size: 1rem;
 }
 
 /* A game's page: Overview, Updates & mods, Saves & files and Admin under its header. */
@@ -5476,10 +5488,10 @@ html[data-lootden-frame] .lightbox {
   margin: 0;
 }
 :root[data-handheld="on"] .device-app-grid {
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(118px, 1fr));
 }
 :root[data-handheld="on"] .device-app-main img,
 :root[data-handheld="on"] .device-app-noicon {
-  width: 80px;
-  height: 80px;
+  width: 60px;
+  height: 60px;
 }
