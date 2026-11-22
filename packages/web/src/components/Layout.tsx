@@ -5,6 +5,7 @@ import { useAuth } from "../auth";
 import { AlertsBell } from "./AlertsBell";
 import { BrandLogo } from "./BrandLogo";
 import { AppUpdateBanner } from "./AppOptions";
+import { BackgroundJobsBanner } from "./BackgroundJobs";
 import { desktop } from "../desktop";
 import { SECTION_EVENT } from "../gamepad";
 import { FunLayer } from "./FunLayer";
@@ -227,6 +228,7 @@ export function Layout() {
       <main>
         <SubNav items={links} />
         <AppUpdateBanner />
+        <BackgroundJobsBanner />
         <Outlet />
       </main>
       <PadHints />

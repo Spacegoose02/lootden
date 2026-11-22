@@ -186,6 +186,10 @@ export type Progress =
   | { gameId: string; type: "queued"; message: string; state: QueueItem["state"] }
   /** The whole download queue changed (gameId is "downloads:queue"). */
   | { gameId: string; type: "queue"; items: QueueItem[] }
+  /** Updates and DLC being applied changed (gameId is "downloads:activity"). */
+  | { gameId: string; type: "activity"; items: ActivityItem[] }
+  /** A background look through this PC's launchers found other store games (gameId is "stores:local"). */
+  | { gameId: string; type: "storeGames"; games: LocalStoreGame[] }
   | { gameId: string; type: "verify"; done: number; total: number }
   | { gameId: string; type: "repair"; step: string; received: number; total: number }
   | { gameId: string; type: "repaired"; files: number }
@@ -207,6 +211,21 @@ export type Progress =
   /** Play time heads-ups and time's up (shown by FunLayer, not on the game's page). */
   | { gameId: string; type: "limit"; title: string; message: string }
   | ({ gameId: "lootden-app"; type: "appUpdate" } & AppUpdate);
+
+/** An update or DLC the desktop app is applying in the background. */
+export interface ActivityItem {
+  id: string;
+  kind: "update" | "dlc";
+  title: string;
+  gameId: string | null;
+  gameTitle: string | null;
+  message: string;
+  received: number | null;
+  total: number | null;
+  /** It can still be stopped (not once files are being copied in). */
+  cancellable: boolean;
+  startedAt: string;
+}
 
 /** The desktop app's own updates, from the server's Get the app page. */
 export interface AppUpdate {
@@ -414,6 +433,8 @@ export interface DesktopBridge {
   uploadInstalled?(gameId: string): Promise<GameDetailLike | null>;
   /** Updates and DLC: apply one to its installed game (with a backup), or undo the latest. Missing in older apps. */
   applyUpdate?(updateId: string): Promise<AppliedUpdate | null>;
+  /** Updates and DLC being applied now. Missing in older apps. */
+  activity?(): Promise<ActivityItem[]>;
   undoUpdate?(updateId: string): Promise<AppliedUpdate | null>;
   /** Missing in desktop apps older than save sync. */
   backupSaves?(gameId: string): Promise<{ backupId: number; size: number } | { error: string }>;
@@ -528,6 +549,27 @@ export const androidApp = desktop?.android === true;
 
 /** Electron prefixes errors from the main process; keep just the message. */
 export const bridgeError = (e: unknown) => String((e as Error)?.message ?? e).replace(/^Error invoking remote method '[^']+': (Error: )?/, "");
+
+/**
+ * Updates and DLC the desktop app is applying now. They run in the app, not the page, so this
+ * picks them up again on any page, including after leaving the one they were started from.
+ */
+export function useActivity(): ActivityItem[] {
+  const [items, setItems] = useState<ActivityItem[]>([]);
+  useEffect(() => {
+    if (!desktop?.activity) return;
+    let live = true;
+    void desktop.activity().then((x) => live && setItems(x), () => {});
+    const off = desktop.onProgress((p) => {
+      if (p.type === "activity") setItems(p.items);
+    });
+    return () => {
+      live = false;
+      off();
+    };
+  }, []);
+  return items;
+}
 
 /** Live install/play state for one game in the desktop app. */
 export function useDesktopGame(gameId: string) {

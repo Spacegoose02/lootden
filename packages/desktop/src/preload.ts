@@ -43,6 +43,7 @@ const bridge = {
   runSetup: (gameId: string) => ipcRenderer.invoke("gm:runSetup", gameId),
   uploadInstalled: (gameId: string) => ipcRenderer.invoke("gm:uploadInstalled", gameId),
   applyUpdate: (updateId: string) => ipcRenderer.invoke("gm:applyUpdate", updateId),
+  activity: () => ipcRenderer.invoke("gm:activity"),
   undoUpdate: (updateId: string) => ipcRenderer.invoke("gm:undoUpdate", updateId),
   emulators: () => ipcRenderer.invoke("gm:emulators"),
   arcade: (gameId?: string) => ipcRenderer.invoke("gm:arcade", gameId),

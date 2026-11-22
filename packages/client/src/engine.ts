@@ -6,6 +6,7 @@ export { extractArchive, findSevenZip } from "./extractor.js";
 export { adoptFolder, detectSetup, exeStampOf, findCopies, listInstalled, saveManifest, uninstallGame, versionTag, type GameRef, type InstalledGame } from "./installed.js";
 export { installGame, isManifest, LEGACY_MANIFEST_NAME, MANIFEST_NAME, pickGame, type InstallEvent, type InstallOptions } from "./installer.js";
 export { checkTicket, installFromPeer, lanAddresses, PEER_PORT, PeerShare } from "./peer.js";
+export { ActivityBoard, type ActivityItem } from "./activity.js";
 export { DownloadQueue, QueueHold, type QueueItem, type QueueState } from "./queue.js";
 export { clockMinutes, inWindow, RateLimiter } from "./throttle.js";
 export { FILES_NAME, readRecord, recordFiles, repairGame, verifyGame, type VerifyResult } from "./verify.js";
@@ -41,6 +42,7 @@ export { offlineAllowance, watchPlayTime, type KeptAllowance, type PlayWatchOpti
 export { findSetup, prepareGame, runLocalSetup, uploadInstalledFolder, type PrepareStep } from "./prepare.js";
 export { applyUpdate, BACKUP_FOLDER, undoUpdate, UpdateMismatchError, updateProblem, type AppliedUpdate, type ApplyUpdateOptions } from "./updates.js";
 export { scanStoreGames, STORE_SCANNERS, type StoreScanner } from "./stores/index.js";
+export { StoreGamesCache } from "./stores/cache.js";
 export { steamLibraryCover } from "./stores/steam.js";
 export { LAUNCHER_SCHEME, resolveLauncherLink } from "./stores/launchers.js";
 export { findLocalScreenshots, type LocalScreenshot } from "./localshots.js";
