@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import { PC_PLATFORM } from "@lootden/shared";
+import { compareVersion, PC_PLATFORM } from "@lootden/shared";
 import type { Notifier } from "../alerts/notifier.js";
 import type { Library } from "../catalog/library.js";
 import { releaseVersion } from "../connectors/tidy.js";
@@ -12,7 +12,10 @@ import type { GameUpdates } from "./updates.js";
 
 export interface VersionCheck {
   gameId: string;
-  /** The version in the game's file or folder name ("Title v1.2.zip"), if any. */
+  /**
+   * The newest version the library has: the game's file or folder name ("Title v1.2.zip"), or
+   * an update for it in the library ("Title 1.2 to 1.3") when that's newer.
+   */
   current: string | null;
   latest: string | null;
   source: "gog" | "steam" | "itch" | null;
@@ -80,16 +83,42 @@ export class VersionChecker {
     };
   }
 
+  /**
+   * What the library has of a game: its newest version (its own name's, or an update's) and
+   * when the newest of those arrived. An update in the library counts, as every PC can apply it.
+   */
+  private have(gameId: string): { current: string | null; since: string } | null {
+    const scanned = this.library.scannedGame(gameId);
+    const game = this.library.get(gameId);
+    if (!scanned || !game) return null;
+    let current = releaseVersion(path.posix.basename(scanned.source));
+    let since = scanned.entryModifiedAt;
+    for (const u of game.addons ?? []) {
+      if (u.kind !== "update") continue;
+      const at = this.library.scannedGame(u.id)?.entryModifiedAt;
+      if (at && Date.parse(at) > Date.parse(since)) since = at;
+      if (u.version && (!current || compareVersion(u.version, current) > 0)) current = u.version;
+    }
+    return { current, since };
+  }
+
+  /** The stored answer predates a newer update arriving in the library, so it needs checking again. */
+  stale(check: VersionCheck): boolean {
+    const now = this.have(check.gameId);
+    return !!now && now.current !== check.current;
+  }
+
   /** Checks one game and stores the answer; alerts when it newly falls behind. */
   async check(gameId: string): Promise<VersionCheck> {
     const scanned = this.library.scannedGame(gameId);
     const game = this.library.get(gameId);
-    if (!scanned || !game) throw new Error("No such game");
-    const current = releaseVersion(path.posix.basename(scanned.source));
+    const have = this.have(gameId);
+    if (!scanned || !game || !have) throw new Error("No such game");
+    const { current, since } = have;
     const result =
       (await this.itch(scanned.source, scanned.entryModifiedAt)) ??
       (await this.gog(game.metadata?.name ?? cleanTitle(path.posix.basename(scanned.source)).query, current)) ??
-      (game.metadata?.steamAppId ? await this.steam(game.metadata.steamAppId, current, scanned.entryModifiedAt) : null);
+      (game.metadata?.steamAppId ? await this.steam(game.metadata.steamAppId, current, since) : null);
     const check: VersionCheck = {
       gameId,
       current,
