@@ -71,8 +71,10 @@ function fakeServices() {
         sabQueue.push({ nzo_id: "SABnzbd_nzo_1", filename: "Usenet Game", mb: "200", mbleft: "100", percentage: "50", status: "Downloading", timeleft: "0:01:40", cat: "games" });
         return json({ status: true, nzo_ids: ["SABnzbd_nzo_1"] });
       }
-      if (mode === "queue") return json({ queue: { slots: sabQueue, kbpersec: "1024" } });
-      if (mode === "history") return json({ history: { slots: sabHistory } });
+      // Filters by category like the real thing, so a job filed elsewhere only shows unfiltered.
+      const cat = url.searchParams.get("cat") ?? url.searchParams.get("category");
+      if (mode === "queue") return json({ queue: { slots: sabQueue.filter((j) => !cat || j.cat === cat), kbpersec: "1024", paused: false } });
+      if (mode === "history") return json({ history: { slots: sabHistory.filter((j) => !cat || j.category === cat) } });
     }
     // Prowlarr's own download links: a redirect to a magnet, a .torrent file, or a login page.
     if (url.host === "prowlarr:9696" && url.pathname === "/2/download") {
@@ -284,6 +286,36 @@ describe("download connectors", () => {
     assert.ok(ctx.library.list({ search: "usenet" }).length === 1);
     assert.deepEqual((await readdir(root)).filter((n) => n.startsWith(".import")), [], "no staging folder left behind");
     await assert.rejects(stat(src), "move mode removes the source");
+    await app.close();
+  });
+
+  it("follows a SABnzbd job filed under another category, and gives up on one SABnzbd lost", async () => {
+    const fake = fakeServices();
+    const { app, ctx } = await makeApp(root, { apiToken: "svc" }, { fetchImpl: fake.impl });
+    const headers = { authorization: "Bearer svc" };
+    await app.inject({ method: "PUT", url: "/api/connectors", headers, payload: SETTINGS });
+    const grab = await app.inject({ method: "POST", url: "/api/downloads", headers, payload: { url: "http://prowlarr:9696/1/download?apikey=x", title: "Usenet Game", protocol: "usenet" } });
+    // SABnzbd has no "games" category, so the job went under its default one.
+    fake.sabQueue[0]!.cat = "*";
+    fake.sabQueue.push({ nzo_id: "SABnzbd_nzo_tv", filename: "Some Show", mb: "10", mbleft: "10", percentage: "0", status: "Queued", timeleft: "0:00:00", cat: "tv" });
+    fake.sabQueue.push({ nzo_id: "SABnzbd_nzo_fetch", filename: "Fetching One", mb: "0", mbleft: "0", percentage: "0", status: "Fetching", timeleft: "", cat: "games" });
+    let list = (await app.inject({ url: "/api/downloads", headers })).json();
+    const mine = list.downloads.find((d: { id: number }) => d.id === grab.json().id);
+    assert.equal(mine.live?.state, "downloading", "matched by nzo id outside our category");
+    assert.equal(mine.live.downloadSpeed, 1024 * 1024);
+    const others = list.other.map((o: { name: string; state: string }) => `${o.name}:${o.state}`);
+    assert.deepEqual(others, ["Fetching One:downloading"], "other categories' jobs stay out of the list");
+
+    // An older job SABnzbd has no trace of anymore stops waiting and says why.
+    ctx.db
+      .prepare("INSERT INTO downloads (client, name, external_id, source_url, added_at, status) VALUES ('sabnzbd', 'Old Game', 'SABnzbd_nzo_gone', 'http://x', ?, 'downloading')")
+      .run(new Date(Date.now() - 3 * 86_400_000).toISOString());
+    await ctx.downloads.reconcile();
+    list = (await app.inject({ url: "/api/downloads", headers })).json();
+    const old = list.downloads.find((d: { name: string }) => d.name === "Old Game");
+    assert.equal(old.status, "failed");
+    assert.match(old.error, /SABnzbd no longer has this download/);
+    assert.equal(list.downloads.find((d: { id: number }) => d.id === grab.json().id).status, "downloading", "the fresh one is left alone");
     await app.close();
   });
 

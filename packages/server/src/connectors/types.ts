@@ -12,6 +12,8 @@ export interface ActiveDownload {
   state: "downloading" | "paused" | "queued" | "completed" | "seeding" | "failed" | "checking";
   /** Where the client put the files (in the client's own path space). */
   path: string | null;
+  /** In the client but outside our category: only used to follow a download we sent there. */
+  outsideCategory?: boolean;
 }
 
 export interface DownloadClient {
