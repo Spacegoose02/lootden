@@ -5,7 +5,7 @@ import path from "node:path";
 import type { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import type { FastifyInstance, FastifyRequest } from "fastify";
-import { cleanTogether, PC_PLATFORM, safeFolderName, type ControllerSupport, type GameSummary, type PackageKind } from "@lootden/shared";
+import { cleanTogether, PC_PLATFORM, safeFolderName, type ControllerSupport, type GameSummary, type PackageKind, type SetupOverride } from "@lootden/shared";
 import type { GameQuery } from "../catalog/library.js";
 import { resolveGameFile } from "../catalog/scanner.js";
 import { HttpProblem, requireAdmin, requireUser, type AppContext } from "../context.js";
@@ -428,14 +428,15 @@ export function gameRoutes(app: FastifyInstance, ctx: AppContext) {
     return { deleted: req.params.id };
   });
 
-  /** What an entry is (game, update, DLC) and which game an update or DLC belongs to. null puts it back to automatic. */
-  app.put<{ Params: { id: string }; Body: { kind?: PackageKind | null; baseGameId?: string | null } }>("/api/games/:id/package", async (req) => {
+  /** What an entry is (game, update, DLC), which game an update or DLC belongs to, and whether a PC game needs setting up. null puts it back to automatic. */
+  app.put<{ Params: { id: string }; Body: { kind?: PackageKind | null; baseGameId?: string | null; setup?: SetupOverride | null } }>("/api/games/:id/package", async (req) => {
     requireAdmin(req);
     if (!ctx.library.get(req.params.id)) throw new HttpProblem(404, "Game not found");
     const b = req.body ?? {};
     if (b.kind != null && !["game", "update", "dlc"].includes(b.kind)) throw new HttpProblem(400, "kind is game, update, dlc or null");
+    if (b.setup != null && !["disc", "installer", "none"].includes(b.setup)) throw new HttpProblem(400, "setup is disc, installer, none or null");
     try {
-      ctx.library.setPackage(req.params.id, { kind: b.kind, baseGameId: b.baseGameId });
+      ctx.library.setPackage(req.params.id, { kind: b.kind, baseGameId: b.baseGameId, setup: b.setup });
     } catch (err) {
       throw new HttpProblem(400, (err as Error).message);
     }

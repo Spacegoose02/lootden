@@ -177,7 +177,8 @@ export async function installGame(api: GameServerClient, gameId: string, opts: I
 export async function finishInstall(api: GameServerClient, game: GameDetail, gameDir: string, opts: Pick<InstallOptions, "device" | "report" | "onEvent">): Promise<void> {
   const emit = opts.onEvent ?? (() => {});
   // An installer inside an archive only shows once it's unpacked, so check the files we ended up with too.
-  const needsSetup = game.platform === "pc" ? (game.needsSetup ?? (await detectSetup(gameDir))) : null;
+  // An admin's "ready to play" stands, whatever the files look like.
+  const needsSetup = game.platform === "pc" ? (game.needsSetup ?? (game.packageOverrides?.setup === "none" ? null : await detectSetup(gameDir))) : null;
   // The list Verify files checks against later. Not for scratch downloads.
   if (opts.report !== false) await recordFiles(gameDir).catch((err: Error) => emit({ type: "warning", message: `Couldn't record the game's files for Verify: ${err.message}` }));
   await rm(path.join(gameDir, LEGACY_MANIFEST_NAME), { force: true });
