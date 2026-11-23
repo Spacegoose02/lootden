@@ -165,6 +165,7 @@ import { WebBrowser } from "./browser.js";
 import { PadWatcher } from "./padwatch.js";
 import { TruckMods } from "./truckmods.js";
 import { TruckModList } from "./truckmodlist.js";
+import { StardewMods } from "./stardewmods.js";
 import { downloadUpdate, installKind, launchUpdate, pickUpdate, verifyUpdate, type AvailableUpdate } from "./updater.js";
 
 /** Emulators live in the app's data folder unless the user moved them. */
@@ -229,6 +230,7 @@ const launchBrowser = process.argv.includes("--browser");
 let browser: WebBrowser;
 /** ATS and ETS2 mods: browser downloads into the game's mod folder, shared through the server. */
 let truckMods: TruckMods;
+let stardewMods: StardewMods;
 
 // Keep settings from before the rename: the app's data folder used to be "Game Manager".
 const legacyUserData = path.join(app.getPath("appData"), "Game Manager");
@@ -1941,6 +1943,8 @@ function registerIpc(): void {
     const detail = (await cachedDetails(gameId)) as { backgroundUrl?: string | null; coverUrl?: string | null } | null;
     const art = detail?.backgroundUrl ?? detail?.coverUrl ?? null;
     startSplash(gameId, game.title, art ? new URL(art, origin() || "http://localhost").toString() : null);
+    // Stardew Valley: the Mods folder matches the household's shared mod set before it starts.
+    await stardewMods.beforePlay(game.title, home, (message) => send({ gameId, type: "warning", message }));
     // Steps before the game: a failure stops here, before anything is counted.
     const before = stepsBefore(profile);
     if (before.length) {
@@ -2010,6 +2014,7 @@ function registerIpc(): void {
     launching.add(gameId);
     try {
       startSplash(gameId, local.title, null);
+      await stardewMods.beforePlay(local.title, local.installDir, (message) => send({ gameId, type: "warning", message }));
       const before = stepsBefore(profile);
       if (before.length) await runLaunchSteps(before, { gameDir: local.installDir });
     } catch (err) {
@@ -3667,6 +3672,18 @@ void app.whenReady().then(async () => {
   void applyPeerShare();
   truckMods = new TruckMods({ settings: () => settings, client, send, fromServer }, () => (existsSync(bundled7za()) ? bundled7za() : ""));
   truckMods.registerIpc();
+  stardewMods = new StardewMods({
+    settings: () => settings,
+    client,
+    send,
+    fromServer,
+    sevenZip,
+    installs: async () => [
+      ...(await listInstalled(await searchDirs()).catch(() => [])).map((g) => ({ title: g.title, dir: g.installedDir ?? g.dir })),
+      ...(await storeGamesForPresence()).map((g) => ({ title: g.title, dir: g.installDir })),
+    ],
+  });
+  stardewMods.registerIpc();
   new TruckModList(
     { send, fromServer, openBrowser: (url) => browser.open(url), bundled7za: () => (existsSync(bundled7za()) ? bundled7za() : "") },
     truckMods,
@@ -3683,7 +3700,7 @@ void app.whenReady().then(async () => {
     policy: browserPolicy,
     preload: path.join(__dirname, "browser-preload.cjs"),
     icon: path.join(__dirname, "..", "build", "icon.png"),
-    onDownload: (item, wc, owner) => truckMods.handleDownload(item, wc, owner),
+    onDownload: (item, wc, owner) => stardewMods.handleDownload(item, wc, owner) || truckMods.handleDownload(item, wc, owner),
     sendToDownloads,
     openDownloads: () => {
       browser.close();

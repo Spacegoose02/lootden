@@ -2,7 +2,7 @@
 export { ApiError, GameServerClient } from "./api.js";
 export { CONFIG_KEYS, configDir, configPath, defaults, loadConfig, saveConfigValue, type ClientConfig } from "./config.js";
 export { listDrives, type Drive } from "./drives.js";
-export { extractArchive, findSevenZip } from "./extractor.js";
+export { extractArchive, findSevenZip, type SevenZip } from "./extractor.js";
 export { adoptFolder, detectSetup, exeStampOf, findCopies, listInstalled, saveManifest, uninstallGame, versionTag, type GameRef, type InstalledGame } from "./installed.js";
 export { installGame, isManifest, LEGACY_MANIFEST_NAME, MANIFEST_NAME, pickGame, type InstallEvent, type InstallOptions } from "./installer.js";
 export { checkTicket, installFromPeer, lanAddresses, PEER_PORT, PeerShare } from "./peer.js";
@@ -38,6 +38,7 @@ export * from "./recomps.js";
 export * from "./recompmods.js";
 export { backupSaves, expandSavePath, restoreSaves } from "./saves.js";
 export { installedTruckModKey, installTruckMod, linkTruckMod, listTruckMods, readTruckManifest, removeTruckMod, scanTruckMods, truckGameVersion, truckModsFolder, TRUCK_MODS_LIST } from "./truckmods.js";
+export { findStardewDir, scanStardewMods, stardewDefaultDirs, syncStardewMods, STARDEW_TRACKING_FILE, type StardewSyncDeps } from "./stardewmods.js";
 export { switchSaveSlot, type SaveSlotOptions } from "./saveslots.js";
 export { offlineAllowance, watchPlayTime, type KeptAllowance, type PlayWatchOptions } from "./playtime.js";
 export { findSetup, prepareGame, runLocalSetup, uploadInstalledFolder, type PrepareStep } from "./prepare.js";

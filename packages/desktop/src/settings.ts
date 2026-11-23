@@ -51,6 +51,12 @@ export interface DesktopSettings {
   browserLinks?: "auto" | "on" | "off";
   /** ATS and ETS2 mod folders picked on this PC (a custom -homedir); missing means the usual one in Documents. */
   truckModFolders?: Partial<Record<"ats" | "ets2", string>>;
+  /** Stardew Valley's folder picked on this PC; missing means LootDen finds it (its install, Steam, GOG). */
+  stardewGameDir?: string;
+  /** Match the Mods folder to the shared Stardew mod set before the game starts (on unless switched off). */
+  stardewAutoSync?: boolean;
+  /** Also switch off Stardew mods that aren't in the shared set, so every PC loads the same mods (on unless switched off). */
+  stardewStrict?: boolean;
   /** Sunshine's web login on this PC (the password sealed with the OS keychain when it can be), and the LootDen games added to it. */
   sunshine?: { user: string; pass: string; sealed: boolean; streamGames: string[] };
   /** Launch options per game on this PC (keyed by launchKey): extra ways to start it and steps before and after. */

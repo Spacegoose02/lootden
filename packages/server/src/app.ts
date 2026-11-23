@@ -56,6 +56,8 @@ import { TruckModStore } from "./truckmods/store.js";
 import { truckModRoutes } from "./routes/truckmods.js";
 import { TruckModListStore } from "./truckmods/list.js";
 import { truckModListRoutes } from "./routes/truckmodlist.js";
+import { StardewModStore } from "./stardewmods/store.js";
+import { stardewModRoutes } from "./routes/stardewmods.js";
 import { VersionChecker } from "./news/version-check.js";
 import { JournalStore } from "./users/journal.js";
 import { NexusMods } from "./news/nexus.js";
@@ -312,6 +314,7 @@ export function buildContext(config: ServerConfig, db: Db, log: Log, opts: Build
     workshop: new SteamWorkshop(opts.fetchImpl),
     truckMods: new TruckModStore(db, config.dataDir),
     truckModList: new TruckModListStore(db),
+    stardewMods: new StardewModStore(db, config.dataDir),
     versions: new VersionChecker(db, library, updates, notifier, () => settings().itch.apiKey, opts.fetchImpl),
     journal: new JournalStore(db),
     nexus: new NexusMods(() => settings().nexus.apiKey, opts.fetchImpl),
@@ -435,6 +438,7 @@ export function buildApp(config: ServerConfig, db: Db, opts: BuildOptions = {}):
   workshopRoutes(app, ctx);
   truckModRoutes(app, ctx);
   truckModListRoutes(app, ctx);
+  stardewModRoutes(app, ctx);
   extraRoutes(app, ctx);
   sourceRoutes(app, ctx);
   addonRoutes(app, ctx);

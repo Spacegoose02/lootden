@@ -1,4 +1,4 @@
-import type { ActivityEvent, Allowance, PeerSource, PresenceAnswer, PresenceReport, GameDetail, PlayLimits, GameSummary, RecompInfo, HealthResponse, LibraryStats, SaveBackup, TruckGame, TruckMod, User } from "@lootden/shared";
+import type { ActivityEvent, Allowance, PeerSource, PresenceAnswer, PresenceReport, GameDetail, PlayLimits, GameSummary, RecompInfo, HealthResponse, LibraryStats, SaveBackup, StardewMod, StardewModSet, TruckGame, TruckMod, User } from "@lootden/shared";
 import type { ClientConfig } from "./config.js";
 
 /** A library game's saves, or another store's game's (store:<addon>:<id>). */
@@ -296,6 +296,45 @@ export class GameServerClient {
       },
     });
     await pipeline(Readable.fromWeb(res.body as never), count, createWriteStream(dest));
+  }
+  /** The household's Stardew Valley mod set, what it's missing and how each PC compares. */
+  stardewMods() {
+    return this.json<StardewModSet>("/api/stardew-mods");
+  }
+  /** Adds a mod zip to the Stardew set; a zip with a mod already there replaces it (a newer version). */
+  async uploadStardewMod(filePath: string, info: { fileName: string; title?: string | null; sourceUrl?: string | null }): Promise<StardewMod> {
+    const { createReadStream } = await import("node:fs");
+    const { stat } = await import("node:fs/promises");
+    const { Readable } = await import("node:stream");
+    const size = (await stat(filePath)).size;
+    const qs = new URLSearchParams({ name: info.fileName });
+    if (info.title) qs.set("title", info.title);
+    if (info.sourceUrl) qs.set("source", info.sourceUrl);
+    const res = await fetch(`${this.base}/api/stardew-mods?${qs}`, {
+      method: "POST",
+      headers: this.headers({ "Content-Type": "application/octet-stream", "Content-Length": String(size) }),
+      body: Readable.toWeb(createReadStream(filePath)) as ReadableStream,
+      duplex: "half",
+    } as RequestInit);
+    if (!res.ok) {
+      const detail = await res.json().then((b: { error?: string }) => b.error ?? "", () => "");
+      throw new ApiError(res.status === 404 ? "This server doesn't keep Stardew mods yet; update it to share mods between PCs" : detail || `Couldn't add the mod (${res.status})`, res.status);
+    }
+    return (await res.json()) as StardewMod;
+  }
+  /** Streams a Stardew mod's zip from the server to dest. */
+  async downloadStardewMod(id: number, dest: string): Promise<void> {
+    const { createWriteStream } = await import("node:fs");
+    const { Readable } = await import("node:stream");
+    const { pipeline } = await import("node:stream/promises");
+    const res = await fetch(`${this.base}/api/stardew-mods/${id}/file`, { headers: this.headers() });
+    if (!res.ok || !res.body) throw new ApiError(`Couldn't get the mod from the server (${res.status})`, res.status);
+    await pipeline(Readable.fromWeb(res.body as never), createWriteStream(dest));
+  }
+  /** Tells the server which Stardew mods this PC loads, so the mod set page can show where PCs differ. */
+  async reportStardewMods(device: string, mods: Array<{ uniqueId: string; name: string; version: string }>): Promise<void> {
+    const res = await fetch(`${this.base}/api/stardew-mods/report`, { method: "PUT", headers: this.headers({ "Content-Type": "application/json" }), body: JSON.stringify({ device, mods }) });
+    if (!res.ok) throw new ApiError(`Couldn't report this PC's Stardew mods (${res.status})`, res.status);
   }
   fileUrl(gameId: string, index: number): string {
     return `${this.base}/api/games/${encodeURIComponent(gameId)}/files/${index}`;
