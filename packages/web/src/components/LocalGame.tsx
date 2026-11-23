@@ -103,6 +103,11 @@ export function LocalGame({ copy, removed }: { copy: LocalGameCopy; removed: boo
                   {playing ? "Playing…" : platform !== "pc" ? `▶ Play ${platformFor(platform).short}` : "▶ Play"}
                 </button>
               )}
+              {needsSetup && bridge.setLocation && (
+                <button className="secondary" disabled={busy} onClick={() => run(() => bridge.setLocation!(l.gameId))}>
+                  Already installed
+                </button>
+              )}
               <button className="secondary" onClick={() => run(() => bridge.openFolder(l.gameId))}>
                 Open folder
               </button>
@@ -116,7 +121,7 @@ export function LocalGame({ copy, removed }: { copy: LocalGameCopy; removed: boo
               </p>
             )}
             {message && <p className={message.error ? "error small" : "notice small"}>{message.message}</p>}
-            {error && <p className="error small">{error}</p>}
+            {error && error !== message?.message && <p className="error small">{error}</p>}
           </div>
         </div>
       </div>

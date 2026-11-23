@@ -41,6 +41,7 @@ const bridge = {
   locate: (gameId: string) => ipcRenderer.invoke("gm:locate", gameId),
   adopt: (gameId: string, dir: string) => ipcRenderer.invoke("gm:adopt", gameId, dir),
   runSetup: (gameId: string) => ipcRenderer.invoke("gm:runSetup", gameId),
+  setLocation: (gameId: string) => ipcRenderer.invoke("gm:setLocation", gameId),
   uploadInstalled: (gameId: string) => ipcRenderer.invoke("gm:uploadInstalled", gameId),
   applyUpdate: (updateId: string) => ipcRenderer.invoke("gm:applyUpdate", updateId),
   activity: () => ipcRenderer.invoke("gm:activity"),

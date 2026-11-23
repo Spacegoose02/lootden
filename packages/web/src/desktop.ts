@@ -439,6 +439,8 @@ export interface DesktopBridge {
   adopt?(gameId: string, dir: string): Promise<InstalledGame>;
   /** Downloaded installers: run the setup on this PC, and (admins) upload the installed game. */
   runSetup?(gameId: string): Promise<{ installedDir: string; executable?: string } | null>;
+  /** Already installed: pick the game's folder and the program that starts it. Missing in older apps. */
+  setLocation?(gameId: string): Promise<{ installedDir: string; executable: string } | null>;
   uploadInstalled?(gameId: string): Promise<GameDetailLike | null>;
   /** Updates and DLC: apply one to its installed game (with a backup), or undo the latest. Missing in older apps. */
   applyUpdate?(updateId: string): Promise<AppliedUpdate | null>;

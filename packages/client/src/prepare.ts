@@ -278,7 +278,7 @@ export async function runLocalSetup(
       }
     }
     const setup = await findSetup(media);
-    if (!setup) throw new Error(`No setup program found in ${media}. Run it yourself from Open folder.`);
+    if (!setup) throw new Error(`No setup program found in ${media}. If the game is already installed, use Already installed to pick its folder and program.`);
     await mkdir(target, { recursive: true });
     opts.onStep?.("Running the installer. Finish it, then come back here.");
     await opts.runInstaller(setup, target, await installerArgs(setup, target));

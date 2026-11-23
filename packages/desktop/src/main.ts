@@ -2816,6 +2816,36 @@ function registerIpc(): void {
   });
 
   /**
+   * The game is already installed (by hand, or before LootDen knew about it): pick its folder and
+   * the program that starts it, so Play works without running an installer. Also changes them for
+   * a game that is set up already.
+   */
+  ipcMain.handle("gm:setLocation", async (e, gameId: string) => {
+    fromServer(e);
+    if (running.has(gameId)) throw new Error("Already working on this game");
+    const game = await findInstalled(gameId);
+    const start = game.installedDir && existsSync(game.installedDir) ? game.installedDir : game.dir;
+    const r = await dialog.showOpenDialog(win!, { title: `Folder ${game.title} is installed in`, defaultPath: start, properties: ["openDirectory"] });
+    if (r.canceled) return null;
+    const folder = r.filePaths[0]!;
+    if (!(await readdir(folder).catch(() => [])).length) throw new Error(`${folder} is empty or missing`);
+    const current = game.executable ? (path.isAbsolute(game.executable) ? game.executable : path.join(game.dir, game.executable)) : null;
+    const found = await findExecutable(folder, game.title).then((x) => x && path.join(folder, x));
+    const suggested = current && existsSync(current) && !path.relative(folder, current).startsWith("..") ? current : found;
+    const pick = await dialog.showOpenDialog(win!, {
+      title: `Which file starts ${game.title}?`,
+      defaultPath: suggested ?? folder,
+      properties: ["openFile"],
+      filters: process.platform === "win32" ? [{ name: "Programs", extensions: ["exe", "bat", "cmd", "lnk"] }, { name: "All files", extensions: ["*"] }] : [],
+    });
+    if (pick.canceled) return null;
+    const exe = relTo(game.dir, pick.filePaths[0]!);
+    await saveManifest(game.dir, { installedDir: folder, executable: exe, exeStamp: null, setupAt: new Date().toISOString() });
+    send({ gameId, type: "prepare", message: `Set to ${pick.filePaths[0]}. Press Play to start it.`, done: true });
+    return { installedDir: folder, executable: exe };
+  });
+
+  /**
    * Applies an update or DLC from the server to its installed game. Files are copied over the
    * game with a backup (undo restores it); a setup program is run against the game's folder.
    * When the versions don't line up, the player decides whether to go ahead.
