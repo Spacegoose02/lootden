@@ -506,7 +506,7 @@ function PackageAdmin({ game, onChange }: { game: Game; onChange: (g: Game) => v
   useEffect(() => {
     if (isAddon) api.games({ platform: "pc" }).then(setGames, () => setGames([]));
   }, [isAddon]);
-  const save = (patch: { kind?: string | null; baseGameId?: string | null }) => {
+  const save = (patch: { kind?: string | null; baseGameId?: string | null; setup?: string | null }) => {
     setError("");
     api.setPackage(game.id, patch).then(onChange, (e: Error) => setError(e.message));
   };
@@ -539,6 +539,17 @@ function PackageAdmin({ game, onChange }: { game: Game; onChange: (g: Game) => v
                   {g.title}
                 </option>
               ))}
+            </select>
+          </label>
+        )}
+        {!isAddon && game.platform === "pc" && (
+          <label>
+            Files are{" "}
+            <select value={game.packageOverrides.setup ?? ""} onChange={(e) => save({ setup: e.target.value || null })}>
+              <option value="">Automatic ({game.packageOverrides.setup == null && game.needsSetup ? (game.needsSetup === "disc" ? "disc image" : "installer") : "ready to play"})</option>
+              <option value="none">The game, ready to play</option>
+              <option value="installer">An installer</option>
+              <option value="disc">A disc image</option>
             </select>
           </label>
         )}

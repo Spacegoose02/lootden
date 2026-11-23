@@ -159,8 +159,15 @@ export interface GameDetail extends GameSummary {
   /** For an update or DLC: the game it belongs to. */
   baseGame: Pick<GameSummary, "id" | "title" | "coverUrl" | "version"> | null;
   /** Admin overrides for update and DLC matching; null means "worked out from the name". */
-  packageOverrides: { kind: PackageKind | null; baseGameId: string | null };
+  /**
+   * setup: an admin's word on whether it needs setting up ("disc", "installer", or "none" for a
+   * ready-to-play game); null means worked out from the files.
+   */
+  packageOverrides: { kind: PackageKind | null; baseGameId: string | null; setup?: SetupOverride | null };
 }
+
+/** What an admin can say a PC game is, overriding the file check. */
+export type SetupOverride = "disc" | "installer" | "none";
 
 /** A save backup a player uploaded for one game. */
 export interface SaveBackup {
@@ -324,18 +331,22 @@ export function groupArchiveSets(paths: string[]): ArchiveSet[] {
 export const NOT_THE_GAME_EXE =
   /^(unins\d*|setup.*|install(er)?.*|autorun|vc_?redist.*|vcredist.*|dxsetup|dxwebsetup|directx.*|dotnet.*|ndp\d+.*|ue4prereq.*|uepre.*|physx.*|oalinst|crashreport.*|crashhandler.*|unitycrashhandler.*|errorreporter|easyanticheat.*|cleanup|config(uration)?|settings|7z.*|unrar|quicksfv|.*_?be|steam_?api.*)$/i;
 const REDIST_FOLDER = /(^|\/)(_?redist|_commonredist|directx|support|__installer|redistributables?|.*prereq.*)\//i;
+/** Scene release folders beside a disc image that hold a cracked .exe, not an installed game. */
+const CRACK_FOLDER = /(^|\/)(crack|cracked|codex|plaza|skidrow|reloaded|cpy|fairlight|prophet|hoodlum|razor1911|tinyiso|dodi|empress|rune|tenoke|flt)\//i;
 
 /**
  * Disc images and setup programs that need installing once before the game can be played.
- * - "disc": an ISO, MDF/MDS, NRG, CUE/BIN or CCD/IMG image.
+ * - "disc": an ISO, MDF/MDS, NRG, CUE/BIN or CCD/IMG image, with no installed game beside it
+ *   (an installed game can carry disc images as data, such as a collection of classic games).
  * - "installer": a setup or install program (.exe or .msi) near the top, with either its
  *   data files beside it (setup-1.bin, data.cab, multi-part .bin sets) or no other program
  *   that could be the game. An installed game always has its own executable, so it never matches.
  */
 export function setupKindOf(files: Array<{ path: string }>): "disc" | "installer" | null {
   const names = files.map((f) => f.path.replace(/\\/g, "/").toLowerCase());
-  if (names.some((n) => /\.(iso|mdf|mds|nrg|cue|ccd)$/.test(n))) return "disc";
   const base = (n: string) => n.slice(n.lastIndexOf("/") + 1);
+  const games = names.filter((n) => /\.exe$/.test(n) && !REDIST_FOLDER.test(n) && !NOT_THE_GAME_EXE.test(base(n).replace(/\.exe$/, "")));
+  if (names.some((n) => /\.(iso|mdf|mds|nrg|cue|ccd)$/.test(n)) && !games.some((n) => !CRACK_FOLDER.test(n))) return "disc";
   const dir = (n: string) => n.slice(0, n.lastIndexOf("/") + 1);
   const top = names.filter((n) => n.split("/").length <= 2);
   const setups = top.filter((n) => /^(setup|install(er)?)[^/]*\.(exe|msi)$/.test(base(n)) || /\.msi$/.test(n));
@@ -343,7 +354,6 @@ export function setupKindOf(files: Array<{ path: string }>): "disc" | "installer
   // Numbered data files in the setup program's folder: setup_game-1.bin, data1.cab, part-01.bin.
   const setupDirs = new Set(setups.map(dir));
   if (names.some((n) => setupDirs.has(dir(n)) && /(^setup[^/]*\.bin|\d+\.bin|\.cab|\.w\d{2})$/.test(base(n)))) return "installer";
-  const games = names.filter((n) => /\.exe$/.test(n) && !REDIST_FOLDER.test(n) && !NOT_THE_GAME_EXE.test(base(n).replace(/\.exe$/, "")));
   return games.length ? null : "installer";
 }
 

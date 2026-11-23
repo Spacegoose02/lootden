@@ -188,6 +188,14 @@ describe("update packages in the library", () => {
     assert.ok(after.some((g) => g.title === "Hollow Knight Godmaster"));
     const bad = await app.inject({ method: "PUT", url: `/api/games/${patch.id}/package`, headers: auth, payload: { baseGameId: "nope" } });
     assert.equal(bad.statusCode, 400);
+    // ...and say whether a PC game needs setting up, whatever its files look like.
+    const ready = (await app.inject({ method: "PUT", url: `/api/games/${stardew.id}/package`, headers: auth, payload: { setup: "disc" } })).json() as { needsSetup: unknown; packageOverrides: { setup: unknown } };
+    assert.deepEqual([ready.needsSetup, ready.packageOverrides.setup], ["disc", "disc"]);
+    const none = (await app.inject({ method: "PUT", url: `/api/games/${stardew.id}/package`, headers: auth, payload: { setup: "none" } })).json() as { needsSetup: unknown };
+    assert.equal(none.needsSetup, null);
+    const auto = (await app.inject({ method: "PUT", url: `/api/games/${stardew.id}/package`, headers: auth, payload: { setup: null } })).json() as { packageOverrides: { setup: unknown } };
+    assert.equal(auto.packageOverrides.setup, null);
+    assert.equal((await app.inject({ method: "PUT", url: `/api/games/${stardew.id}/package`, headers: auth, payload: { setup: "maybe" } })).statusCode, 400);
     await app.close();
   });
 });

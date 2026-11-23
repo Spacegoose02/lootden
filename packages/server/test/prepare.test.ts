@@ -43,6 +43,11 @@ describe("disc and installer games", () => {
     assert.equal(setupKindOf([{ path: "Game.exe" }, { path: "Setup.exe" }, { path: "data.pak" }]), null);
     assert.equal(setupKindOf([{ path: "Game.exe" }, { path: "_CommonRedist/vcredist/setup.exe" }]), null);
     assert.equal(setupKindOf([{ path: "game.exe" }, { path: "resources.bin" }]), null);
+    // Installed games that carry disc images as data (a collection of classic games) are not discs.
+    assert.equal(setupKindOf([{ path: "Barbie Rewind/BarbieRewind.exe" }, { path: "Barbie Rewind/Content/Classics/horse.iso" }, { path: "Barbie Rewind/Content/Classics/pets.cue" }]), null);
+    // A scene disc with its crack beside it is still a disc.
+    assert.equal(setupKindOf([{ path: "game.iso" }, { path: "Crack/Game.exe" }]), "disc");
+    assert.equal(setupKindOf([{ path: "Release/game.iso" }, { path: "Release/CODEX/Game.exe" }, { path: "Release/setup.exe" }]), "disc");
   });
 
   it("replaces a disc game with the uploaded install and keeps its data", async () => {

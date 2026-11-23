@@ -867,6 +867,12 @@ export const MIGRATIONS: string[] = [
     reported_at TEXT NOT NULL
   );
   `,
+  `
+  -- Admin's word on whether a PC game needs setting up: 'disc', 'installer' or 'none'; NULL means check its files.
+  ALTER TABLE games ADD COLUMN setup_override TEXT;
+  -- Installed games that carry disc images as data were taken for discs: check every archive again.
+  DELETE FROM archive_peeks WHERE result IN ('disc', 'installer');
+  `,
 ];
 
 export function openDatabase(file: string): Db {
