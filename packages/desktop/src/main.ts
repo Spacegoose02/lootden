@@ -2778,8 +2778,8 @@ function registerIpc(): void {
     const step = (message: string, extra: object = {}) => send({ gameId, type: "prepare", message, ...extra });
     try {
       const target = path.join(game.dir, "Installed");
-      await runLocalSetup(game.dir, target, { sevenZip: await prepSevenZip(), runInstaller: (setup, _target, args) => runElevated(setup, args), onStep: step });
-      const folder = await askInstalledFolder(target, "Use this folder");
+      const how = await runLocalSetup(game.dir, target, { sevenZip: await prepSevenZip(), runInstaller: (setup, _target, args) => runElevated(setup, args), onStep: step });
+      const folder = how === "copied" ? target : await askInstalledFolder(target, "Use this folder");
       if (!folder || !existsSync(folder) || !(await readdir(folder)).length) {
         step(folder ? `${folder} is empty; the installer didn't finish` : "Cancelled", { done: true, error: !!folder });
         return null;
