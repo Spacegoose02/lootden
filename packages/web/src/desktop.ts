@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import type { LocalStardewMod, StardewMod, StardewSyncResult } from "@lootden/shared";
 import type { ArcadeDevice, ArcadeGame, ConnectedInputs, ActiveTruckMod, DuplicateModGroup, GameDetail, GlobalLaunchScripts, InstalledTruckMod, LaunchProfile, LocalStoreGame, ModLinkCheck, TruckGame, TruckModFile, TruckProfile } from "@lootden/shared";
 
 export interface Drive {
@@ -206,6 +207,8 @@ export type Progress =
   | { gameId: string; type: "truckMods"; game: TruckGame; line: string; done: boolean; error: boolean }
   /** The mod list's page checks (gameId is "truck-mods:<game>"). */
   | { gameId: string; type: "truckModCheck"; game: TruckGame; done: number; total: number; line: string; finished: boolean }
+  /** The Stardew Valley Mods folder being matched to the shared set (gameId is "stardew-mods"). */
+  | { gameId: string; type: "stardewMods"; line: string; done: boolean; error: boolean }
   | { gameId: string; type: "saves"; backupId?: number; size?: number; error?: string }
   /** A step of a long job on this game (zipping, uploading, deleting); received and total when it can be counted. */
   | { gameId: string; type: "prepare"; message: string; done?: boolean; error?: boolean; newId?: string; received?: number; total?: number }
@@ -417,6 +420,13 @@ export interface DesktopBridge {
   retireTruckModFiles?(game: TruckGame, files: string[]): Promise<string[]>;
   applyTruckLoadOrder?(game: TruckGame, profileDir: string, mods: ActiveTruckMod[]): Promise<{ backup: string; profile: TruckProfile }>;
   enableTruckTextSaves?(game: TruckGame): Promise<boolean>;
+  /** Stardew Valley's Mods folder kept the same as the shared mod set (newer apps only). */
+  stardewModsLocal?(): Promise<StardewModsLocal>;
+  syncStardewMods?(): Promise<StardewSyncResult>;
+  stardewModOptions?(patch: { autoSync?: boolean; strict?: boolean }): Promise<{ autoSync: boolean; strict: boolean }>;
+  addStardewModFile?(): Promise<StardewMod | null>;
+  openStardewModFolder?(): Promise<void>;
+  pickStardewFolder?(reset?: boolean): Promise<string | null>;
   /** The built-in web browser, over LootDen, on its start page or a web page (newer apps only). */
   openBrowser?(url?: string): Promise<void>;
   /** Android (apps from 0.34): plays a PS2 game in the browser player on a secure, isolated page of the app's own. */
@@ -633,6 +643,20 @@ export interface TruckModScan {
   /** Workshop items Steam has downloaded for the game (the subscriptions). */
   workshop: Array<{ id: string; updatedAt: string | null; sizeBytes: number }>;
   profiles: TruckProfile[];
+}
+
+/** Stardew Valley on this PC, as the desktop app sees it. */
+export interface StardewModsLocal {
+  /** null when LootDen couldn't find the game. */
+  gameDir: string | null;
+  modsDir: string | null;
+  /** The folder was picked on this PC. */
+  custom: boolean;
+  /** Sync before the game starts. */
+  autoSync: boolean;
+  /** Switch off mods that aren't in the set. */
+  strict: boolean;
+  mods: LocalStardewMod[];
 }
 
 /** A truck game's mod folder on this PC, as the desktop app sees it. */
