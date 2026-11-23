@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { mkdir, readdir, readFile, rm, stat } from "node:fs/promises";
+import { cp, mkdir, readdir, readFile, rm, stat } from "node:fs/promises";
 import path from "node:path";
 import { safeFolderName, type GameDetail } from "@lootden/shared";
 import type { GameServerClient } from "./api.js";
@@ -254,15 +254,17 @@ async function dismountIso(iso: string): Promise<void> {
 /**
  * Runs the setup program of a downloaded disc or installer game in place, installing into
  * target (a folder beside the setup files). On Windows ISOs are mounted for the run; elsewhere
- * they're unpacked with 7-Zip. Resolves when the installer closes.
+ * they're unpacked with 7-Zip. Resolves when the installer closes ("installed"), or once a disc
+ * with no setup program but a game on it has been copied into target ("copied").
  */
 export async function runLocalSetup(
   dir: string,
   target: string,
   opts: { sevenZip: SevenZip; runInstaller: PrepareOptions["runInstaller"]; onStep?: (message: string) => void },
-): Promise<void> {
+): Promise<"installed" | "copied"> {
   let media = dir;
   const mounted: string[] = [];
+  let fromImage = false;
   try {
     const images = (await walk(dir, 2)).filter((f) => /\.iso$/i.test(f));
     if (images.length) {
@@ -276,12 +278,24 @@ export async function runLocalSetup(
         media = path.join(dir, ".disc");
         await extractArchive(opts.sevenZip, "zip", iso, media);
       }
+      fromImage = true;
     }
     const setup = await findSetup(media);
-    if (!setup) throw new Error(`No setup program found in ${media}. Run it yourself from Open folder.`);
+    if (!setup) {
+      // Some images hold the game ready to play, with nothing to install: copy it out instead.
+      if (fromImage && (await walk(media, 3)).some((f) => /\.exe$/i.test(f))) {
+        opts.onStep?.("No setup program on the disc, but the game is on it. Copying it out.");
+        await mkdir(target, { recursive: true });
+        await cp(media, target, { recursive: true, force: true });
+        if (process.platform !== "win32") await rm(media, { recursive: true, force: true }).catch(() => {});
+        return "copied";
+      }
+      throw new Error(`No setup program found in ${media}. If the game is already installed, use Already installed to pick its folder and program.`);
+    }
     await mkdir(target, { recursive: true });
     opts.onStep?.("Running the installer. Finish it, then come back here.");
     await opts.runInstaller(setup, target, await installerArgs(setup, target));
+    return "installed";
   } finally {
     for (const iso of mounted) await dismountIso(iso).catch(() => {});
   }

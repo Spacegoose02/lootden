@@ -165,6 +165,11 @@ export function DesktopInstall({ game, autoFocus }: { game: GameDetail; autoFocu
               {busy ? "Installing…" : "Run installer"}
             </button>
           ) : null}
+          {bridge.setLocation && (
+            <button className="secondary" disabled={busy} title="Pick the folder the game is installed in and the program that starts it" onClick={() => run(() => bridge.setLocation!(game.id))}>
+              Already installed
+            </button>
+          )}
           <button className="secondary" onClick={() => run(() => bridge.openFolder(game.id))}>
             Open folder
           </button>
@@ -175,9 +180,10 @@ export function DesktopInstall({ game, autoFocus }: { game: GameDetail; autoFocu
         <p className="muted small">
           This download is {what}, not the game yet. {bridge.runSetup ? "Run installer sets it up in an Installed folder inside" : "Update the app to run it from here, or run setup.exe yourself in"} <code>{installed.dir}</code>
           {bridge.runSetup ? ", then Play starts the game." : "."}
+          {bridge.setLocation && " Installed it yourself already? Already installed lets you pick its folder and the program that starts it."}
         </p>
         <GameJobStatus job={job} last={lastMessage} notice />
-        {error && <p className="error small">{error}</p>}
+        {error && error !== lastMessage?.message && <p className="error small">{error}</p>}
       </div>
     );
   }
@@ -227,6 +233,11 @@ export function DesktopInstall({ game, autoFocus }: { game: GameDetail; autoFocu
             Open folder
           </button>
           {pcGame && <VerifyFiles gameId={game.id} />}
+          {pcGame && bridge.setLocation && (
+            <button className="ghost" disabled={busy || running} title="Point LootDen at a different install folder or program" onClick={() => run(() => bridge.setLocation!(game.id))}>
+              Change folder or program
+            </button>
+          )}
           <button className="ghost" onClick={() => run(() => bridge.uninstall(game.id))}>
             Uninstall
           </button>
@@ -245,7 +256,7 @@ export function DesktopInstall({ game, autoFocus }: { game: GameDetail; autoFocu
           Installed in <code>{installed.installedDir ?? installed.dir}</code>
           {p?.type === "stopped" ? ` · last session ${Math.round(p.seconds / 60)} min` : ""}
         </p>
-        {error && <p className="error small">{error}</p>}
+        {error && error !== lastMessage?.message && <p className="error small">{error}</p>}
         {readyRecomps.map((r) => (
           <RecompSettingsPanel key={r.id} recomp={r} />
         ))}
