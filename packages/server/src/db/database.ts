@@ -842,6 +842,31 @@ export const MIGRATIONS: string[] = [
   ALTER TABLE users ADD COLUMN sso_username TEXT COLLATE NOCASE;
   CREATE UNIQUE INDEX users_sso_username ON users(sso_username);
   `,
+  `
+  -- The household's Stardew Valley mod set (SMAPI mods): one row per mod zip, with what its manifest.json files say
+  -- (JSON array) and whether an admin has it on. Each PC's Mods folder is made to match it.
+  CREATE TABLE stardew_mods (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT NOT NULL,
+    file_name TEXT NOT NULL,
+    file TEXT NOT NULL,
+    size INTEGER NOT NULL,
+    folder TEXT NOT NULL COLLATE NOCASE,
+    enabled INTEGER NOT NULL DEFAULT 0,
+    manifests TEXT NOT NULL DEFAULT '[]',
+    source_url TEXT,
+    added_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    added_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+  -- What each PC's Mods folder last had on (JSON array of { uniqueId, name, version }).
+  CREATE TABLE stardew_pc_reports (
+    device TEXT PRIMARY KEY,
+    user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    mods TEXT NOT NULL DEFAULT '[]',
+    reported_at TEXT NOT NULL
+  );
+  `,
 ];
 
 export function openDatabase(file: string): Db {

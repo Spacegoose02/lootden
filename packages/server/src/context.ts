@@ -27,6 +27,7 @@ import type { RequestService } from "./news/requests.js";
 import type { SteamWorkshop } from "./workshop/steam.js";
 import type { TruckModStore } from "./truckmods/store.js";
 import type { TruckModListStore } from "./truckmods/list.js";
+import type { StardewModStore } from "./stardewmods/store.js";
 import type { VersionChecker } from "./news/version-check.js";
 import type { JournalStore } from "./users/journal.js";
 import type { NexusMods } from "./news/nexus.js";
@@ -96,6 +97,7 @@ export interface AppContext {
   /** ATS and ETS2 mods shared between PCs. */
   truckMods: TruckModStore;
   truckModList: TruckModListStore;
+  stardewMods: StardewModStore;
   versions: VersionChecker;
   journal: JournalStore;
   nexus: NexusMods;
