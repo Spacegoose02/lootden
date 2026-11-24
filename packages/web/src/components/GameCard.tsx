@@ -60,7 +60,7 @@ function useHoverPreview(gameId: string) {
   return { trailer, start, stop };
 }
 
-export function GameCard({ game }: { game: GameSummary }) {
+export function GameCard({ game, installedVersion }: { game: GameSummary; installedVersion?: string | null }) {
   const preview = useHoverPreview(game.id);
   return (
     <Link
@@ -85,7 +85,7 @@ export function GameCard({ game }: { game: GameSummary }) {
           <TrailerVideo trailer={preview.trailer} title={game.title} preview />
         </div>
       )}
-      <VersionTag game={game} />
+      <VersionTag game={game} installed={installedVersion} />
       <div className="card-body">
         <div className="card-title">{game.title}</div>
         <div className="card-meta">

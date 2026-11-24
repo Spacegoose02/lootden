@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { platformFor, type GameSummary, type UserGameState } from "@lootden/shared";
+import { effectiveVersion, platformFor, type GameSummary, type UserGameState } from "@lootden/shared";
 import { api } from "../api";
 import { useLive } from "../live";
 import { desktop } from "../desktop";
@@ -68,7 +68,7 @@ function formatOf(g: GameSummary): "setup" | "folder" | "packed" {
  * The last lists shown, so coming back to the library (Back from a game) draws it at once and
  * lands on the same spot, then refreshes quietly.
  */
-const shownBefore = { lists: new Map<string, GameSummary[]>(), installed: null as Set<string> | null, states: null as UserGameState[] | null };
+const shownBefore = { lists: new Map<string, GameSummary[]>(), installed: null as Set<string> | null, versions: null as Map<string, string> | null, states: null as UserGameState[] | null };
 
 function AllGames() {
   const [params, setParams] = useSearchParams();
@@ -105,11 +105,14 @@ function AllGames() {
   const [platforms, setPlatforms] = useState<Array<{ id: string; count: number }>>([]);
   // What's installed: this PC's copies in the app, else installs on any of this person's devices.
   const [installedIds, setInstalledIds] = useState<Set<string>>(() => shownBefore.installed ?? new Set());
+  // The version of each of this PC's copies (desktop app), so a cover's version speaks for the copy here.
+  const [installedVersions, setInstalledVersions] = useState<Map<string, string>>(() => shownBefore.versions ?? new Map());
   const [states, setStates] = useState<UserGameState[]>(() => shownBefore.states ?? []);
   useEffect(() => {
     shownBefore.installed = installedIds;
+    shownBefore.versions = installedVersions;
     shownBefore.states = states;
-  }, [installedIds, states]);
+  }, [installedIds, installedVersions, states]);
   // Bumped when the server's library changes, so the list fetches again.
   const [revision, setRevision] = useState(0);
   useLive("library", () => setRevision((r) => r + 1));
@@ -133,7 +136,14 @@ function AllGames() {
       },
       () => {},
     );
-    if (desktop) void desktop.installed().then((l) => setInstalledIds(new Set(l.map((g) => g.gameId))), () => {});
+    if (desktop)
+      void desktop.installed().then(
+        (l) => {
+          setInstalledIds(new Set(l.map((g) => g.gameId)));
+          setInstalledVersions(new Map(l.flatMap((g) => { const v = effectiveVersion(g).version; return v ? [[g.gameId, v] as const] : []; })));
+        },
+        () => {},
+      );
   }, []);
   useEffect(() => {
     const t = setTimeout(() => {
@@ -280,7 +290,7 @@ function AllGames() {
               <SelectList games={shown} picked={picked} onChange={setPicked} />
             </>
           ) : (
-            <GameCollection games={shown} prefs={prefs} isInstalled={(g) => installedIds.has(g.id)} aspect={shelf} />
+            <GameCollection games={shown} prefs={prefs} isInstalled={(g) => installedIds.has(g.id)} installedVersion={(g) => installedVersions.get(g.id) ?? null} aspect={shelf} />
           )}
         </>
       )}

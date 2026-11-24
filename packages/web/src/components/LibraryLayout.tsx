@@ -120,12 +120,15 @@ export function GameCollection<T extends GameSummary>({
   games,
   prefs,
   isInstalled = () => false,
+  installedVersion = () => null,
   aside,
   aspect,
 }: {
   games: T[];
   prefs: ViewPrefs;
   isInstalled?: (g: T) => boolean;
+  /** The version of this PC's copy, so the version tag speaks for it instead of the server's copy. */
+  installedVersion?: (g: T) => string | null;
   aside?: (g: T) => ReactNode;
   aspect?: number;
 }) {
@@ -156,7 +159,7 @@ export function GameCollection<T extends GameSummary>({
                   <Badges game={g} compact />
                   <span className="muted small num">{formatBytes(g.sizeBytes)}</span>
                   <span className="game-list-aside">
-                    <VersionTag game={g} inline />
+                    <VersionTag game={g} installed={installedVersion(g)} inline />
                     {isInstalled(g) && (
                       <span className="badge badge-kid">
                         <span className="installed-glyph" aria-hidden="true" /> Installed
@@ -172,7 +175,7 @@ export function GameCollection<T extends GameSummary>({
               {list.map((g) => (
                 <Link key={g.id} to={`/games/${g.id}`} className={`cover-tile${isInstalled(g) ? " is-installed" : ""}`} aria-label={g.title} title={g.title}>
                   <Cover game={g} />
-                  <VersionTag game={g} />
+                  <VersionTag game={g} installed={installedVersion(g)} />
                   <span className="cover-tile-name">{g.title}</span>
                 </Link>
               ))}
@@ -181,7 +184,7 @@ export function GameCollection<T extends GameSummary>({
             <div className={`grid${prefs.mode === "compact" ? " grid-compact" : ""}${aspect ? " grid-shaped" : ""}`} style={style}>
               {list.map((g) => (
                 <div key={g.id} className={`card-wrap${isInstalled(g) ? " is-installed" : ""}`}>
-                  <GameCard game={g} />
+                  <GameCard game={g} installedVersion={installedVersion(g)} />
                   {isInstalled(g) && <InstalledPill />}
                 </div>
               ))}
