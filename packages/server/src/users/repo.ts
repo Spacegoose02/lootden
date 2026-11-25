@@ -84,8 +84,18 @@ export class UserRepo {
     return r && toUser(r);
   }
 
+  /**
+   * The profile linked to this TinyAuth username. TinyAuth names people who sign in with Google,
+   * GitHub and the like after their email with the @ swapped for _ (alex@gmail.com signs in as
+   * alex_gmail.com), so a profile linked by typing the email address still matches.
+   */
   bySsoUsername(name: string): UserRecord | undefined {
-    const r = this.db.prepare("SELECT * FROM users WHERE sso_username = ?").get(name.trim()) as UserRow | undefined;
+    const n = name.trim();
+    const exact = this.db.prepare("SELECT * FROM users WHERE sso_username = ?").get(n) as UserRow | undefined;
+    if (exact) return toUser(exact);
+    const r = this.db
+      .prepare("SELECT * FROM users WHERE lower(replace(sso_username, '@', '_')) = lower(replace(?, '@', '_')) ORDER BY id LIMIT 1")
+      .get(n) as UserRow | undefined;
     return r && toUser(r);
   }
 

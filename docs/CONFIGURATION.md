@@ -57,6 +57,18 @@ exists instead of making a new one:
 One TinyAuth account links to one profile. A profile that isn't linked yet is still matched
 by the same username or email on its first forward-auth sign-in, and then linked.
 
+TinyAuth names people who sign in with Google, GitHub and other OAuth providers after their
+email with the `@` swapped for `_` (`alex@gmail.com` signs in as `alex_gmail.com`). Either
+form works when linking a profile.
+
+**Merging duplicate profiles.** If a TinyAuth sign-in already made a second profile for
+someone, open **Settings, Profiles, Merge** on the profile to keep and pick the other one.
+LootDen shows what will move (play time, installs, saves, achievements, shelves, requests,
+signed-in apps and the rest), then moves it, gives the kept profile the TinyAuth link and
+deletes the duplicate. Where both have the same thing, such as one game installed on the
+same PC, the kept profile's copy wins. The kept profile's own two-step sign-in stays; the
+duplicate's is dropped. A kid profile can only be merged with another kid profile.
+
 ### Metadata and library
 
 | Variable | Default | What it does |

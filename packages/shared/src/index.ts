@@ -214,6 +214,15 @@ export interface User {
   sso?: { username: string | null; oidc: boolean };
 }
 
+/** GET/POST /api/users/:id/merge: rows per table that move to the kept profile, and the ones it already has its own copy of. */
+export interface ProfileMerge {
+  keep?: User;
+  drop?: User;
+  user?: User;
+  moved: Record<string, number>;
+  dropped: Record<string, number>;
+}
+
 /** GET /api/me/sso: this account's TinyAuth link, and the TinyAuth sign-in this browser is using, if any. */
 export interface SsoLinkStatus {
   username: string | null;

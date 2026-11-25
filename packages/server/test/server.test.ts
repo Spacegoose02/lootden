@@ -284,6 +284,62 @@ describe("accounts and auth", () => {
     await app.close();
   });
 
+  it("matches a profile linked by email to TinyAuth's Google-style username, and merges duplicates", async () => {
+    const { app, ctx } = await makeApp(root, {
+      headerAuth: { userHeader: "remote-user", emailHeader: "remote-email", nameHeader: "remote-name", groupsHeader: "remote-groups", trustedProxies: ["10.0.0.0/8"], adminGroup: "" },
+    });
+    const owner = await ctx.users.create({ username: "owner", password: "password1", role: "admin" });
+    const adminHeaders = { authorization: `Bearer ${ctx.auth.createApiToken(owner.id, "t").token}` };
+    // TinyAuth signs Google users in as their email with the @ swapped for _.
+    const google = { url: "/api/me", headers: { "remote-user": "owner_gmail.com", "remote-email": "owner@gmail.com" }, remoteAddress: "10.0.0.2" };
+
+    // Linked by typing the email: the Google sign-in opens the same profile, no duplicate.
+    assert.equal((await app.inject({ method: "PATCH", url: `/api/users/${owner.id}`, headers: adminHeaders, payload: { ssoUsername: "owner@gmail.com" } })).statusCode, 200);
+    const count = ctx.users.count();
+    assert.equal((await app.inject(google)).json().user.id, owner.id);
+    assert.equal(ctx.users.count(), count);
+
+    // A duplicate made before the link: linking the other profile to the same person is refused, not silently ignored.
+    await ctx.users.update(owner.id, { ssoUsername: null });
+    const dup = (await app.inject(google)).json().user;
+    assert.notEqual(dup.id, owner.id);
+    const clash = await app.inject({ method: "PATCH", url: `/api/users/${owner.id}`, headers: adminHeaders, payload: { ssoUsername: "owner@gmail.com" } });
+    assert.equal(clash.statusCode, 409);
+
+    // Both have play time and the same game installed on one PC.
+    ctx.family.recordSession(owner.id, "g1", "PC", 600);
+    ctx.family.recordSession(dup.id, "g1", "PC", 300);
+    ctx.users.recordActivity(owner.id, { gameId: "g1", device: "PC", event: "installed", installPath: "C:/Games/kept" });
+    ctx.users.recordActivity(dup.id, { gameId: "g1", device: "PC", event: "installed", installPath: "C:/Games/dup" });
+    ctx.users.recordActivity(dup.id, { gameId: "g2", device: "PC", event: "installed", installPath: "C:/Games/g2" });
+    const dupToken = ctx.auth.createApiToken(dup.id, "desktop").token;
+
+    // A kid can't be merged into a grown-up.
+    const kid = await ctx.users.create({ username: "kiddo", password: "password1", kidMode: true });
+    assert.equal((await app.inject({ url: `/api/users/${owner.id}/merge?from=${kid.id}`, headers: adminHeaders })).statusCode, 409);
+
+    // Preview changes nothing.
+    const preview = (await app.inject({ url: `/api/users/${owner.id}/merge?from=${dup.id}`, headers: adminHeaders })).json();
+    assert.equal(preview.moved.play_sessions, 1);
+    assert.equal(preview.moved.user_games, 1);
+    assert.equal(preview.dropped.user_games, 1);
+    assert.ok(ctx.users.byId(dup.id));
+
+    const merged = await app.inject({ method: "POST", url: `/api/users/${owner.id}/merge`, headers: adminHeaders, payload: { from: dup.id } });
+    assert.equal(merged.statusCode, 200);
+    assert.equal(ctx.users.byId(dup.id), undefined);
+    assert.deepEqual(merged.json().user.sso, { username: "owner_gmail.com", oidc: false });
+    const seconds = ctx.db.prepare("SELECT SUM(seconds) AS s FROM play_sessions WHERE user_id = ?").get(owner.id) as { s: number };
+    assert.equal(seconds.s, 900);
+    const installs = ctx.users.gameStates(owner.id);
+    assert.ok(installs.some((g) => g.gameId === "g2"));
+    // The duplicate's signed-in app now opens the kept profile, and so does the Google sign-in.
+    assert.equal((await app.inject({ url: "/api/me", headers: { authorization: `Bearer ${dupToken}` } })).json().user.id, owner.id);
+    assert.equal((await app.inject(google)).json().user.id, owner.id);
+    assert.equal(ctx.users.count(), count + 1); // + kiddo
+    await app.close();
+  });
+
   it("serves deterministic gaming avatars and lets users reroll theirs", async () => {
     const { app, ctx } = await makeApp(root);
     const a = await app.inject("/api/avatars/abc123.svg");
