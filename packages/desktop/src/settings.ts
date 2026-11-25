@@ -47,8 +47,12 @@ export interface DesktopSettings {
   browserSearch?: SearchEngine;
   /** The browser rules the server last gave for the person signed in here, for when it can't be reached. */
   browserPolicy?: BrowserPolicy;
-  /** How Xbox streams (remote play, cloud gaming) fill the browser window: "fit", "zoom" or "stretch". */
+  /** How Xbox streams (remote play, cloud gaming) fill the screen: "fit", "zoom" or "stretch". */
   streamFit?: StreamFit;
+  /** The Microsoft account signed in for LootDen's own Xbox remote play (refresh token JSON, sealed with the OS keychain when it can be). */
+  xboxSignIn?: { data: string; sealed: boolean };
+  /** The console Play remotely streams when none is named. */
+  xboxConsole?: string;
   /** Links from LootDen's pages open in the built-in browser instead of the system one. "auto" does so in handheld mode. */
   browserLinks?: "auto" | "on" | "off";
   /** ATS and ETS2 mod folders picked on this PC (a custom -homedir); missing means the usual one in Documents. */

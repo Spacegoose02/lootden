@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; media-src 'self' blob: mediastream:; img-src 'self' data:" />
+    <title>Xbox remote play</title>
+    <style>
+      :root {
+        --bg: #000;
+        --panel: rgba(13, 8, 32, 0.92);
+        --text: #f3eeff;
+        --muted: #b6a9d6;
+        --accent: #2ef2ff;
+      }
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        background: var(--bg);
+        color: var(--text);
+        font: 16px/1.4 system-ui, "Segoe UI", sans-serif;
+        overflow: hidden;
+        user-select: none;
+      }
+      /* The stream: the player puts its <video> in here. */
+      #player {
+        position: fixed;
+        inset: 0;
+      }
+      #player video {
+        position: absolute;
+        inset: 0;
+        width: 100% !important;
+        height: 100% !important;
+        object-fit: contain;
+        background: #000;
+      }
+      /* How the console's 16:9 picture fills a wide screen. */
+      body[data-fit="zoom"] #player video {
+        object-fit: cover;
+      }
+      body[data-fit="stretch"] #player video {
+        object-fit: fill;
+      }
+      #status {
+        position: fixed;
+        inset: 0;
+        display: grid;
+        place-content: center;
+        gap: 14px;
+        text-align: center;
+        background: radial-gradient(circle at 50% 40%, #1d1240, #000 70%);
+      }
+      #status[hidden] {
+        display: none;
+      }
+      #status h1 {
+        margin: 0;
+        font-size: 28px;
+        font-weight: 600;
+      }
+      #status p {
+        margin: 0;
+        color: var(--muted);
+        max-width: 560px;
+      }
+      #status .error {
+        color: #ff8a8a;
+      }
+      .spinner {
+        width: 46px;
+        height: 46px;
+        margin: 0 auto;
+        border: 4px solid rgba(255, 255, 255, 0.15);
+        border-top-color: var(--accent);
+        border-radius: 50%;
+        animation: spin 0.9s linear infinite;
+      }
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+      /* The bar: shows when the mouse moves to the top, or with View + Menu held on a controller. */
+      #bar {
+        position: fixed;
+        top: 0;
+        left: 50%;
+        transform: translate(-50%, -110%);
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        padding: 10px 14px;
+        background: var(--panel);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        border-top: 0;
+        border-radius: 0 0 14px 14px;
+        transition: transform 0.2s;
+        z-index: 10;
+      }
+      body.bar #bar {
+        transform: translate(-50%, 0);
+      }
+      #bar span {
+        color: var(--muted);
+        font-size: 13px;
+        margin: 0 6px;
+      }
+      button {
+        font: inherit;
+        color: var(--text);
+        background: rgba(255, 255, 255, 0.08);
+        border: 1px solid rgba(255, 255, 255, 0.18);
+        border-radius: 9px;
+        padding: 7px 14px;
+        cursor: pointer;
+      }
+      button:hover,
+      button:focus-visible {
+        border-color: var(--accent);
+        outline: none;
+      }
+      button.primary {
+        background: var(--accent);
+        color: #061018;
+        border-color: var(--accent);
+      }
+      kbd {
+        font: 12px ui-monospace, monospace;
+        padding: 1px 5px;
+        border: 1px solid rgba(255, 255, 255, 0.25);
+        border-radius: 4px;
+      }
+    </style>
+  </head>
+  <body data-fit="fit">
+    <div id="player"></div>
+    <section id="status" aria-live="polite">
+      <div class="spinner" id="spinner"></div>
+      <h1 id="title">Connecting to your Xbox…</h1>
+      <p id="detail">Waking the console if it's asleep. This takes a few seconds.</p>
+      <p id="actions" hidden><button class="primary" id="retry">Try again</button> <button id="close2">Close</button></p>
+    </section>
+    <nav id="bar" aria-label="Stream">
+      <button id="fit" title="How the picture fills the screen (Ctrl+Shift+F)">⬛ Fit</button>
+      <button id="guide" title="The Xbox button">Ⓧ Xbox</button>
+      <button id="full" title="Full screen (F11)">⛶</button>
+      <span><kbd>View</kbd>+<kbd>Menu</kbd> held shows this bar</span>
+      <button id="close" title="End the stream (Ctrl+Q)">✕ End</button>
+    </nav>
+    <script src="../dist/xstream-page.js"></script>
+  </body>
+</html>

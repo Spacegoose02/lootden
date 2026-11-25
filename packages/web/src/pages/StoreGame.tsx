@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { isStardew, ROBLOX_ADDON, truckGameForSteamApp, type GameListing, type LocalStoreGame, type StoreGame as StoreGameT, type StoreGameDetail } from "@lootden/shared";
 import { api, formatPlaytime } from "../api";
-import { isRemotePlayGame, RemotePlayButtons } from "../components/RemotePlay";
+import { consoleStoreGames, isRemotePlayGame, RemotePlayButtons } from "../components/RemotePlay";
 import { bridgeError, desktop } from "../desktop";
 import { ArtworkPicker } from "../components/ArtworkEditor";
 import { JournalPanel, WorkshopPanel } from "../components/GameExtras";
@@ -42,7 +42,9 @@ export function StoreGame() {
     setError("");
     api.storeGame(addon, id, localTitle).then(setDetail, (e: Error) => setError(e.message));
     setScanned(false);
-    desktop?.storeGames?.().then((l) => {
+    // An Xbox console game is "here" when it's installed on the console, which the console itself says.
+    const lookup = isRemotePlayGame(addon) ? (desktop?.xbox ? consoleStoreGames() : undefined) : desktop?.storeGames?.();
+    lookup?.then((l) => {
       setLocal(l.find((g) => g.addon === addon && g.externalId === id) ?? null);
       setScanned(true);
     }, () => {});
@@ -87,7 +89,7 @@ export function StoreGame() {
           <p className="muted">{[date, info?.genres.join(", ")].filter(Boolean).join(" · ")}</p>
           <div className="inline wrap">
             <span className="badge">{game.store}</span>
-            {local && <span className="badge badge-kid">Installed on this PC</span>}
+            {local && <span className="badge badge-kid">{remote ? "Installed on your Xbox" : "Installed on this PC"}</span>}
             {roblox && info?.ageRatings[0] && <span className="badge">{info.ageRatings[0].rating}</span>}
             {game.playtimeSeconds ? <span className="badge">{formatPlaytime(game.playtimeSeconds)} played</span> : null}
             {info?.rating != null && <span className="badge">★ {info.rating}/100</span>}
@@ -98,7 +100,7 @@ export function StoreGame() {
           {info?.summary && <p className="summary">{info.summary}</p>}
           {!info && <p className="muted">No details found for this title yet. Use Edit to pick the right game.</p>}
           <div className="inline wrap">
-            {remote && <RemotePlayButtons launchUrl={game.launchUrl} onError={setError} />}
+            {remote && <RemotePlayButtons launchUrl={local?.launchUrl ?? game.launchUrl} title={game.title} onError={setError} />}
             {!remote && launch && (
               <button className="primary" onClick={() => launchStoreGame(game, local ?? undefined, install).catch((e) => setError(bridgeError(e)))}>
                 {ready ? "▶ Play" : install ? `Install with ${game.store}` : `Open in ${game.store}`}

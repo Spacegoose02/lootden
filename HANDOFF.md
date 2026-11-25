@@ -716,6 +716,32 @@ Streaming the owner's own Xbox, not Game Pass cloud gaming:
   starts from the console's home. If that ever changes, `xccs.xboxlive.com/lists/installedApps`
   and `/commands` are what the Xbox app itself uses.
 
+## LootDen's own Xbox player (0.44.0)
+
+The desktop app streams a console itself, with no Xbox page and no Greenlight:
+
+- `packages/client/src/xboxlive.ts` signs in with Microsoft's device code flow, using the Xbox
+  app's public client id (the one Greenlight and xal-node use), and walks the token chain: user
+  token, XSTS for `http://xboxlive.com` (the console API, xccs) and for gssv (streaming), the
+  xHome `gsToken` and region, and the transfer token xHome asks for at `/connect`. xccs gives the
+  consoles, their installed games, WakeUp and ActivateApplicationWithOneStoreProductId, which is
+  what the 0.43 notes said OpenXBL couldn't reach. `XHomeSession` is the stream: play, poll the
+  state, connect, SDP and ICE (a 204 means "not yet"), keepalive every 30 s, DELETE to end. The
+  console's Teredo candidate carries its IPv4 address, which `withTeredo` adds as plain
+  candidates, as Greenlight does.
+- `packages/desktop/src/xbox.ts` keeps the refresh token sealed with safeStorage in the desktop
+  settings (`xboxSignIn`, `xboxConsole` for the default console) and opens the stream window:
+  `setup/xstream.html` with `dist/xstream-page.js`, built from `src/xstream-page.ts` around
+  xbox-xcloud-player (MIT, by the Greenlight author). Its preload only reaches `gm:xstream:*`.
+  The fit mode is plain `object-fit` on the video, from the same `streamFit` setting.
+- The web app's `RemotePlay.tsx` has the sign-in card (Profile), the Play remotely buttons and
+  `consoleStoreGames()`, which adds the default console's installed games to the library as
+  `xbox-console` games with `#product=<store id>` on the launch address.
+- Not yet tried against a real console when it shipped: if a stream fails, the overlay shows
+  xHome's own state and error. Microsoft can change these private APIs at any time; Greenlight
+  and xbox-xcloud-player are the first place to look for what changed. The browser player,
+  mouse and keyboard input, and microphone chat aren't wired yet.
+
 ## Already done from the backlog
 
 - HowLongToBeat times (0.12.0), with IGDB as the fallback; can be turned off in Settings.
