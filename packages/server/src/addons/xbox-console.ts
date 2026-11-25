@@ -12,8 +12,12 @@ interface TitleHubTitle {
   titleHistory?: { lastTimePlayed?: string };
 }
 
-/** Xbox consoles, as Xbox Live's title history names the devices a game was played on. */
-const CONSOLES = ["xboxseries", "xboxseriess", "xboxseriesx", "xboxone", "xbox360", "xbox"];
+/**
+ * Xbox consoles, as Xbox Live's title history names the devices a game was played on
+ * ("XboxSeries", "XboxOne", "Xbox360"; older records use the code names).
+ */
+const CONSOLE = /^(xbox(?!app|pc)|scarlett|durango|xenon|anaconda|lockhart)/;
+const isConsole = (device: string) => CONSOLE.test(device.toLowerCase().replace(/[^a-z0-9]/g, ""));
 
 /**
  * Xbox console games for remote play: the games the account has played on an Xbox console, each
@@ -56,17 +60,15 @@ export const xboxConsole: LibraryAddon = {
     if (res.status === 401 || res.status === 403) throw new Error("OpenXBL refused the key; copy it again from xbl.io");
     if (res.status === 429) throw new Error("OpenXBL's hourly limit was reached; try again later");
     if (!res.ok) throw new Error(`OpenXBL answered ${res.status}`);
-    const body = (await res.json()) as {
-      titles?: TitleHubTitle[];
-      content?: { titles?: TitleHubTitle[] };
-    };
-    const titles = body.titles ?? body.content?.titles ?? [];
+    const body = (await res.json()) as TitleHubTitle[] | { titles?: TitleHubTitle[]; content?: { titles?: TitleHubTitle[] } | TitleHubTitle[] };
+    const titles = Array.isArray(body) ? body : (body.titles ?? (Array.isArray(body.content) ? body.content : body.content?.titles) ?? []);
     const link = xboxRemotePlayUrl(consoleId || null);
     const out: OwnedGame[] = [];
-    for (const t of titles) {
-      // Apps (Netflix, the Xbox app) are in the history too, as are games only played on a PC or phone.
-      if (!t.titleId || !t.name || (t.type && t.type !== "Game")) continue;
-      if (!t.devices?.some((d) => CONSOLES.includes(d.toLowerCase().replace(/[^a-z0-9]/g, "")))) continue;
+    const games = titles.filter((t): t is TitleHubTitle & { titleId: string; name: string } => !!t.titleId && !!t.name && (!t.type || t.type === "Game"));
+    for (const t of games) {
+      // Apps (Netflix, the Xbox app) are in the history too, as are games only played on a PC or
+      // phone. A title with no device list is kept: there's no telling where it was played.
+      if (t.devices?.length && !t.devices.some(isConsole)) continue;
       out.push({
         externalId: t.titleId,
         title: t.name,
@@ -78,6 +80,12 @@ export const xboxConsole: LibraryAddon = {
         launchUrl: link,
         lastPlayedAt: t.titleHistory?.lastTimePlayed ?? null,
       });
+    }
+    // An empty list syncs as "0 games" with no clue why; say what OpenXBL sent instead.
+    if (!titles.length) throw new Error("OpenXBL sent an empty game history for this key. Check the key is from the Microsoft account you play on, and that the account has played games on Xbox");
+    if (!out.length) {
+      const seen = [...new Set(games.flatMap((t) => t.devices ?? []))].join(", ") || "none";
+      throw new Error(`OpenXBL lists ${games.length} games for this account, but none played on an Xbox (devices it named: ${seen})`);
     }
     return out;
   },

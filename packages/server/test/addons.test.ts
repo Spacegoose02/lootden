@@ -324,6 +324,20 @@ describe("Xbox console add-on (remote play)", () => {
       ],
     );
   });
+
+  it("keeps titles with no device list, and says why when nothing is left", async () => {
+    const { xboxConsole } = await import("../src/addons/xbox-console.js");
+    const reply = (titles: unknown[]) => (async () => Response.json({ content: { titles } })) as unknown as typeof fetch;
+    const run = (titles: unknown[]) => xboxConsole.games({ config: { apiKey: "key" }, fetch: reply(titles), save: () => {} });
+    const games = await run([
+      { titleId: "1", name: "Grand Theft Auto VI", type: "Game" },
+      { titleId: "2", name: "Forza", type: "Game", devices: ["Scarlett"] },
+      { titleId: "3", name: "Solitaire", type: "Game", devices: ["Win32"] },
+    ]);
+    assert.deepEqual(games.map((g) => g.title), ["Grand Theft Auto VI", "Forza"]);
+    await assert.rejects(run([]), /empty game history/);
+    await assert.rejects(run([{ titleId: "3", name: "Solitaire", type: "Game", devices: ["Win32", "PC"] }]), /none played on an Xbox \(devices it named: Win32, PC\)/);
+  });
 });
 
 describe("itch.io add-on", () => {
