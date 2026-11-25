@@ -16,6 +16,7 @@ import {
   type BrowserPolicy,
   type SearchEngine,
 } from "@lootden/client";
+import { STREAM_OVERLAY_WORLD, streamAsksScript, streamOverlayScript } from "./stream-overlay.js";
 import { downloadLinkKind, downloadLinkTitle, isStreamFit, isXboxPlayUrl, isXboxRemoteStreamUrl, isXboxStreamUrl, nextStreamFit, streamFitCss, type DownloadLinkKind, type StreamFit } from "@lootden/shared";
 import type { SettingsStore } from "./settings.js";
 
@@ -117,6 +118,7 @@ export class WebBrowser {
   private htmlFullscreen = false;
   /** Whether the window was full screen before the page made it so, to put it back after. */
   private wasFullscreen = false;
+  private streamWatch: ReturnType<typeof setInterval> | undefined;
   /** A second layout once Windows has settled the window's new size. */
   private settle: ReturnType<typeof setTimeout> | undefined;
   /** Sites allowed the camera or microphone this session. */
@@ -548,13 +550,43 @@ export class WebBrowser {
   private async applyFit(tab: Tab): Promise<void> {
     const wc = tab.view?.webContents;
     if (!wc || wc.isDestroyed()) return;
-    const css = isXboxStreamUrl(wc.getURL()) ? streamFitCss(this.fit) : null;
+    const stream = isXboxStreamUrl(wc.getURL());
+    // LootDen's own menu on the stream: how to change the fit with no toolbar, keyboard or mouse.
+    if (stream) {
+      void wc.executeJavaScriptInIsolatedWorld(STREAM_OVERLAY_WORLD, [{ code: streamOverlayScript(this.fit) }]).catch(() => {});
+      this.watchStreams();
+    }
+    const css = stream ? streamFitCss(this.fit) : null;
     const old = tab.fitCss;
     tab.fitCss = undefined;
     if (old) await wc.removeInsertedCSS(old.key).catch(() => {});
     if (!css || wc.isDestroyed()) return;
     const key = await wc.insertCSS(css, { cssOrigin: "user" }).catch(() => "");
     if (key) tab.fitCss = { key, fit: this.fit };
+  }
+
+  /** Collects what was picked in the stream menus, while any tab is an Xbox stream. */
+  private watchStreams(): void {
+    if (this.streamWatch) return;
+    this.streamWatch = setInterval(() => {
+      const streams = this.tabs.filter((t) => t.view && !t.view.webContents.isDestroyed() && isXboxStreamUrl(t.view.webContents.getURL()));
+      if (!streams.length) {
+        clearInterval(this.streamWatch);
+        this.streamWatch = undefined;
+        return;
+      }
+      for (const t of streams) {
+        void t.view!.webContents.executeJavaScriptInIsolatedWorld(STREAM_OVERLAY_WORLD, [{ code: streamAsksScript }])
+          .then((asks: unknown) => {
+            for (const ask of Array.isArray(asks) ? asks : []) {
+              const fit = String(ask).replace(/^fit:/, "");
+              if (fit === "next") this.setFit(nextStreamFit(this.fit));
+              else if (isStreamFit(fit)) this.setFit(fit);
+            }
+          })
+          .catch(() => {});
+      }
+    }, 300);
   }
 
   // ---- Layout and state --------------------------------------------------------------

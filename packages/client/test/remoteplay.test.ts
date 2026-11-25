@@ -60,6 +60,8 @@ describe("how the stream fills a wide screen", () => {
     assert.equal(streamFitCss("fit"), null);
     assert.match(streamFitCss("zoom")!, /object-fit: cover !important/);
     assert.match(streamFitCss("stretch")!, /object-fit: fill !important/);
+    // Pinned to the window, so a 16:9 box around the video can't keep the bars.
+    assert.match(streamFitCss("zoom")!, /position: fixed !important; inset: 0 !important; width: 100vw !important; height: 100vh !important/);
     // The style has to beat Xbox's own sizing on the video itself.
     for (const fit of ["zoom", "stretch"] as const) assert.match(streamFitCss(fit)!, /^video \{/);
   });

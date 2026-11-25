@@ -66,5 +66,7 @@ export function streamFitCss(fit: StreamFit): string | null {
   const objectFit = fit === "zoom" ? "cover" : "fill";
   // The stream is the only <video> on a stream page, laid over the whole page with object-fit:
   // contain, which keeps it 16:9 (the way Better xCloud's aspect ratio option works too).
-  return `video { width: 100% !important; height: 100% !important; max-width: none !important; max-height: none !important; object-fit: ${objectFit} !important; }`;
+  // Pinned to the whole window too, as xbox.com can size the video's box to 16:9 itself, which
+  // would leave the bars however the picture fits inside it.
+  return `video { position: fixed !important; inset: 0 !important; width: 100vw !important; height: 100vh !important; max-width: none !important; max-height: none !important; object-fit: ${objectFit} !important; }`;
 }
