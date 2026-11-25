@@ -429,6 +429,12 @@ export interface DesktopBridge {
   pickStardewFolder?(reset?: boolean): Promise<string | null>;
   /** The built-in web browser, over LootDen, on its start page or a web page (newer apps only). */
   openBrowser?(url?: string): Promise<void>;
+  /** Xbox remote play from the person's own console: Xbox's page in the built-in browser, or Greenlight (apps from 0.43). */
+  remotePlay?(opts?: { consoleId?: string | null; app?: "browser" | "greenlight" }): Promise<{ app: "browser" | "greenlight" }>;
+  /** Greenlight (the open-source Xbox streaming app) on this PC, and setting it up (apps from 0.43). */
+  greenlight?(): Promise<GreenlightState>;
+  installGreenlight?(): Promise<GreenlightState>;
+  removeGreenlight?(): Promise<GreenlightState>;
   /** Android (apps from 0.34): plays a PS2 game in the browser player on a secure, isolated page of the app's own. */
   playInBrowser?(gameId: string): Promise<void>;
   /** This PC's store scanner settings, and adding a folder to it through the folder picker (newer apps only). */
@@ -678,6 +684,17 @@ export interface InstalledWorkshopItem {
 }
 
 /** Game streaming on this PC. */
+/** Greenlight (Xbox remote play) on this PC, as the app reports it. */
+export interface GreenlightState {
+  /** False on macOS, where LootDen has no download for it. */
+  supported: boolean;
+  /** The program that would run, when there is one. */
+  exe: string | null;
+  version: string | null;
+  /** Whether that's LootDen's own copy (it can be updated and removed from here). */
+  managed: boolean;
+}
+
 export interface StreamingStatus {
   hostname: string;
   sunshine: boolean;

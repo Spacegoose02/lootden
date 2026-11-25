@@ -696,6 +696,26 @@ pick across every library with length and never-played filters.
 The original upload error was only visible as a tiny screenshot, so the exact cause wasn't
 confirmed. If uploads still fail, the error text now names the cause; start there.
 
+## Xbox remote play (0.43.0)
+
+Streaming the owner's own Xbox, not Game Pass cloud gaming:
+
+- `packages/shared/src/remoteplay.ts` has the addresses and the fit modes. Remote play lives at
+  `xbox.com/play/consoles`, and one console streams at `/play/consoles/launch/<16 hex id>`.
+- The built-in browser (`packages/desktop/src/browser.ts`) inserts a style on a stream page for
+  the fit mode (`fit` leaves Xbox's own layout, `zoom` is `object-fit: cover`, `stretch` is
+  `fill`), kept in `streamFit` in the desktop settings; the toolbar button and Ctrl+Shift+F step
+  through them. A remote play stream also hands the whole controller to the page straight away.
+- `packages/client/src/greenlight.ts` downloads Greenlight from its own GitHub releases into the
+  tools folder (portable zip on Windows, AppImage on Linux, a Flatpak or an installed copy used
+  as it is) and builds its `--fullscreen --connect=<console id>` command. No macOS download yet.
+- The `xbox-console` add-on lists the games the account has played on a console. Microsoft took
+  launching a title by id out of the console protocol in 2019 and its console API (xccs) needs
+  the Xbox app's own sign-in, which OpenXBL doesn't relay, so LootDen can't ask the console what
+  it has installed or start one game: Play remotely opens the console's stream and the game
+  starts from the console's home. If that ever changes, `xccs.xboxlive.com/lists/installedApps`
+  and `/commands` are what the Xbox app itself uses.
+
 ## Already done from the backlog
 
 - HowLongToBeat times (0.12.0), with IGDB as the fallback; can be turned off in Settings.

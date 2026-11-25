@@ -5,6 +5,7 @@ import { api, formatPlaytime, storeGamePath } from "../api";
 import { bridgeError, desktop } from "../desktop";
 import { Cover } from "./Cover";
 import { InstalledPill } from "./LibraryLayout";
+import { isRemotePlayGame, RemotePlayButtons } from "./RemotePlay";
 
 export const storeKey = (g: { addon: string; externalId: string }) => `${g.addon}:${g.externalId}`;
 
@@ -129,7 +130,9 @@ export function StoreGameCard({ game: g, local, scanned, onError, alsoOn }: { ga
       </Link>
       <div className="card-body store-card-actions">
         <div className="store-actions">
-          {launch && (
+          {/* An Xbox console game isn't on this PC at all: it streams from the console. */}
+          {isRemotePlayGame(g.addon) && <RemotePlayButtons launchUrl={g.launchUrl} small onError={onError} />}
+          {!isRemotePlayGame(g.addon) && launch && (
             <button
               className={`small ${install ? "secondary" : "primary"}`}
               onClick={() => launchStoreGame(g, local, install).catch((e) => onError?.(bridgeError(e)))}

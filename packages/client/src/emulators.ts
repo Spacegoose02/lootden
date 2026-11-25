@@ -98,6 +98,8 @@ export interface ToolsManifest {
   >;
   /** Last save backup restored per game, so the same backup isn't applied twice. */
   restored: Record<string, number>;
+  /** Greenlight (Xbox remote play) as LootDen set it up here; exe is relative to the tools folder, or "flatpak:<id>". */
+  greenlight?: { version: string; exe: string; installedAt: string };
 }
 
 const MANIFEST = "lootden-tools.json";
@@ -107,7 +109,7 @@ export async function readTools(toolsDir: string): Promise<ToolsManifest> {
   for (let attempt = 0; ; attempt++) {
     try {
       const m = JSON.parse(await readFile(path.join(toolsDir, MANIFEST), "utf8")) as Partial<ToolsManifest>;
-      return { emulators: m.emulators ?? {}, recomps: m.recomps ?? {}, restored: m.restored ?? {} };
+      return { emulators: m.emulators ?? {}, recomps: m.recomps ?? {}, restored: m.restored ?? {}, ...(m.greenlight ? { greenlight: m.greenlight } : {}) };
     } catch (err) {
       // Nothing set up yet. Anything else (a virus scanner holding the file) gets a second try
       // before it counts as empty, since an empty read written back would forget every emulator.
@@ -167,7 +169,7 @@ export function emulatorDataDir(toolsDir: string, id: string, platform: OS = hos
 
 // ---- Finding releases: only the projects' own release pages -------------------------
 
-interface Release {
+export interface Release {
   url: string;
   version: string;
   fileName: string;
@@ -179,7 +181,7 @@ type Fetch = typeof fetch;
  * Newest release with a matching asset, preferring stable releases over previews. When a
  * release has several matching builds, the first that also matches [prefer] wins.
  */
-async function githubAsset(fetchImpl: Fetch, repo: string, pattern: RegExp, prefer?: RegExp): Promise<Release> {
+export async function githubAsset(fetchImpl: Fetch, repo: string, pattern: RegExp, prefer?: RegExp): Promise<Release> {
   const res = await fetchImpl(`https://api.github.com/repos/${repo}/releases?per_page=15`, { headers: UA });
   if (!res.ok) throw new Error(`GitHub answered ${res.status} for ${repo}`);
   const releases = (await res.json()) as Array<{ tag_name: string; prerelease: boolean; draft: boolean; assets: Array<{ name: string; browser_download_url: string }> }>;

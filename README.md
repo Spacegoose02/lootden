@@ -148,6 +148,14 @@ installs games from it on any PC in the house.
 - **More stores**: Amazon Games, Battle.net, the Rockstar Games Launcher and the Riot Client's
   installed games show up and start from LootDen; Humble Bundle (DRM-free games) and PlayStation
   (PS4 and PS5 games you've played, with play time) connect under Game libraries.
+- **Xbox remote play**: stream the games on your own Xbox to a PC. Connect **Xbox console**
+  under Game libraries (the same free OpenXBL key as the Xbox add-on, plus your console's id) and
+  the games you've played there appear with **Play remotely**, which opens Xbox's own remote play
+  page full screen in the built-in browser. The console streams 16:9, so for an ultrawide or
+  16:10 screen the toolbar's screen fit button (or Ctrl+Shift+F) switches between **Fit** (bars at
+  the sides), **Zoom to fill** (crops the top and bottom) and **Stretch to fill**. LootDen can
+  also set up [Greenlight](https://github.com/unknownskl/greenlight), an open-source Xbox
+  streaming app, under Profile, This computer; it then shows beside Play remotely.
 - **ProtonDB and Steam Deck badges** on Steam games' pages.
 - **Manuals**: PDFs that come with a game show as "Read the manual" on its page and open full
   screen (B closes them). Admins can upload one under the game's Admin tab, e.g. a scanned manual

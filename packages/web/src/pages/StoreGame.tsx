@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { isStardew, ROBLOX_ADDON, truckGameForSteamApp, type GameListing, type LocalStoreGame, type StoreGame as StoreGameT, type StoreGameDetail } from "@lootden/shared";
 import { api, formatPlaytime } from "../api";
+import { isRemotePlayGame, RemotePlayButtons } from "../components/RemotePlay";
 import { bridgeError, desktop } from "../desktop";
 import { ArtworkPicker } from "../components/ArtworkEditor";
 import { JournalPanel, WorkshopPanel } from "../components/GameExtras";
@@ -72,6 +73,8 @@ export function StoreGame() {
   const ready = !!local || (roblox && scanned);
   const install = !ready && scanned;
   const launch = local?.launchUrl ?? (install ? storeInstallUrl(game) : game.launchUrl);
+  // An Xbox console game streams from the console itself: there's nothing to install here.
+  const remote = isRemotePlayGame(addon);
   const date = info && addon !== ROBLOX_ADDON ? listingDate(info) : null;
 
   return (
@@ -95,7 +98,8 @@ export function StoreGame() {
           {info?.summary && <p className="summary">{info.summary}</p>}
           {!info && <p className="muted">No details found for this title yet. Use Edit to pick the right game.</p>}
           <div className="inline wrap">
-            {launch && (
+            {remote && <RemotePlayButtons launchUrl={game.launchUrl} onError={setError} />}
+            {!remote && launch && (
               <button className="primary" onClick={() => launchStoreGame(game, local ?? undefined, install).catch((e) => setError(bridgeError(e)))}>
                 {ready ? "▶ Play" : install ? `Install with ${game.store}` : `Open in ${game.store}`}
               </button>
