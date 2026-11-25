@@ -1,16 +1,6 @@
 import { isXboxConsoleId, XBOX_CONSOLE_ADDON, xboxRemotePlayUrl } from "@lootden/shared";
+import { openXblTitles, type TitleHubTitle } from "./openxbl.js";
 import type { LibraryAddon, OwnedGame } from "./types.js";
-
-interface TitleHubTitle {
-  titleId?: string;
-  name?: string;
-  type?: string;
-  /** Where the account has played it: "XboxSeries", "XboxOne", "Xbox360", "PC", "Mobile"... */
-  devices?: string[];
-  displayImage?: string;
-  bingId?: string;
-  titleHistory?: { lastTimePlayed?: string };
-}
 
 /**
  * Xbox consoles, as Xbox Live's title history names the devices a game was played on
@@ -51,17 +41,7 @@ export const xboxConsole: LibraryAddon = {
     const consoleId = (config.consoleId ?? "").trim();
     if (consoleId && !isXboxConsoleId(consoleId))
       throw new Error("That console id isn't 16 characters of 0-9 and A-F. Start remote play on xbox.com/play/consoles and copy the id from the address bar, or leave it empty");
-    const res = await fetch("https://xbl.io/api/v2/player/titleHistory", {
-      headers: {
-        "X-Authorization": config.apiKey ?? "",
-        Accept: "application/json",
-      },
-    });
-    if (res.status === 401 || res.status === 403) throw new Error("OpenXBL refused the key; copy it again from xbl.io");
-    if (res.status === 429) throw new Error("OpenXBL's hourly limit was reached; try again later");
-    if (!res.ok) throw new Error(`OpenXBL answered ${res.status}`);
-    const body = (await res.json()) as TitleHubTitle[] | { titles?: TitleHubTitle[]; content?: { titles?: TitleHubTitle[] } | TitleHubTitle[] };
-    const titles = Array.isArray(body) ? body : (body.titles ?? (Array.isArray(body.content) ? body.content : body.content?.titles) ?? []);
+    const titles = await openXblTitles(config.apiKey ?? "", fetch);
     const link = xboxRemotePlayUrl(consoleId || null);
     const out: OwnedGame[] = [];
     const games = titles.filter((t): t is TitleHubTitle & { titleId: string; name: string } => !!t.titleId && !!t.name && (!t.type || t.type === "Game"));
@@ -82,7 +62,7 @@ export const xboxConsole: LibraryAddon = {
       });
     }
     // An empty list syncs as "0 games" with no clue why; say what OpenXBL sent instead.
-    if (!titles.length) throw new Error("OpenXBL sent an empty game history for this key. Check the key is from the Microsoft account you play on, and that the account has played games on Xbox");
+    if (!titles.length) throw new Error("OpenXBL sent an empty game history for this key. Check the key is from the Microsoft account you play on (xbl.io shows the gamertag), and that your Xbox privacy settings (account.xbox.com/settings, Privacy) let others see your game and app history");
     if (!out.length) {
       const seen = [...new Set(games.flatMap((t) => t.devices ?? []))].join(", ") || "none";
       throw new Error(`OpenXBL lists ${games.length} games for this account, but none played on an Xbox (devices it named: ${seen})`);

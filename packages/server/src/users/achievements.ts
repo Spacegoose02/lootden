@@ -235,7 +235,7 @@ export class AchievementService {
     const cfg = this.addons.accountConfig(userId, "xbox");
     if (!cfg?.apiKey || !/^\d+$/.test(titleId)) return null;
     return this.get(userId, "xbox", titleId, link, refresh, async () => {
-      const res = await this.fetchImpl(`https://xbl.io/api/v2/achievements/title/${titleId}`, { headers: { "X-Authorization": cfg.apiKey!, Accept: "application/json" } });
+      const res = await this.fetchImpl(`https://api.xbl.io/v2/achievements/title/${titleId}`, { headers: { "X-Authorization": cfg.apiKey!, Accept: "application/json" } });
       if (res.status === 401 || res.status === 403) throw new Error("OpenXBL refused the key; copy it again from xbl.io");
       if (res.status === 429) throw new Error("OpenXBL's hourly limit was reached; try again later");
       if (!res.ok) throw new Error(`OpenXBL answered ${res.status}`);
