@@ -4,7 +4,8 @@ import { STREAM_FITS, STREAM_FIT_LABELS, type StreamFit } from "@lootden/shared"
  * LootDen's menu on an Xbox stream page in the built-in browser. The stream takes the whole
  * screen (the page's own full screen hides the toolbar), so this menu is how to change the
  * screen fit without a keyboard: View + Menu held for a second on a controller, a tap on the
- * small tab at the top of a touch screen (the ROG Ally, the Steam Deck), or the mouse at the top.
+ * small tab that shows on a touch near the top of the screen (the ROG Ally, the Steam Deck), or the
+ * mouse at the top. The tab hides itself after a few seconds, so nothing stays over the game.
  *
  * It runs in a world of its own, which the page's scripts can't reach. What the person picks
  * waits in `__lootdenStreamAsks` until the browser collects it (streamAsksScript), and the
@@ -25,7 +26,7 @@ export function streamOverlayScript(fit: StreamFit): string {
   const css = document.createElement("style");
   css.textContent = \`
     #__lootden_stream { all: initial; position: fixed; inset: 0; z-index: 2147483647; pointer-events: none; font: 15px system-ui, sans-serif; color: #fff; }
-    #__lootden_stream .tab { position: absolute; top: 0; left: 50%; transform: translateX(-50%); pointer-events: auto; padding: 4px 18px 6px; border-radius: 0 0 12px 12px; background: rgba(10, 10, 20, .55); border: 1px solid rgba(255,255,255,.2); border-top: 0; font-size: 13px; cursor: pointer; opacity: .35; transition: opacity .3s; }
+    #__lootden_stream .tab { position: absolute; top: 0; left: 50%; transform: translateX(-50%); pointer-events: auto; padding: 4px 18px 6px; border-radius: 0 0 12px 12px; background: rgba(10, 10, 20, .55); border: 1px solid rgba(255,255,255,.2); border-top: 0; font-size: 13px; cursor: pointer; opacity: 0; transition: opacity .3s; }
     #__lootden_stream .tab:hover, #__lootden_stream.peek .tab { opacity: 1; }
     #__lootden_stream .panel { position: absolute; top: 0; left: 50%; transform: translate(-50%, -110%); transition: transform .2s; pointer-events: auto; display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: center; padding: 14px 18px; max-width: 92vw; background: rgba(14, 14, 28, .94); border: 1px solid rgba(255,255,255,.18); border-top: 0; border-radius: 0 0 16px 16px; }
     #__lootden_stream.open .panel { transform: translate(-50%, 0); }
@@ -99,7 +100,8 @@ export function streamOverlayScript(fit: StreamFit): string {
   }
   document.addEventListener("fullscreenchange", place, true);
   tab.addEventListener("click", (e) => { e.stopPropagation(); open(false); });
-  tab.addEventListener("touchstart", (e) => { e.preventDefault(); e.stopPropagation(); open(false); }, { passive: false });
+  // A hidden tab only shows itself on the first touch, so a stray tap over the game doesn't open it.
+  tab.addEventListener("touchstart", (e) => { e.preventDefault(); e.stopPropagation(); if (root.classList.contains("peek")) open(false); else peek(); }, { passive: false });
   document.addEventListener("keydown", (e) => {
     // Ctrl+Shift+F, for when the browser doesn't see the key before the page does.
     if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === "f") {
@@ -108,12 +110,28 @@ export function streamOverlayScript(fit: StreamFit): string {
       w.__lootdenStreamAsks.push("fit:next");
     }
   }, true);
-  document.addEventListener("mousemove", (e) => {
-    if (e.clientY > 60) return;
+  // The mouse at the very top edge brings the browser's toolbar over the stream; moving back
+  // down to the game puts it away. Just below the edge, LootDen's tab shows for a moment.
+  let toolbar = false;
+  function peek() {
     root.classList.add("peek");
     clearTimeout(peekTimer);
     peekTimer = setTimeout(() => root.classList.remove("peek"), 3000);
+  }
+  document.addEventListener("mousemove", (e) => {
+    if (e.clientY <= 4 && !toolbar) {
+      toolbar = true;
+      w.__lootdenStreamAsks.push("toolbar:show");
+    } else if (e.clientY > 160 && toolbar) {
+      toolbar = false;
+      w.__lootdenStreamAsks.push("toolbar:hide");
+    }
+    if (e.clientY <= 60) peek();
   }, true);
+  // On a touch screen the tab hides too; a touch near the top shows it to tap.
+  document.addEventListener("touchstart", (e) => {
+    if (e.touches[0] && e.touches[0].clientY <= 60 && !root.contains(e.target)) peek();
+  }, { capture: true, passive: true });
   document.addEventListener("pointerdown", (e) => { if (isOpen && !root.contains(e.target)) close(); }, true);
 
   // The controller: View + Menu held for a second opens the menu; while it's open the d-pad

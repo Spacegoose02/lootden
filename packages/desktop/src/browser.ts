@@ -119,6 +119,8 @@ export class WebBrowser {
   /** Whether the window was full screen before the page made it so, to put it back after. */
   private wasFullscreen = false;
   private streamWatch: ReturnType<typeof setInterval> | undefined;
+  /** The toolbar showing over a stream, while the mouse is at the top. */
+  private toolbarPeek = false;
   /** A second layout once Windows has settled the window's new size. */
   private settle: ReturnType<typeof setTimeout> | undefined;
   /** Sites allowed the camera or microphone this session. */
@@ -379,7 +381,10 @@ export class WebBrowser {
     wc.on("did-navigate-in-page", update);
     // Xbox streams: how the 16:9 picture fills a wide screen. xbox.com/play moves between its
     // pages without loading a new one, so this follows every navigation.
-    const fit = () => void this.applyFit(tab);
+    const fit = () => {
+      void this.applyFit(tab);
+      if (this.tab === tab) this.layout();
+    };
     wc.on("did-navigate", fit);
     wc.on("did-navigate-in-page", fit);
     wc.on("dom-ready", fit);
@@ -579,6 +584,13 @@ export class WebBrowser {
         void t.view!.webContents.executeJavaScriptInIsolatedWorld(STREAM_OVERLAY_WORLD, [{ code: streamAsksScript }])
           .then((asks: unknown) => {
             for (const ask of Array.isArray(asks) ? asks : []) {
+              if (ask === "toolbar:show" || ask === "toolbar:hide") {
+                if (t === this.tab && this.toolbarPeek !== (ask === "toolbar:show")) {
+                  this.toolbarPeek = ask === "toolbar:show";
+                  this.layout();
+                }
+                continue;
+              }
               const fit = String(ask).replace(/^fit:/, "");
               if (fit === "next") this.setFit(nextStreamFit(this.fit));
               else if (isStreamFit(fit)) this.setFit(fit);
@@ -598,11 +610,16 @@ export class WebBrowser {
     // to nothing, and they'd stay that way when the window comes back.
     if (width <= 0 || height <= 0) return;
     const view = this.tab?.view;
-    if (view && this.htmlFullscreen) {
-      this.shell.setBounds({ x: 0, y: 0, width, height: 0 });
+    // An Xbox stream takes the whole window too, with or without the page's own full screen:
+    // the toolbar slides over it while the mouse is at the top edge, and goes when it leaves.
+    const stream = !!view && !view.webContents.isDestroyed() && isXboxStreamUrl(view.webContents.getURL());
+    if (view && (this.htmlFullscreen || stream)) {
+      const peek = stream && this.toolbarPeek ? Math.min(this.toolbar, height) : 0;
+      this.shell.setBounds({ x: 0, y: 0, width, height: peek });
       view.setBounds({ x: 0, y: 0, width, height });
       return;
     }
+    this.toolbarPeek = false;
     // The start page is the toolbar page itself, filling the window.
     const top = view ? Math.min(this.toolbar, height) : height;
     this.shell.setBounds({ x: 0, y: 0, width, height: top });

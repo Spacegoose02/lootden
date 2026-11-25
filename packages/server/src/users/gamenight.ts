@@ -168,11 +168,14 @@ export class GameNights {
   dueReminders(minutes = 60): Array<GameNight & { inMinutes: number }> {
     const tz = this.family.timeZone();
     const nowParts = zonedParts(new Date(), tz);
-    const rows = this.db.prepare("SELECT * FROM game_nights WHERE day = ? AND reminded_at IS NULL").all(nowParts.date) as unknown as Row[];
+    // A night just after midnight is reminded the evening before, so tomorrow counts too when the window reaches it.
+    const endDay = zonedParts(new Date(Date.now() + minutes * 60_000), tz).date;
+    const days = endDay === nowParts.date ? [nowParts.date] : [nowParts.date, endDay];
+    const rows = days.flatMap((day) => this.db.prepare("SELECT * FROM game_nights WHERE day = ? AND reminded_at IS NULL").all(day) as unknown as Row[]);
     const out: Array<GameNight & { inMinutes: number }> = [];
     for (const r of rows) {
       const [h, m] = r.time.split(":").map(Number);
-      const inSeconds = (h ?? 0) * 3600 + (m ?? 0) * 60 - nowParts.seconds;
+      const inSeconds = (r.day === nowParts.date ? 0 : 86_400) + (h ?? 0) * 3600 + (m ?? 0) * 60 - nowParts.seconds;
       if (inSeconds <= 0 || inSeconds > minutes * 60) continue;
       this.db.prepare("UPDATE game_nights SET reminded_at = ? WHERE id = ?").run(now(), r.id);
       out.push({ ...this.view(r), inMinutes: Math.round(inSeconds / 60) });
