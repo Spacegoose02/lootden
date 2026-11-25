@@ -1,5 +1,6 @@
 import { desktop } from "./desktop";
 import type {
+  ProfileMerge,
   ArcadeLobby,
   RecompInfo,
   GameCompat,
@@ -684,6 +685,8 @@ export const api = {
   updateUser: (id: number, patch: Partial<{ displayName: string; role: string; kidMode: boolean; password: string | null; ssoUsername: string | null }>) =>
     call<User>("PATCH", `/api/users/${id}`, patch),
   deleteUser: (id: number) => call("DELETE", `/api/users/${id}`),
+  previewMergeUsers: (keepId: number, fromId: number) => call<ProfileMerge>("GET", `/api/users/${keepId}/merge?from=${fromId}`),
+  mergeUsers: (keepId: number, fromId: number) => call<ProfileMerge>("POST", `/api/users/${keepId}/merge`, { from: fromId }),
 
   // Bandit, the AI helper.
   helperStatus: () => call<HelperStatus>("GET", "/api/me/helper"),

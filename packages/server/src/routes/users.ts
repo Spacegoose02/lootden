@@ -4,6 +4,7 @@ import { verifyPassword } from "../auth/crypto.js";
 import { SESSION_COOKIE } from "../auth/service.js";
 import { HttpProblem, requireAdmin, requirePerson, type AppContext } from "../context.js";
 import { avatarSvg, randomAvatarSeed } from "../users/avatars.js";
+import { mergeUsers, previewMerge } from "../users/merge.js";
 import { publicUser, type UserRecord } from "../users/repo.js";
 
 export function userRoutes(app: FastifyInstance, ctx: AppContext) {
@@ -210,6 +211,34 @@ export function userRoutes(app: FastifyInstance, ctx: AppContext) {
       .prepare("INSERT INTO browser_policy (user_id, mode, allowed, blocked) VALUES (?, ?, ?, ?) ON CONFLICT(user_id) DO UPDATE SET mode = excluded.mode, allowed = excluded.allowed, blocked = excluded.blocked")
       .run(user.id, next.mode, JSON.stringify(next.allowed), JSON.stringify(next.blocked));
     return next;
+  });
+
+  // ---- Admin: merge two profiles of the same person ----------------------------
+
+  const mergePair = (keepParam: string, from: unknown) => {
+    const keep = ctx.users.byId(Number(keepParam));
+    const drop = ctx.users.byId(Number(from));
+    if (!keep || !drop) throw new HttpProblem(404, "No such user");
+    if (keep.id === drop.id) throw new HttpProblem(400, "Pick two different profiles");
+    // Kid profiles have their own rules; a kid and a grown-up are two people, not a duplicate.
+    if (keep.kidMode !== drop.kidMode) throw new HttpProblem(409, `${drop.username} and ${keep.username} aren't both kid profiles, so they look like different people`);
+    return { keep, drop };
+  };
+
+  /** What merging would move, without changing anything. */
+  app.get<{ Params: { id: string }; Querystring: { from?: string } }>("/api/users/:id/merge", async (req) => {
+    requireAdmin(req);
+    const { keep, drop } = mergePair(req.params.id, req.query.from);
+    return { keep: publicUser(keep), drop: publicUser(drop), ...previewMerge(ctx.db, keep.id, drop.id) };
+  });
+
+  /** Moves everything from one profile into this one, then deletes the other. */
+  app.post<{ Params: { id: string }; Body: { from?: number } }>("/api/users/:id/merge", async (req) => {
+    requireAdmin(req);
+    const { keep, drop } = mergePair(req.params.id, req.body?.from);
+    const counts = mergeUsers(ctx.db, keep.id, drop.id);
+    req.log.info({ keep: keep.username, drop: drop.username, moved: counts.moved }, "merged profiles");
+    return { user: publicUser(ctx.users.byId(keep.id)!), ...counts };
   });
 
   app.delete<{ Params: { id: string } }>("/api/users/:id", async (req) => {

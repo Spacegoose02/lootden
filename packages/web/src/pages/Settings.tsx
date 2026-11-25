@@ -2,7 +2,7 @@ import { BackupsSection } from "../components/Backups";
 import { ChatSection, DiscordSection, HomeAssistantSection } from "../components/Integrations";
 import { useEffect, useState, type ReactNode } from "react";
 import { Link, NavLink, Navigate, useNavigate, useParams } from "react-router-dom";
-import { KID_SITES, type BrowserPolicy, type GameSummary, type LibraryStats, type User } from "@lootden/shared";
+import { KID_SITES, type BrowserPolicy, type GameSummary, type LibraryStats, type ProfileMerge, type User } from "@lootden/shared";
 import { api, avatarUrl, formatBytes, type Connectors, type ReleaseSourceView, type SourceConfig, type WishlistState } from "../api";
 import { AdminApps } from "../components/AdminApps";
 import { AdminIntegrations } from "../components/AdminIntegrations";
@@ -242,6 +242,7 @@ function Profiles({ say }: { say: Msg }) {
   const [browserFor, setBrowserFor] = useState<number | null>(null);
   const [limitsFor, setLimitsFor] = useState<number | null>(null);
   const [ssoFor, setSsoFor] = useState<number | null>(null);
+  const [mergeFor, setMergeFor] = useState<number | null>(null);
   const load = () => void api.users().then(setUsers, () => {});
   useEffect(load, []);
   const { busy, act } = useAct(say, load);
@@ -279,6 +280,14 @@ function Profiles({ say }: { say: Msg }) {
               </button>
               <button
                 className="ghost small"
+                aria-expanded={mergeFor === u.id}
+                title="Same person twice? Move another profile's play time, installs and settings into this one"
+                onClick={() => setMergeFor(mergeFor === u.id ? null : u.id)}
+              >
+                Merge
+              </button>
+              <button
+                className="ghost small"
                 title="For someone who lost their phone or passkey: clears their authenticator app and passkeys so their password works alone"
                 onClick={() => confirm(`Turn off two-step sign-in for ${u.username}?`) && act(() => api.resetMfa(u.id), "Two-step sign-in turned off")}
               >
@@ -291,6 +300,7 @@ function Profiles({ say }: { say: Msg }) {
             {limitsFor === u.id && <PlayLimitsEditor user={u} say={say} />}
             {browserFor === u.id && <BrowserRules user={u} say={say} />}
             {ssoFor === u.id && <SsoEditor user={u} busy={busy} act={act} />}
+            {mergeFor === u.id && <MergeEditor keep={u} users={users} say={say} done={() => (setMergeFor(null), load())} />}
           </li>
         ))}
       </ul>
@@ -316,6 +326,79 @@ function Profiles({ say }: { say: Msg }) {
   );
 }
 
+const MERGE_LABELS: Record<string, string> = {
+  play_sessions: "play sessions",
+  user_games: "installs and game states",
+  saves: "saves",
+  achievements: "achievements",
+  sessions: "signed-in browsers",
+  api_tokens: "signed-in apps",
+  shelves: "shelves",
+  game_requests: "game requests",
+  user_mfa: "two-step sign-in",
+  passkeys: "passkeys",
+  screenshots: "screenshots",
+};
+const mergeList = (rows: Record<string, number>) =>
+  Object.entries(rows)
+    .map(([t, n]) => `${n} ${MERGE_LABELS[t] ?? t.replace(/_/g, " ")}`)
+    .join(", ") || "nothing";
+
+/** Admin: the same person has two profiles (say a TinyAuth sign-in made a new one); fold the other one into this one. */
+function MergeEditor({ keep, users, say, done }: { keep: User; users: User[]; say: Msg; done: () => void }) {
+  const others = users.filter((o) => o.id !== keep.id && o.kidMode === keep.kidMode);
+  const [from, setFrom] = useState<number | "">("");
+  const [preview, setPreview] = useState<ProfileMerge | null>(null);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    setPreview(null);
+    if (from !== "") void api.previewMergeUsers(keep.id, from).then(setPreview, (e: Error) => say(e.message, true));
+  }, [from, keep.id]);
+  const drop = others.find((o) => o.id === from);
+  const merge = async () => {
+    if (!drop || !confirm(`Move everything from ${drop.username} into ${keep.username}, then delete ${drop.username}? This can't be undone.`)) return;
+    setBusy(true);
+    try {
+      const r = await api.mergeUsers(keep.id, drop.id);
+      say(`Merged ${drop.username} into ${keep.username}: moved ${mergeList(r.moved)}`);
+      done();
+    } catch (e) {
+      say((e as Error).message, true);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="inline wrap">
+      <label>
+        Move everything from{" "}
+        <select value={from} onChange={(e) => setFrom(e.target.value ? Number(e.target.value) : "")} aria-label="Profile to merge in">
+          <option value="">pick a profile…</option>
+          {others.map((o) => (
+            <option key={o.id} value={o.id}>
+              {o.displayName} (@{o.username})
+            </option>
+          ))}
+        </select>{" "}
+        into @{keep.username}
+      </label>
+      {preview && drop && (
+        <>
+          <small className="muted">
+            Moves {mergeList(preview.moved)}.
+            {Object.keys(preview.dropped).length > 0 && ` Keeps ${keep.username}'s own copy instead of ${mergeList(preview.dropped)}.`}
+            {drop.sso?.username || drop.sso?.oidc ? ` ${keep.username} takes over its TinyAuth link${drop.sso?.username ? ` (${drop.sso.username})` : ""}.` : ""}
+            {` Then @${drop.username} is deleted.`}
+          </small>
+          <button className="danger" disabled={busy} onClick={() => void merge()}>
+            Merge and delete @{drop.username}
+          </button>
+        </>
+      )}
+    </div>
+  );
+}
+
 /** Admin: which TinyAuth account signs in as this person. */
 function SsoEditor({ user, busy, act }: { user: User; busy: boolean; act: (fn: () => Promise<unknown>, done: string) => Promise<void> }) {
   const [name, setName] = useState(user.sso?.username ?? "");
@@ -328,7 +411,7 @@ function SsoEditor({ user, busy, act }: { user: User; busy: boolean; act: (fn: (
         void act(() => api.updateUser(user.id, { ssoUsername: name.trim() || null }), name.trim() ? `${user.username} linked to TinyAuth account ${name.trim()}` : "Unlinked");
       }}
     >
-      <input placeholder="TinyAuth username" aria-label="TinyAuth username" value={name} onChange={(e) => setName(e.target.value)} />
+      <input placeholder="TinyAuth username or email" aria-label="TinyAuth username" value={name} onChange={(e) => setName(e.target.value)} />
       <button disabled={busy}>Link</button>
       {linked && (
         <button type="button" className="ghost" disabled={busy} onClick={() => confirm(`Unlink TinyAuth from ${user.username}?`) && act(() => api.updateUser(user.id, { ssoUsername: null }), "Unlinked")}>
