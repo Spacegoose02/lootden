@@ -54,3 +54,4 @@ export { downloadWorkshopItem, ensureSteamCmd, installWorkshopItem, listWorkshop
 export { isStoreLaunchUrl, robloxPlaceOf, robloxPlayId } from "@lootden/shared";
 export { cleanPolicy, KID_SEARCH, KID_SITES, safeSearchUrl, siteAllowed, type BrowserPolicy } from "@lootden/shared";
 export { addressToUrl, cleanBookmarks, DEFAULT_BOOKMARKS, KID_BOOKMARKS, isBrowsable, launcherShortcuts, MAX_BOOKMARKS, SEARCH_ENGINES, siteName, type Bookmark, type LauncherShortcut, type SearchEngine } from "./browser.js";
+export { XboxLive, XboxLiveError, XHomeSession, XBOX_CLIENT_ID, streamFailure, teredoClient, withTeredo, type XboxConsole, type XboxDeviceCode, type XboxInstalledGame, type XboxSavedSignIn, type XHomeState } from "./xboxlive.js";

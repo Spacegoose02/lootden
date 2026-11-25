@@ -5,7 +5,7 @@ import { api, formatPlaytime, storeGamePath } from "../api";
 import { bridgeError, desktop } from "../desktop";
 import { Cover } from "./Cover";
 import { InstalledPill } from "./LibraryLayout";
-import { isRemotePlayGame, RemotePlayButtons } from "./RemotePlay";
+import { consoleStoreGames, isRemotePlayGame, RemotePlayButtons } from "./RemotePlay";
 
 export const storeKey = (g: { addon: string; externalId: string }) => `${g.addon}:${g.externalId}`;
 
@@ -64,19 +64,29 @@ export function useStoreGames(enabled = true) {
       setError(e.message);
       setGames([]);
     });
+    // The Xbox's own games join this PC's, once a Microsoft account is signed in for remote play.
+    let consoleGames: LocalStoreGame[] = [];
+    const withConsole = (l: LocalStoreGame[]) => [...l.filter((g) => !isRemotePlayGame(g.addon)), ...consoleGames];
     desktop?.storeGames?.().then(
       (l) => {
-        setLocal(l);
+        setLocal(withConsole(l));
         setScanned(true);
       },
-      () => setLocal([]),
+      () => setLocal(withConsole([])),
+    );
+    consoleStoreGames().then(
+      (g) => {
+        consoleGames = g;
+        setLocal((cur) => withConsole(cur));
+      },
+      () => {},
     );
     api.storeGamesCustom().then((l) => setCustom(new Map(l.map((c) => [storeKey(c), c]))), () => {});
     // The app answers from its last look through the launchers and checks again in the
     // background; a game installed or removed since then arrives here.
     return desktop?.onProgress((p) => {
       if (p.type !== "storeGames") return;
-      setLocal(p.games);
+      setLocal(withConsole(p.games));
       setScanned(true);
     });
   }, [enabled]);
@@ -112,7 +122,7 @@ export function StoreGameCard({ game: g, local, scanned, onError, alsoOn }: { ga
       {/* The cover and title open the game's page, like a LootDen game's card. */}
       <Link to={storeGameLink(g)} className="store-card-link" aria-label={g.title}>
         <Cover game={{ id: storeKey(g), title: g.title, coverUrl: g.coverUrl ?? g.artUrl ?? null, backgroundUrl: g.coverUrl ? g.artUrl : null }} />
-        {local && <InstalledPill />}
+        {local && <InstalledPill label={isRemotePlayGame(g.addon) ? "On your Xbox" : undefined} />}
         <div className="card-body">
           <div className="card-title" title={g.title}>
             {g.title}
@@ -131,7 +141,7 @@ export function StoreGameCard({ game: g, local, scanned, onError, alsoOn }: { ga
       <div className="card-body store-card-actions">
         <div className="store-actions">
           {/* An Xbox console game isn't on this PC at all: it streams from the console. */}
-          {isRemotePlayGame(g.addon) && <RemotePlayButtons launchUrl={g.launchUrl} small onError={onError} />}
+          {isRemotePlayGame(g.addon) && <RemotePlayButtons launchUrl={local?.launchUrl ?? g.launchUrl} title={g.title} small onError={onError} />}
           {!isRemotePlayGame(g.addon) && launch && (
             <button
               className={`small ${install ? "secondary" : "primary"}`}

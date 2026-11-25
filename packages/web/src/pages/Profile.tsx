@@ -9,7 +9,7 @@ import { bridgeError, desktop, type InstalledGame } from "../desktop";
 import { THEMES, useTheme } from "../theme";
 import { GameLibraries } from "../components/GameLibraries";
 import { StoreScan } from "../components/StoreScan";
-import { GreenlightSetup } from "../components/RemotePlay";
+import { XboxRemoteSetup } from "../components/RemotePlay";
 import { StreamingSetup } from "../components/Streaming";
 import { AchievementsGrid, HoloCard, RaccoonBuilder, useProgress } from "../components/Progress";
 import { PlayTimeCard } from "../components/PlayTime";
@@ -297,7 +297,7 @@ export function ThisComputer() {
       <StoreScan />
       <AndroidEmulators />
       <StreamingSetup />
-      <GreenlightSetup />
+      <XboxRemoteSetup />
       <AppOptions />
     </section>
   );

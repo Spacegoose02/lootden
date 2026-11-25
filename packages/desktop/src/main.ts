@@ -168,6 +168,7 @@ import { cleanDiscordId, DiscordPresence, showSplash } from "./playextras.js";
 import { isExternalLink, isFile, onOrigin, permissionAllowed } from "./links.js";
 import { SettingsStore, type DesktopSettings } from "./settings.js";
 import { WebBrowser } from "./browser.js";
+import { XboxRemote } from "./xbox.js";
 import { PadWatcher } from "./padwatch.js";
 import { TruckMods } from "./truckmods.js";
 import { TruckModList } from "./truckmodlist.js";
@@ -234,6 +235,7 @@ const launchFullscreen = process.argv.includes("--fullscreen");
 /** The "Web browser" jump list task. */
 const launchBrowser = process.argv.includes("--browser");
 let browser: WebBrowser;
+let xbox: XboxRemote;
 /** ATS and ETS2 mods: browser downloads into the game's mod folder, shared through the server. */
 let truckMods: TruckMods;
 let stardewMods: StardewMods;
@@ -3191,12 +3193,18 @@ function registerIpc(): void {
   });
 
   /**
-   * Starts remote play from the person's own Xbox: in Greenlight when it's on this PC and asked
-   * for, else on Xbox's own page in the built-in browser, full screen.
+   * Starts remote play from the person's own Xbox: in LootDen's own player once a Microsoft
+   * account is signed in here (or when asked for), in Greenlight when asked for, else on Xbox's
+   * own page in the built-in browser, full screen.
    */
   ipcMain.handle("gm:remotePlay", async (e, opts?: { consoleId?: string | null; app?: string }) => {
     fromServer(e);
     const consoleId = typeof opts?.consoleId === "string" && isXboxConsoleId(opts.consoleId) ? opts.consoleId : null;
+    if (opts?.app === "player" || (opts?.app !== "browser" && opts?.app !== "greenlight" && xbox.live.signedIn)) {
+      const o = opts as { productId?: unknown; title?: unknown };
+      await xbox.play({ consoleId, productId: typeof o.productId === "string" ? o.productId.replace(/[^A-Z0-9]/gi, "").slice(0, 32) : null, title: typeof o.title === "string" ? o.title.slice(0, 200) : null });
+      return { app: "player" as const };
+    }
     if (opts?.app === "greenlight") {
       const state = await greenlightState({ toolsDir: toolsDir() });
       if (!state.exe) throw new Error("Greenlight isn't set up on this PC yet. Set it up under Profile, This computer");
@@ -3778,6 +3786,16 @@ void app.whenReady().then(async () => {
     },
   });
   browser.registerIpc();
+  xbox = new XboxRemote({
+    settings: () => settings,
+    mainWindow: () => win,
+    page: path.join(__dirname, "..", "setup", "xstream.html"),
+    preload: path.join(__dirname, "xstream-preload.cjs"),
+    icon: path.join(__dirname, "..", "build", "icon.png"),
+    notify: (status) => send({ gameId: "xbox", type: "xbox", ...status }),
+    fromServer,
+  });
+  xbox.registerIpc();
   createTray();
   applyLoginItem(settings.get());
   setJumpList();

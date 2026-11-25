@@ -191,6 +191,8 @@ export type Progress =
   | { gameId: string; type: "activity"; items: ActivityItem[] }
   /** A background look through this PC's launchers found other store games (gameId is "stores:local"). */
   | { gameId: string; type: "storeGames"; games: LocalStoreGame[] }
+  /** The Xbox sign-in finished or failed (gameId is "xbox"). */
+  | { gameId: string; type: "xbox"; status: XboxRemoteStatus }
   | { gameId: string; type: "verify"; done: number; total: number }
   | { gameId: string; type: "repair"; step: string; received: number; total: number }
   | { gameId: string; type: "repaired"; files: number }
@@ -429,8 +431,14 @@ export interface DesktopBridge {
   pickStardewFolder?(reset?: boolean): Promise<string | null>;
   /** The built-in web browser, over LootDen, on its start page or a web page (newer apps only). */
   openBrowser?(url?: string): Promise<void>;
-  /** Xbox remote play from the person's own console: Xbox's page in the built-in browser, or Greenlight (apps from 0.43). */
-  remotePlay?(opts?: { consoleId?: string | null; app?: "browser" | "greenlight" }): Promise<{ app: "browser" | "greenlight" }>;
+  /**
+   * Xbox remote play from the person's own console: LootDen's own player once a Microsoft account
+   * is signed in (apps from 0.44), Xbox's page in the built-in browser, or Greenlight (apps from 0.43).
+   * With no app, the desktop app picks: its own player when signed in, else the browser.
+   */
+  remotePlay?(opts?: { consoleId?: string | null; app?: RemotePlayApp; productId?: string | null; title?: string | null }): Promise<{ app: RemotePlayApp }>;
+  /** LootDen's own Xbox remote play: the Microsoft sign-in, consoles and their games (apps from 0.44). */
+  xbox?: XboxBridge;
   /** Greenlight (the open-source Xbox streaming app) on this PC, and setting it up (apps from 0.43). */
   greenlight?(): Promise<GreenlightState>;
   installGreenlight?(): Promise<GreenlightState>;
@@ -684,6 +692,52 @@ export interface InstalledWorkshopItem {
 }
 
 /** Game streaming on this PC. */
+export type RemotePlayApp = "player" | "browser" | "greenlight";
+
+/** An Xbox console on the signed-in Microsoft account. */
+export interface XboxConsoleInfo {
+  id: string;
+  name: string;
+  consoleType: string;
+  /** "On", "ConnectedStandby" (asleep, can be woken) or "Off". */
+  powerState: string;
+  streamingEnabled: boolean;
+  remoteManagementEnabled: boolean;
+}
+
+export interface XboxInstalledGame {
+  titleId: string;
+  name: string;
+  productId: string | null;
+  sizeBytes: number;
+  lastActiveTime: string | null;
+}
+
+export interface XboxRemoteStatus {
+  signedIn: boolean;
+  gamertag: string | null;
+  /** A sign-in waiting for the code to be entered at microsoft.com/link. */
+  pending: { userCode: string; verificationUri: string; expiresAt: number } | null;
+  error: string | null;
+  defaultConsole: string | null;
+  fit: "fit" | "zoom" | "stretch";
+  streaming: boolean;
+}
+
+export interface XboxBridge {
+  status(): Promise<XboxRemoteStatus>;
+  signIn(): Promise<XboxRemoteStatus>;
+  cancelSignIn(): Promise<XboxRemoteStatus>;
+  openSignInPage(): Promise<void>;
+  signOut(): Promise<XboxRemoteStatus>;
+  consoles(refresh?: boolean): Promise<XboxConsoleInfo[]>;
+  installed(consoleId: string): Promise<XboxInstalledGame[]>;
+  wake(consoleId: string): Promise<void>;
+  setDefault(consoleId: string | null): Promise<XboxRemoteStatus>;
+  setFit(fit: string): Promise<XboxRemoteStatus>;
+  play(req: { consoleId?: string | null; productId?: string | null; title?: string | null }): Promise<void>;
+}
+
 /** Greenlight (Xbox remote play) on this PC, as the app reports it. */
 export interface GreenlightState {
   /** False on macOS, where LootDen has no download for it. */

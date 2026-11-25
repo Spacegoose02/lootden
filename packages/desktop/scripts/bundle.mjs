@@ -9,7 +9,7 @@ import { build } from "esbuild";
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const require = createRequire(import.meta.url);
 
-for (const entry of ["main", "preload", "browser-preload"]) {
+for (const entry of ["main", "preload", "browser-preload", "xstream-preload"]) {
   await build({
     entryPoints: [path.join(root, "src", `${entry}.ts`)],
     bundle: true,
@@ -22,6 +22,17 @@ for (const entry of ["main", "preload", "browser-preload"]) {
     logOverride: { "empty-import-meta": "silent" },
   });
 }
+
+// The Xbox stream window's page runs in the browser, with xbox-xcloud-player inlined.
+await build({
+  entryPoints: [path.join(root, "src", "xstream-page.ts")],
+  bundle: true,
+  platform: "browser",
+  target: "chrome130",
+  format: "iife",
+  outfile: path.join(root, "dist", "xstream-page.js"),
+  logLevel: "warning",
+});
 
 const sevenBin = path.dirname(require.resolve("7zip-bin"));
 // vendor/7zip/<os>/<arch>/, which electron-builder picks per build (extraResources in package.json).
