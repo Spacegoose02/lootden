@@ -1,15 +1,5 @@
+import { openXblTitles } from "./openxbl.js";
 import type { LibraryAddon, OwnedGame } from "./types.js";
-
-interface TitleHubTitle {
-  titleId?: string;
-  name?: string;
-  type?: string;
-  devices?: string[];
-  displayImage?: string;
-  /** The Microsoft Store product id ("9NBLGGH4R315"). */
-  bingId?: string;
-  titleHistory?: { lastTimePlayed?: string };
-}
 
 /**
  * Xbox: the games an Xbox account has played (on console and PC), through OpenXBL, a free
@@ -31,12 +21,7 @@ export const xbox: LibraryAddon = {
     },
   ],
   async games({ config, fetch }) {
-    const res = await fetch("https://xbl.io/api/v2/player/titleHistory", { headers: { "X-Authorization": config.apiKey ?? "", Accept: "application/json" } });
-    if (res.status === 401 || res.status === 403) throw new Error("OpenXBL refused the key; copy it again from xbl.io");
-    if (res.status === 429) throw new Error("OpenXBL's hourly limit was reached; try again later");
-    if (!res.ok) throw new Error(`OpenXBL answered ${res.status}`);
-    const body = (await res.json()) as { titles?: TitleHubTitle[]; content?: { titles?: TitleHubTitle[] } };
-    const titles = body.titles ?? body.content?.titles ?? [];
+    const titles = await openXblTitles(config.apiKey ?? "", fetch);
     const out: OwnedGame[] = [];
     for (const t of titles) {
       // Apps (Netflix, the Xbox app itself) are in the history too.

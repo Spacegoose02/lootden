@@ -338,6 +338,24 @@ describe("Xbox console add-on (remote play)", () => {
     await assert.rejects(run([]), /empty game history/);
     await assert.rejects(run([{ titleId: "3", name: "Solitaire", type: "Game", devices: ["Win32", "PC"] }]), /none played on an Xbox \(devices it named: Win32, PC\)/);
   });
+
+  it("reads OpenXBL's current title history, falling back to the old address", async () => {
+    const { openXblTitles } = await import("../src/addons/openxbl.js");
+    const seen: string[] = [];
+    const reply = (byUrl: Record<string, unknown>) =>
+      (async (input: string | URL | Request) => {
+        const url = String(input);
+        seen.push(url);
+        return Response.json(byUrl[url] ?? {});
+      }) as typeof fetch;
+    const game = { titleId: "1", name: "Halo", type: "Game", devices: ["XboxSeries"] };
+    assert.deepEqual(await openXblTitles("key", reply({ "https://api.xbl.io/v2/titles": { content: { titles: [game] }, code: 200 } })), [game]);
+    assert.deepEqual(seen, ["https://api.xbl.io/v2/titles"]);
+    seen.length = 0;
+    assert.deepEqual(await openXblTitles("key", reply({ "https://xbl.io/api/v2/player/titleHistory": { titles: [game] } })), [game]);
+    assert.deepEqual(seen, ["https://api.xbl.io/v2/titles", "https://xbl.io/api/v2/player/titleHistory"]);
+    await assert.rejects(openXblTitles("bad", (async () => new Response("no", { status: 401 })) as unknown as typeof fetch), /refused the key/);
+  });
 });
 
 describe("itch.io add-on", () => {
