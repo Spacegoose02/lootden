@@ -33,6 +33,7 @@ export { isRobloxPlayer, RobloxLogWatcher, setRobloxFullscreen, trackRoblox, wit
 export * from "./emulators.js";
 export * from "./arcade.js";
 export * from "./teknoparrot.js";
+export * from "./greenlight.js";
 export { downloadLicences, installLicences, LICENCE_FOLDER, RPCS3_EXDATA } from "./licences.js";
 export * from "./recomps.js";
 export * from "./recompmods.js";

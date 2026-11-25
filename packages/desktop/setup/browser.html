@@ -97,6 +97,7 @@
         <button id="star" title="Add to the start page" aria-label="Bookmark">☆</button>
         <button id="dl" title="Send a magnet or download link to LootDen downloads" aria-label="Send to LootDen downloads" hidden>⇩</button>
         <span class="mode" id="mode" aria-live="polite"></span>
+        <button id="fit" title="How the stream fills the screen (Ctrl+Shift+F)" aria-label="Screen fit" hidden></button>
         <button id="full" title="Full screen (F11)" aria-label="Full screen">⛶</button>
       </div>
       <section class="dl" id="dlPanel" hidden aria-label="Send to LootDen downloads">
@@ -228,7 +229,23 @@
         if (document.activeElement !== $("address")) $("address").value = tab?.url ?? "";
         renderDownloads();
         renderStart();
+        renderFit();
         renderMode();
+      }
+
+      /** How the stream fills the screen, on Xbox stream pages only (the console sends 16:9). */
+      const FITS = {
+        fit: ["⬛ Fit", "16:9 with bars on a wide screen. Click for Zoom."],
+        zoom: ["⤢ Zoom", "Fills a wide screen, cutting off the top and bottom. Click for Stretch."],
+        stretch: ["↔ Stretch", "Fills a wide screen by widening the picture. Click for Fit."],
+      };
+      function renderFit() {
+        const b = $("fit");
+        b.hidden = !state.stream?.xbox;
+        if (b.hidden) return;
+        const [label, hint] = FITS[state.stream.fit] ?? FITS.fit;
+        b.textContent = label;
+        b.title = `${hint} (Ctrl+Shift+F)`;
       }
 
       function renderStart() {
@@ -336,6 +353,10 @@
       $("home").addEventListener("click", () => br.home());
       $("star").addEventListener("click", () => br.toggleBookmark());
       $("full").addEventListener("click", () => br.fullscreen());
+      $("fit").addEventListener("click", () => {
+        const order = Object.keys(FITS);
+        void br.streamFit(order[(order.indexOf(state?.stream?.fit ?? "fit") + 1) % order.length]);
+      });
       $("dl").addEventListener("click", () => {
         dlOpen = !dlOpen;
         renderDownloads();
@@ -408,8 +429,11 @@
 
       br.onState((s) => {
         const first = !state;
+        const wasStreaming = !!state?.stream?.remote;
         state = s;
         render();
+        // A remote play stream just started: the controller goes to the game, as on the console.
+        if (s.stream?.remote && !wasStreaming && mode !== "pass") setMode("pass");
         if (first && !onPage()) $("q").focus();
       });
       // A magnet or .torrent link on the page: the toolbar takes the controller, so A sends it.

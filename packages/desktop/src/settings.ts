@@ -2,7 +2,7 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import type { Bookmark, BrowserPolicy, KeptAllowance, SearchEngine } from "@lootden/client";
-import type { GlobalLaunchScripts, LaunchProfile } from "@lootden/shared";
+import type { GlobalLaunchScripts, LaunchProfile, StreamFit } from "@lootden/shared";
 
 export interface DesktopSettings {
   serverUrl: string;
@@ -47,6 +47,8 @@ export interface DesktopSettings {
   browserSearch?: SearchEngine;
   /** The browser rules the server last gave for the person signed in here, for when it can't be reached. */
   browserPolicy?: BrowserPolicy;
+  /** How Xbox streams (remote play, cloud gaming) fill the browser window: "fit", "zoom" or "stretch". */
+  streamFit?: StreamFit;
   /** Links from LootDen's pages open in the built-in browser instead of the system one. "auto" does so in handheld mode. */
   browserLinks?: "auto" | "on" | "off";
   /** ATS and ETS2 mod folders picked on this PC (a custom -homedir); missing means the usual one in Documents. */

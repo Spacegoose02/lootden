@@ -16,7 +16,7 @@ import {
   type BrowserPolicy,
   type SearchEngine,
 } from "@lootden/client";
-import { downloadLinkKind, downloadLinkTitle, type DownloadLinkKind } from "@lootden/shared";
+import { downloadLinkKind, downloadLinkTitle, isStreamFit, isXboxPlayUrl, isXboxRemoteStreamUrl, isXboxStreamUrl, nextStreamFit, streamFitCss, type DownloadLinkKind, type StreamFit } from "@lootden/shared";
 import type { SettingsStore } from "./settings.js";
 
 /**
@@ -42,6 +42,8 @@ interface Tab {
   blocked?: string;
   /** Where the controller's pointer is, in the page's pixels. */
   pointer: { x: number; y: number };
+  /** The fit mode style put on an Xbox stream page, so it can be taken off again. */
+  fitCss?: { key: string; fit: StreamFit };
 }
 
 export interface BrowserDeps {
@@ -141,7 +143,13 @@ export class WebBrowser {
   }
 
   /** Opens the browser over LootDen, on a page or the start page, under the signed-in person's rules. */
-  async open(url?: string): Promise<void> {
+  async open(url?: string, opts: { fullscreen?: boolean } = {}): Promise<void> {
+    await this.openWindow(url);
+    // Remote play and cloud games open full screen, as they would on a console.
+    if (opts.fullscreen && this.win && !this.win.isFullScreen()) this.win.setFullScreen(true);
+  }
+
+  private async openWindow(url?: string): Promise<void> {
     const target = url && isBrowsable(url) ? url : "";
     const policy = await this.deps.policy().catch(() => null);
     if (this.isOpen) {
@@ -367,6 +375,12 @@ export class WebBrowser {
     wc.on("page-title-updated", update);
     wc.on("did-navigate", update);
     wc.on("did-navigate-in-page", update);
+    // Xbox streams: how the 16:9 picture fills a wide screen. xbox.com/play moves between its
+    // pages without loading a new one, so this follows every navigation.
+    const fit = () => void this.applyFit(tab);
+    wc.on("did-navigate", fit);
+    wc.on("did-navigate-in-page", fit);
+    wc.on("dom-ready", fit);
     wc.on("did-start-loading", () => this.push());
     wc.on("did-stop-loading", update);
     wc.on("page-favicon-updated", (_e, icons) => {
@@ -448,6 +462,7 @@ export class WebBrowser {
     else if (input.alt && key === "arrowright") act(() => this.tab?.view?.webContents.navigationHistory.goForward());
     else if (key === "f5" || (ctrl && key === "r")) act(() => this.tab?.view?.webContents.reload());
     else if (key === "f11") act(() => this.win?.setFullScreen(!this.win.isFullScreen()));
+    else if (ctrl && input.shift && key === "f" && this.tab && isXboxPlayUrl(this.tab.url)) act(() => this.setFit(nextStreamFit(this.fit)));
   }
 
   private focusAddress(): void {
@@ -510,6 +525,38 @@ export class WebBrowser {
     return true;
   }
 
+  // ---- How an Xbox stream fills the screen --------------------------------------------
+
+  /** The fit mode from the settings; fit (16:9 with bars on a wide screen) is Xbox's own look. */
+  get fit(): StreamFit {
+    const saved = this.settings().streamFit;
+    return isStreamFit(saved) ? saved : "fit";
+  }
+
+  /** Changes the fit mode for every stream, now and next time. */
+  setFit(fit: StreamFit): void {
+    this.deps.settings().update({ streamFit: fit });
+    for (const t of this.tabs) void this.applyFit(t);
+    this.push();
+  }
+
+  /**
+   * Puts the fit mode's style on a tab, by what its page is now. A new page drops an inserted
+   * style, so this runs again on every navigation; the old one comes off first, so a tab never
+   * carries two.
+   */
+  private async applyFit(tab: Tab): Promise<void> {
+    const wc = tab.view?.webContents;
+    if (!wc || wc.isDestroyed()) return;
+    const css = isXboxStreamUrl(wc.getURL()) ? streamFitCss(this.fit) : null;
+    const old = tab.fitCss;
+    tab.fitCss = undefined;
+    if (old) await wc.removeInsertedCSS(old.key).catch(() => {});
+    if (!css || wc.isDestroyed()) return;
+    const key = await wc.insertCSS(css, { cssOrigin: "user" }).catch(() => "");
+    if (key) tab.fitCss = { key, fit: this.fit };
+  }
+
   // ---- Layout and state --------------------------------------------------------------
 
   private layout(): void {
@@ -554,6 +601,7 @@ export class WebBrowser {
       kids: this.kids,
       theme: this.settings().offlineTheme ?? null,
       downloads: { available: this.canSend, offer: this.offered, sent: this.sent, page: !!this.tab?.view && !this.tab.blocked && /^https?:/i.test(this.tab.url) },
+      stream: { xbox: !!this.tab?.view && isXboxPlayUrl(this.tab.url), remote: !!this.tab?.view && isXboxRemoteStreamUrl(this.tab.url), fit: this.fit },
       frame: { custom: this.deps.customFrame, fullscreen: !!this.win?.isFullScreen(), height: this.deps.titlebarHeight, handheld: this.deps.handheld() },
     };
   }
@@ -724,6 +772,7 @@ export class WebBrowser {
     on("openDownloads", () => this.deps.openDownloads?.());
     on("close", () => this.close());
     on("fullscreen", () => this.win?.setFullScreen(!this.win.isFullScreen()));
+    on("streamFit", (fit: unknown) => isStreamFit(fit) && this.setFit(fit));
     on("focusPage", () => this.tab?.view?.webContents.focus());
     on("focusShell", () => this.shell?.webContents.focus());
     on("pointer", (dx: unknown, dy: unknown) => typeof dx === "number" && typeof dy === "number" && this.pointer(Math.max(-80, Math.min(80, dx)), Math.max(-80, Math.min(80, dy))));

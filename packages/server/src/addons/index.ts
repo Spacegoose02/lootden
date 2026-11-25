@@ -7,7 +7,8 @@ import { jsonList } from "./json-list.js";
 import { retroAchievements } from "./retroachievements.js";
 import { steam } from "./steam.js";
 import { xbox } from "./xbox.js";
+import { xboxConsole } from "./xbox-console.js";
 import type { LibraryAddon } from "./types.js";
 
 /** Every library add-on, in the order the profile page lists them. */
-export const ADDONS: LibraryAddon[] = [steam, gog, epic, xbox, playstation, humble, itch, jsonList, retroAchievements];
+export const ADDONS: LibraryAddon[] = [steam, gog, epic, xbox, xboxConsole, playstation, humble, itch, jsonList, retroAchievements];

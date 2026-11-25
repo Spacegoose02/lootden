@@ -37,6 +37,10 @@ export function Browser() {
         <li>A selects, B goes back, Y jumps to the address bar, LB and RB switch tabs.</li>
         <li>On a page the left stick moves a pointer, A clicks and the right stick scrolls. View switches between the toolbar and the page.</li>
         <li>Menu hands the whole controller to the page for Xbox Cloud Gaming or GeForce NOW; View and Menu together take it back.</li>
+        <li>
+          On Xbox Remote Play (or Xbox Cloud Gaming) the screen fit button in the toolbar, or <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>F</kbd>, switches between fit, zoom and stretch for a wide
+          screen. The console streams 16:9, so filling an ultrawide means cropping or widening the picture.
+        </li>
         <li>B on the start page, or ✕ LootDen, closes it.</li>
       </ul>
       {error && <p className="error">{error}</p>}

@@ -25,6 +25,7 @@ export const DEFAULT_BOOKMARKS: Bookmark[] = [
   { title: "Twitch", url: "https://www.twitch.tv/" },
   { title: "Discord", url: "https://discord.com/app" },
   { title: "Xbox Cloud Gaming", url: "https://www.xbox.com/play" },
+  { title: "Xbox Remote Play", url: "https://www.xbox.com/play/consoles" },
   { title: "GeForce NOW", url: "https://play.geforcenow.com/" },
   { title: "Steam Store", url: "https://store.steampowered.com/" },
   { title: "GOG", url: "https://www.gog.com/" },

@@ -133,6 +133,10 @@ import {
   writeArcadeState,
   TEKNOPARROT_EXE,
   type LinkPlan,
+  greenlightCommand,
+  greenlightState,
+  installGreenlight,
+  removeGreenlight,
 } from "@lootden/client";
 import {
   ARCADE_PLATFORM,
@@ -146,6 +150,8 @@ import {
   launchKey,
   PRESENCE_INTERVAL_SECONDS,
   storePlayId,
+  isXboxConsoleId,
+  xboxRemotePlayUrl,
   type Allowance,
   type GlobalLaunchScripts,
   type LaunchAction,
@@ -3142,6 +3148,67 @@ function registerIpc(): void {
   ipcMain.handle("gm:streaming", async (e) => {
     fromServer(e);
     return streamingStatus();
+  });
+
+  // ---- Xbox remote play ----------------------------------------------------------------
+
+  /** Greenlight on this PC: LootDen's own copy, a Flatpak, or one the person installed. */
+  ipcMain.handle("gm:greenlight", async (e) => {
+    fromServer(e);
+    return greenlightState({ toolsDir: toolsDir() });
+  });
+
+  /** Downloads Greenlight, or updates LootDen's copy; progress goes out as "tool:greenlight". */
+  ipcMain.handle("gm:greenlight:install", async (e) => {
+    fromServer(e);
+    const key = "tool:greenlight";
+    if (running.has(key)) throw new Error("Greenlight is already being set up");
+    const controller = new AbortController();
+    running.set(key, controller);
+    let last = 0;
+    try {
+      await installGreenlight({
+        toolsDir: toolsDir(),
+        sevenZip: await sevenZip(),
+        signal: controller.signal,
+        onEvent: (ev) => {
+          const now = Date.now();
+          if (ev.total && now - last < 300) return;
+          last = now;
+          send({ gameId: key, type: "prepare", message: ev.total ? `${ev.message} (${Math.floor(((ev.received ?? 0) / ev.total) * 100)}%)` : ev.message });
+        },
+      });
+    } finally {
+      running.delete(key);
+    }
+    return greenlightState({ toolsDir: toolsDir() });
+  });
+
+  ipcMain.handle("gm:greenlight:remove", async (e) => {
+    fromServer(e);
+    await removeGreenlight(toolsDir());
+    return greenlightState({ toolsDir: toolsDir() });
+  });
+
+  /**
+   * Starts remote play from the person's own Xbox: in Greenlight when it's on this PC and asked
+   * for, else on Xbox's own page in the built-in browser, full screen.
+   */
+  ipcMain.handle("gm:remotePlay", async (e, opts?: { consoleId?: string | null; app?: string }) => {
+    fromServer(e);
+    const consoleId = typeof opts?.consoleId === "string" && isXboxConsoleId(opts.consoleId) ? opts.consoleId : null;
+    if (opts?.app === "greenlight") {
+      const state = await greenlightState({ toolsDir: toolsDir() });
+      if (!state.exe) throw new Error("Greenlight isn't set up on this PC yet. Set it up under Profile, This computer");
+      const { cmd, args } = greenlightCommand(state.exe, consoleId);
+      const child = spawn(cmd, args, { detached: true, stdio: "ignore", windowsHide: false });
+      child.on("error", () => {});
+      child.unref();
+      return { app: "greenlight" as const };
+    }
+    win?.setAlwaysOnTop(false);
+    await browser.open(xboxRemotePlayUrl(consoleId), { fullscreen: true });
+    return { app: "browser" as const };
   });
   /** Saves Sunshine's web login (checked first) and adds this PC's games to it. */
   ipcMain.handle("gm:linkSunshine", async (e, user: string, pass: string) => {

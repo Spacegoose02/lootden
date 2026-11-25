@@ -22,6 +22,7 @@ export * from "./truckmods.js";
 export * from "./truckmodlist.js";
 export * from "./stardewmods.js";
 export * from "./romcheck.js";
+export * from "./remoteplay.js";
 
 export const API_VERSION = 1;
 

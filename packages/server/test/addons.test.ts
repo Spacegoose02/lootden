@@ -285,6 +285,47 @@ describe("Xbox add-on", () => {
   });
 });
 
+describe("Xbox console add-on (remote play)", () => {
+  it("lists only games played on a console, each with a Play remotely link", async () => {
+    const { xboxConsole } = await import("../src/addons/xbox-console.js");
+    const fetchImpl = (async (_input: string | URL | Request, init?: RequestInit) => {
+      if (new Headers(init?.headers).get("x-authorization") !== "key") return new Response("no", { status: 401 });
+      return Response.json({
+        titles: [
+          { titleId: "1", name: "Starfield", type: "Game", devices: ["PC", "XboxSeries"], displayImage: "http://store-images.s-microsoft.com/a.png", bingId: "9NCJSXWZTP88", titleHistory: { lastTimePlayed: "2026-10-01T10:00:00Z" } },
+          { titleId: "2", name: "Halo 3", type: "Game", devices: ["Xbox360"] },
+          { titleId: "3", name: "Netflix", type: "App", devices: ["XboxOne"] },
+          { titleId: "4", name: "Candy Crush", type: "Game", devices: ["Mobile", "PC"] },
+        ],
+      });
+    }) as typeof fetch;
+    const { app, ctx } = await makeApp(root, {}, { fetchImpl, addons: [xboxConsole], resolveHost: async () => ["93.184.216.34"] });
+    const sam = await signIn(app, ctx, "sam");
+    const connect = (config: Record<string, string>) => app.inject({ method: "PUT", url: "/api/addons/xbox-console/account", headers: sam, payload: { config } });
+    assert.match((await connect({ apiKey: "bad" })).json().error, /refused the key/);
+    assert.match((await connect({ apiKey: "key", consoleId: "my xbox" })).json().error, /16 characters/);
+    // Without a console id, Play remotely opens the console list; a game only played on a phone or a PC is left out.
+    assert.equal((await connect({ apiKey: "key", consoleId: "" })).json().games, 2);
+    let games = (await app.inject({ url: "/api/store-games?addon=xbox-console", headers: sam })).json();
+    assert.deepEqual(
+      games.map((g: { title: string; launchUrl: string | null }) => [g.title, g.launchUrl]),
+      [
+        ["Halo 3", "https://www.xbox.com/play/consoles"],
+        ["Starfield", "https://www.xbox.com/play/consoles"],
+      ],
+    );
+    assert.equal((await connect({ apiKey: "key", consoleId: "f4001a2b3c4d5e6f" })).json().games, 2);
+    games = (await app.inject({ url: "/api/store-games?addon=xbox-console", headers: sam })).json();
+    assert.deepEqual(
+      games.map((g: { title: string; launchUrl: string | null; coverUrl: string | null; storeUrl: string | null }) => [g.title, g.launchUrl, g.coverUrl, g.storeUrl]),
+      [
+        ["Halo 3", "https://www.xbox.com/play/consoles/launch/F4001A2B3C4D5E6F", null, null],
+        ["Starfield", "https://www.xbox.com/play/consoles/launch/F4001A2B3C4D5E6F", "https://store-images.s-microsoft.com/a.png", "https://www.xbox.com/games/store/x/9NCJSXWZTP88"],
+      ],
+    );
+  });
+});
+
 describe("itch.io add-on", () => {
   it("pages through owned keys and keeps only games", async () => {
     const { itch } = await import("../src/addons/itch.js");
