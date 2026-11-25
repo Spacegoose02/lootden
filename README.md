@@ -157,7 +157,8 @@ installs games from it on any PC in the house.
   sides), **Zoom to fill** (crops the top and bottom) and **Stretch to fill**. Move the mouse to
   the top, tap the top of a touch screen, or hold View + Menu for a second, for the player's bar
   (on a controller, left and right choose, A presses, B closes); Ctrl+Q ends the stream. Xbox's
-  own page in the built-in browser gets the same LootDen menu over the stream. Remote features
+  own page in the built-in browser gets the same LootDen menu over the stream, and hides the
+  browser's toolbar while streaming (move the mouse to the top edge to bring it back). Remote features
   have to be on at the console (Settings, Devices & connections, Remote features). Without the
   desktop app, Connect **Xbox console** under Game libraries opens Xbox's own remote play page,
   and LootDen can also set up [Greenlight](https://github.com/unknownskl/greenlight).
