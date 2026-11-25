@@ -177,22 +177,56 @@ document.addEventListener("keydown", (e) => {
   }
 });
 
-// View + Menu held for a second shows the bar and gives it the controller's focus; the presses
-// still reach the console too, as they would with Greenlight.
+// View + Menu held for a second opens the bar for the controller (a handheld like the ROG Ally
+// has no keyboard): left and right move along it, A presses, B closes. The presses still reach
+// the console too, as they would with Greenlight.
 let comboSince = 0;
+let padBar = false;
+let last: Record<string, boolean> = {};
+const barButtons = () => [...document.querySelectorAll<HTMLButtonElement>("#bar button")];
+function closePadBar() {
+  padBar = false;
+  (document.activeElement as HTMLElement | null)?.blur();
+  showBar(300);
+}
 function poll() {
-  const pad = [...(navigator.getGamepads?.() ?? [])].find((p) => p);
-  const combo = !!pad && !!pad.buttons[8]?.pressed && !!pad.buttons[9]?.pressed;
-  if (combo && !comboSince) comboSince = performance.now();
-  if (!combo) comboSince = 0;
-  if (comboSince && performance.now() - comboSince > 1000) {
-    comboSince = Number.POSITIVE_INFINITY;
-    showBar(8000);
-    $("fit").focus();
+  const pad = [...(navigator.getGamepads?.() ?? [])].find((p) => p?.connected);
+  if (pad) {
+    const down = (i: number) => !!pad.buttons[i]?.pressed;
+    const combo = down(8) && down(9);
+    if (combo && !comboSince) comboSince = performance.now();
+    if (!combo) comboSince = 0;
+    if (comboSince && performance.now() - comboSince > 1000) {
+      comboSince = Number.POSITIVE_INFINITY;
+      if (padBar) closePadBar();
+      else {
+        padBar = true;
+        showBar(60_000);
+        $("fit").focus();
+      }
+    }
+    const x = pad.axes[0] ?? 0;
+    const now = { a: down(0), b: down(1), left: down(14) || x < -0.6, right: down(15) || x > 0.6 };
+    const pressed = (k: keyof typeof now) => now[k] && !last[k];
+    if (padBar) {
+      const buttons = barButtons();
+      const at = Math.max(0, buttons.indexOf(document.activeElement as HTMLButtonElement));
+      if (pressed("left")) buttons[(at + buttons.length - 1) % buttons.length]?.focus();
+      if (pressed("right")) buttons[(at + 1) % buttons.length]?.focus();
+      if (pressed("a")) buttons[at]?.click();
+      if (pressed("b")) closePadBar();
+      if (padBar) showBar(60_000);
+    }
+    last = now;
   }
   requestAnimationFrame(poll);
 }
 requestAnimationFrame(poll);
+
+// A touch screen: a tap near the top shows the bar (touches aren't sent to the console).
+document.addEventListener("touchstart", (e) => {
+  if ((e.touches[0]?.clientY ?? 999) < 80) showBar(6000);
+}, { passive: true });
 
 xs.onState((state) => {
   if (!$("status").hidden && STATE_LINES[state]) $("detail").textContent = STATE_LINES[state]!.replace("your Xbox", consoleName);

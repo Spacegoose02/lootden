@@ -155,7 +155,9 @@ installs games from it on any PC in the house.
   that game on it and streams it full screen. The console streams 16:9, so for an ultrawide or
   16:10 screen the player's fit button (or Ctrl+Shift+F) switches between **Fit** (bars at the
   sides), **Zoom to fill** (crops the top and bottom) and **Stretch to fill**. Move the mouse to
-  the top, or hold View + Menu, for the player's bar; Ctrl+Q ends the stream. Remote features
+  the top, tap the top of a touch screen, or hold View + Menu for a second, for the player's bar
+  (on a controller, left and right choose, A presses, B closes); Ctrl+Q ends the stream. Xbox's
+  own page in the built-in browser gets the same LootDen menu over the stream. Remote features
   have to be on at the console (Settings, Devices & connections, Remote features). Without the
   desktop app, Connect **Xbox console** under Game libraries opens Xbox's own remote play page,
   and LootDen can also set up [Greenlight](https://github.com/unknownskl/greenlight).
