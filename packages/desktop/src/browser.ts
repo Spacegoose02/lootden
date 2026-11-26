@@ -67,6 +67,8 @@ export interface BrowserDeps {
   sendToDownloads?: (url: string, title?: string, kind?: DownloadLinkKind) => Promise<{ title: string; to: string }>;
   /** Closes the browser and shows LootDen's Downloads page. */
   openDownloads?: () => void;
+  /** Brings LootDen's in-game menu up over the browser with Bandit open (the stream's 🦝 button). */
+  openBandit?: () => void;
 }
 
 /** A link the page offered (a magnet, a .torrent, a link picked with right click) waiting for a yes in the toolbar. */
@@ -133,6 +135,11 @@ export class WebBrowser {
   private sent: SentLink[] = [];
 
   constructor(private readonly deps: BrowserDeps) {}
+
+  /** The browser's window, while it's open (the in-game menu goes back to it). */
+  get window(): BaseWindow | null {
+    return this.isOpen ? this.win : null;
+  }
 
   get isOpen(): boolean {
     return !!this.win && !this.win.isDestroyed();
@@ -558,7 +565,7 @@ export class WebBrowser {
     const stream = isXboxStreamUrl(wc.getURL());
     // LootDen's own menu on the stream: how to change the fit with no toolbar, keyboard or mouse.
     if (stream) {
-      void wc.executeJavaScriptInIsolatedWorld(STREAM_OVERLAY_WORLD, [{ code: streamOverlayScript(this.fit) }]).catch(() => {});
+      void wc.executeJavaScriptInIsolatedWorld(STREAM_OVERLAY_WORLD, [{ code: streamOverlayScript(this.fit, { bandit: !!this.deps.openBandit }) }]).catch(() => {});
       this.watchStreams();
     }
     const css = stream ? streamFitCss(this.fit) : null;
@@ -584,6 +591,10 @@ export class WebBrowser {
         void t.view!.webContents.executeJavaScriptInIsolatedWorld(STREAM_OVERLAY_WORLD, [{ code: streamAsksScript }])
           .then((asks: unknown) => {
             for (const ask of Array.isArray(asks) ? asks : []) {
+              if (ask === "bandit") {
+                this.deps.openBandit?.();
+                continue;
+              }
               if (ask === "toolbar:show" || ask === "toolbar:hide") {
                 if (t === this.tab && this.toolbarPeek !== (ask === "toolbar:show")) {
                   this.toolbarPeek = ask === "toolbar:show";
@@ -650,7 +661,7 @@ export class WebBrowser {
       kids: this.kids,
       theme: this.settings().offlineTheme ?? null,
       downloads: { available: this.canSend, offer: this.offered, sent: this.sent, page: !!this.tab?.view && !this.tab.blocked && /^https?:/i.test(this.tab.url) },
-      stream: { xbox: !!this.tab?.view && isXboxPlayUrl(this.tab.url), remote: !!this.tab?.view && isXboxRemoteStreamUrl(this.tab.url), fit: this.fit },
+      stream: { xbox: !!this.tab?.view && isXboxPlayUrl(this.tab.url), remote: !!this.tab?.view && isXboxRemoteStreamUrl(this.tab.url), fit: this.fit, bandit: !!this.deps.openBandit },
       frame: { custom: this.deps.customFrame, fullscreen: !!this.win?.isFullScreen(), height: this.deps.titlebarHeight, handheld: this.deps.handheld() },
     };
   }
@@ -822,6 +833,7 @@ export class WebBrowser {
     on("close", () => this.close());
     on("fullscreen", () => this.win?.setFullScreen(!this.win.isFullScreen()));
     on("streamFit", (fit: unknown) => isStreamFit(fit) && this.setFit(fit));
+    on("bandit", () => this.deps.openBandit?.());
     on("focusPage", () => this.tab?.view?.webContents.focus());
     on("focusShell", () => this.shell?.webContents.focus());
     on("pointer", (dx: unknown, dy: unknown) => typeof dx === "number" && typeof dy === "number" && this.pointer(Math.max(-80, Math.min(80, dx)), Math.max(-80, Math.min(80, dy))));

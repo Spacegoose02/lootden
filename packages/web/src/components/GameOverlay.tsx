@@ -48,6 +48,8 @@ export function GameOverlay() {
         setPick(0);
         feel("open");
       }
+      // The stream's Bandit button: Bandit opens over the menu (unless he's already open).
+      if (s.open && s.bandit) setTimeout(() => !document.querySelector(".bandit-panel") && window.dispatchEvent(new Event(HELPER_EVENT)), 50);
     });
   }, []);
 
@@ -94,8 +96,8 @@ export function GameOverlay() {
       <div className="game-overlay panel" role="dialog" aria-modal="true" aria-label="In-game menu" ref={box}>
         <header className="overlay-head">
           <div>
-            <small className="muted">{game ? (paused ? "Paused" : "Playing") : "Nothing running"}</small>
-            <h2>{game?.title ?? "LootDen"}</h2>
+            <small className="muted">{game ? (paused ? "Paused" : "Playing") : state!.stream ? "Streaming" : "Nothing running"}</small>
+            <h2>{game?.title ?? state!.stream ?? "LootDen"}</h2>
             {game && (
               <p className="muted small">
                 {[game.store, since(game.startedAt, now)].filter(Boolean).join(" · ")}
@@ -117,7 +119,7 @@ export function GameOverlay() {
 
         <div className="overlay-actions">
           <button className="primary overlay-resume" onClick={run("resume")}>
-            ▶ {t("Back to the game")}
+            ▶ {state!.stream && !game ? "Back to the stream" : t("Back to the game")}
           </button>
           {ownGame && (
             <button onClick={run("pause", game!.gameId)}>{paused ? "▶ Carry on (unpause)" : "⏸ Pause the game"}</button>

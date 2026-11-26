@@ -29,6 +29,7 @@ contextBridge.exposeInMainWorld("lootdenBrowser", {
   close: call("close"),
   fullscreen: call("fullscreen"),
   streamFit: call("streamFit"),
+  bandit: call("bandit"),
   focusPage: call("focusPage"),
   focusShell: call("focusShell"),
   pointer: call("pointer"),

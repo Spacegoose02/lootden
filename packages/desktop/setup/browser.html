@@ -98,6 +98,7 @@
         <button id="dl" title="Send a magnet or download link to LootDen downloads" aria-label="Send to LootDen downloads" hidden>⇩</button>
         <span class="mode" id="mode" aria-live="polite"></span>
         <button id="fit" title="How the stream fills the screen (Ctrl+Shift+F)" aria-label="Screen fit" hidden></button>
+        <button id="bandit" title="Ask Bandit, LootDen's gaming helper, over the stream" aria-label="Ask Bandit" hidden>🦝 Bandit</button>
         <button id="full" title="Full screen (F11)" aria-label="Full screen">⛶</button>
       </div>
       <section class="dl" id="dlPanel" hidden aria-label="Send to LootDen downloads">
@@ -230,6 +231,7 @@
         renderDownloads();
         renderStart();
         renderFit();
+        renderBandit();
         renderMode();
       }
 
@@ -246,6 +248,10 @@
         const [label, hint] = FITS[state.stream.fit] ?? FITS.fit;
         b.textContent = label;
         b.title = `${hint} (Ctrl+Shift+F)`;
+      }
+      // Bandit, LootDen's gaming helper, over an Xbox stream.
+      function renderBandit() {
+        $("bandit").hidden = !(state.stream?.xbox && state.stream?.bandit);
       }
 
       function renderStart() {
@@ -357,6 +363,7 @@
         const order = Object.keys(FITS);
         void br.streamFit(order[(order.indexOf(state?.stream?.fit ?? "fit") + 1) % order.length]);
       });
+      $("bandit").addEventListener("click", () => void br.bandit());
       $("dl").addEventListener("click", () => {
         dlOpen = !dlOpen;
         renderDownloads();
