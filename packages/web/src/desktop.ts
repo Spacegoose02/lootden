@@ -258,6 +258,9 @@ export interface OverlayState {
   open: boolean;
   games: Array<{ gameId: string; title: string; source: string; store?: string; startedAt: string }>;
   paused: string[];
+  /** Opened from a stream in the browser (its Bandit button): what's streaming, and open Bandit straight away. */
+  stream?: string;
+  bandit?: boolean;
 }
 
 export interface AppSettings {

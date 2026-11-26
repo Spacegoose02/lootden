@@ -14,7 +14,7 @@ import { STREAM_FITS, STREAM_FIT_LABELS, type StreamFit } from "@lootden/shared"
  */
 export const STREAM_OVERLAY_WORLD = 1078;
 
-export function streamOverlayScript(fit: StreamFit): string {
+export function streamOverlayScript(fit: StreamFit, opts: { bandit?: boolean } = {}): string {
   const fits = STREAM_FITS.map((f) => ({ id: f, label: STREAM_FIT_LABELS[f].replace(/ \(.*\)$/, "") }));
   return `(() => {
   const FITS = ${JSON.stringify(fits)};
@@ -39,7 +39,7 @@ export function streamOverlayScript(fit: StreamFit): string {
   \`;
   const root = document.createElement("div");
   root.id = "__lootden_stream";
-  root.innerHTML = '<div class="tab" role="button">▾ LootDen</div><div class="panel" role="dialog" aria-label="LootDen"><b>Screen fit</b></div>';
+  root.innerHTML = '<div class="tab" role="button">▾ LootDen</div><div class="panel" role="dialog" aria-label="LootDen"><b>LootDen</b></div>';
   const tab = root.querySelector(".tab");
   let peekTimer = 0;
   const panel = root.querySelector(".panel");
@@ -53,6 +53,7 @@ export function streamOverlayScript(fit: StreamFit): string {
     buttons.push(b);
   };
   for (const f of FITS) add(f.label, () => { w.__lootdenStreamAsks.push("fit:" + f.id); w.__lootdenStreamFit = f.id; refresh(); }, f.id);
+  if (${opts.bandit ? "true" : "false"}) add("🦝 Ask Bandit", () => { close(); w.__lootdenStreamAsks.push("bandit"); });
   add("Exit full screen", () => { close(); document.exitFullscreen && document.exitFullscreen().catch(() => {}); });
   add("Close", () => close());
   const hint = document.createElement("div");

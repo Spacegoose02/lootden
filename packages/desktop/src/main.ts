@@ -4,7 +4,7 @@ import { appendFileSync, existsSync, renameSync, statSync } from "node:fs";
 import { mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { app, BrowserWindow, desktopCapturer, dialog, globalShortcut, ipcMain, Menu, nativeImage, net, Notification, safeStorage, screen, session, shell, Tray, type IpcMainInvokeEvent } from "electron";
+import { app, BrowserWindow, desktopCapturer, dialog, globalShortcut, ipcMain, Menu, nativeImage, net, Notification, safeStorage, screen, session, shell, Tray, type BaseWindow, type IpcMainInvokeEvent } from "electron";
 import {
   isBrowsable,
   addBiosFile,
@@ -971,6 +971,11 @@ async function shareScreenshot(): Promise<void> {
 let overlayOpen = false;
 /** The game's window, to put back in front when the menu closes (Windows; 0 when unknown). */
 let overlayGameWindow = 0;
+/**
+ * When the menu was opened from an Xbox stream in the built-in browser (its 🦝 Bandit button):
+ * the menu says what's streaming, opens Bandit straight away, and going back shows the browser.
+ */
+let overlayStream: { title: string; bandit: boolean } | null = null;
 const padWatch = new PadWatcher(
   () => settings.get().overlay ?? "view-menu",
   () => toggleOverlay(),
@@ -1001,7 +1006,24 @@ function updatePadWatch(): void {
 }
 
 function overlayState(open: boolean) {
-  return { open, games: lastPlayingNow, paused: [...suspended.entries()].filter(([, v]) => v.since !== null).map(([id]) => id) };
+  return {
+    open,
+    games: lastPlayingNow,
+    paused: [...suspended.entries()].filter(([, v]) => v.since !== null).map(([id]) => id),
+    ...(open && overlayStream ? { stream: overlayStream.title, bandit: overlayStream.bandit } : {}),
+  };
+}
+
+/** The stream's 🦝 Bandit button: the in-game menu over the browser, with Bandit already open. */
+function openBanditOverStream(): void {
+  const bw = browser.window;
+  overlayStream = { title: "Xbox remote play", bandit: true };
+  // Already up (and in front): just open Bandit over it.
+  if (overlayOpen && win?.isFocused()) {
+    win.webContents.send("gm:overlay", overlayState(true));
+    return;
+  }
+  toggleOverlay(bw ? nativeWindowId(bw) : 0);
 }
 
 function toggleOverlay(frontAtPress?: number): void {
@@ -1027,7 +1049,7 @@ function toggleOverlay(frontAtPress?: number): void {
 }
 
 /** A window's HWND as a number, for the controller helper. */
-function nativeWindowId(w: BrowserWindow): number {
+function nativeWindowId(w: BaseWindow): number {
   const h = w.getNativeWindowHandle();
   return h.length >= 8 ? Number(h.readBigUInt64LE(0)) : h.length >= 4 ? h.readUInt32LE(0) : 0;
 }
@@ -1035,6 +1057,8 @@ function nativeWindowId(w: BrowserWindow): number {
 /** Back to the game: LootDen steps out of the way so the game has the screen and the controller again. */
 function closeOverlay(backToGame: boolean): void {
   overlayOpen = false;
+  const fromStream = !!overlayStream;
+  overlayStream = null;
   if (!win || win.isDestroyed()) return;
   win.setAlwaysOnTop(false);
   win.webContents.send("gm:overlay", overlayState(false));
@@ -1045,6 +1069,8 @@ function closeOverlay(backToGame: boolean): void {
   overlayLog(`menu closed; back to game window ${game || "unknown"}`);
   padWatch.focusWindow(game);
   win.minimize();
+  // Back to the stream: the browser comes to the front with the controller on the page again.
+  if (fromStream) browser.reveal();
 }
 
 /** Closes a running game straight away (the in-game menu's Close game, which asks first). */
@@ -3777,6 +3803,7 @@ void app.whenReady().then(async () => {
     icon: path.join(__dirname, "..", "build", "icon.png"),
     onDownload: (item, wc, owner) => stardewMods.handleDownload(item, wc, owner) || truckMods.handleDownload(item, wc, owner),
     sendToDownloads,
+    openBandit: () => openBanditOverStream(),
     openDownloads: () => {
       browser.close();
       if (!win || !origin()) return;
