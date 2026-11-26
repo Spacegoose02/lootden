@@ -43,6 +43,13 @@ describe("Xbox remote play addresses", () => {
     assert.ok(!isXboxPlayUrl("http://www.xbox.com/play"));
     assert.deepEqual([list, remote, cloud].map(isXboxStreamUrl), [false, true, true]);
     assert.deepEqual([list, remote, cloud].map(isXboxRemoteStreamUrl), [false, true, false]);
+    // Xbox's player moved to play.xbox.com; xbox.com/play forwards there.
+    const playList = "https://play.xbox.com/remoteplay";
+    const playRemote = "https://play.xbox.com/remoteplay/F4001A2B3C4D5E6F";
+    assert.ok(isXboxPlayUrl(playList) && isXboxPlayUrl(playRemote));
+    assert.ok(!isXboxPlayUrl("https://play.xbox.com.example.com/remoteplay/F4001A2B3C4D5E6F"));
+    assert.deepEqual([playList, playRemote].map(isXboxStreamUrl), [false, true]);
+    assert.deepEqual([playList, playRemote].map(isXboxRemoteStreamUrl), [false, true]);
   });
 });
 
@@ -56,14 +63,14 @@ describe("how the stream fills a wide screen", () => {
     assert.ok(!isStreamFit(undefined));
   });
 
-  it("leaves Xbox's own layout alone for fit, and crops or widens otherwise", () => {
-    assert.equal(streamFitCss("fit"), null);
+  it("pins the stream to the window, and crops or widens it", () => {
+    assert.match(streamFitCss("fit"), /object-fit: contain !important/);
     assert.match(streamFitCss("zoom")!, /object-fit: cover !important/);
     assert.match(streamFitCss("stretch")!, /object-fit: fill !important/);
     // Pinned to the window, so a 16:9 box around the video can't keep the bars.
     assert.match(streamFitCss("zoom")!, /position: fixed !important; inset: 0 !important; width: 100vw !important; height: 100vh !important/);
     // The style has to beat Xbox's own sizing on the video itself.
-    for (const fit of ["zoom", "stretch"] as const) assert.match(streamFitCss(fit)!, /^video \{/);
+    for (const fit of ["fit", "zoom", "stretch"] as const) assert.match(streamFitCss(fit), /video \{ position: fixed/);
   });
 });
 

@@ -21,20 +21,22 @@ export function xboxRemotePlayUrl(consoleId?: string | null): string {
 export function isXboxPlayUrl(url: string): boolean {
   try {
     const u = new URL(url);
-    return u.protocol === "https:" && /^(www\.)?xbox\.com$/i.test(u.hostname) && /^\/([a-z]{2}-[a-z]{2}\/)?play(\/|$)/i.test(u.pathname);
+    if (u.protocol !== "https:") return false;
+    // Xbox's own player now lives on play.xbox.com (xbox.com/play forwards there).
+    if (/^play\.xbox\.com$/i.test(u.hostname)) return true;
+    return /^(www\.)?xbox\.com$/i.test(u.hostname) && /^\/([a-z]{2}-[a-z]{2}\/)?play(\/|$)/i.test(u.pathname);
   } catch {
     return false;
   }
 }
 
-/** A stream page (remote play or cloud gaming), where the fit mode applies. */
 export function isXboxStreamUrl(url: string): boolean {
-  return isXboxPlayUrl(url) && /\/play\/(consoles\/)?launch\//i.test(new URL(url).pathname);
+  return isXboxPlayUrl(url) && /\/(play\/(consoles\/)?launch|remoteplay|launch)\//i.test(new URL(url).pathname);
 }
 
 /** A remote play stream itself (not the console list), where the controller should go straight to the game. */
 export function isXboxRemoteStreamUrl(url: string): boolean {
-  return isXboxPlayUrl(url) && /\/play\/consoles\/launch\//i.test(new URL(url).pathname);
+  return isXboxPlayUrl(url) && /\/(play\/consoles\/launch|remoteplay)\//i.test(new URL(url).pathname);
 }
 
 /**
@@ -61,12 +63,12 @@ export const nextStreamFit = (fit: StreamFit): StreamFit => STREAM_FITS[(STREAM_
  * The style LootDen's browser adds to a stream page for a fit mode. Null for fit, which leaves
  * Xbox's own layout alone.
  */
-export function streamFitCss(fit: StreamFit): string | null {
-  if (fit === "fit") return null;
-  const objectFit = fit === "zoom" ? "cover" : "fill";
-  // The stream is the only <video> on a stream page, laid over the whole page with object-fit:
-  // contain, which keeps it 16:9 (the way Better xCloud's aspect ratio option works too).
-  // Pinned to the whole window too, as xbox.com can size the video's box to 16:9 itself, which
-  // would leave the bars however the picture fits inside it.
-  return `video { position: fixed !important; inset: 0 !important; width: 100vw !important; height: 100vh !important; max-width: none !important; max-height: none !important; object-fit: ${objectFit} !important; }`;
+export function streamFitCss(fit: StreamFit): string {
+  const objectFit = fit === "zoom" ? "cover" : fit === "stretch" ? "fill" : "contain";
+  // The stream is the only <video> on a stream page. It's pinned to the whole window in every
+  // mode: Xbox's page can size and place the video's box itself, which on a wide window left it
+  // off to one side, part covered, with the bars kept whatever the fit. A transform, filter or
+  // containment on any box around the video would pin it to that box instead of the window, so
+  // those come off the video's ancestors.
+  return `html, body { background: #000 !important; overflow: hidden !important; } :has(> video), :has(video) { transform: none !important; filter: none !important; perspective: none !important; contain: none !important; will-change: auto !important; } video { position: fixed !important; inset: 0 !important; width: 100vw !important; height: 100vh !important; max-width: none !important; max-height: none !important; transform: none !important; object-fit: ${objectFit} !important; z-index: 0 !important; }`;
 }
