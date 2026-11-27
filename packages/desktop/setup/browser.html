@@ -89,6 +89,7 @@
       <div class="tabs" id="tabs"></div>
       <div class="toolbar">
         <button class="exit" id="exit" title="Close the browser and go back to LootDen (B on the start page)">✕ <span>LootDen</span></button>
+        <button class="exit" id="library" title="Show your game library, keeping these tabs open (Browser in LootDen's menu comes back to them)">▦ <span>Library</span></button>
         <button id="back" title="Back (Alt+Left)" aria-label="Back">←</button>
         <button id="forward" title="Forward (Alt+Right)" aria-label="Forward">→</button>
         <button id="reload" title="Reload (F5)" aria-label="Reload">⟳</button>
@@ -353,6 +354,7 @@
       // ---- Toolbar and start page ----------------------------------------------------
 
       $("exit").addEventListener("click", () => br.close());
+      $("library").addEventListener("click", () => br.library());
       $("back").addEventListener("click", () => br.back());
       $("forward").addEventListener("click", () => br.forward());
       $("reload").addEventListener("click", () => (current()?.loading ? br.stop() : br.reload()));

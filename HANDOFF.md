@@ -59,6 +59,15 @@ app's connect screen. Replacing those files and rebuilding is all it takes. The 
 theme-coloured SVG raccoon is still the fallback in `packages/web/public/logo.svg`; deleting
 `brand/logo.png` brings it back, along with the Profile option to recolour it.
 
+## Library from the browser (0.44.8)
+
+The built-in browser hid LootDen behind it, and anything that showed LootDen's window bounced
+straight back to the browser, so the only way to the game library was closing the browser and
+losing its tabs. The toolbar's **▦ Library** button now parks the browser
+(`WebBrowser.park()`: window hidden, tabs kept) and shows LootDen on `/library` (or the offline
+library as it is). While parked, `reveal()` and the main window's `show` handler leave LootDen
+in front. Picking Browser in LootDen's menu (`open()`) unparks it with the same tabs.
+
 ## Arcade games through TeknoParrot
 
 Platform `arcade` (folders `arcade`, `teknoparrot`; `runner: "teknoparrot"`, `emulator: null`

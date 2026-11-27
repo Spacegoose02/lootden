@@ -40,6 +40,7 @@ contextBridge.exposeInMainWorld("lootdenBrowser", {
   sendPage: call("sendPage"),
   dismissOffer: call("dismissOffer"),
   openDownloads: call("openDownloads"),
+  library: call("library"),
   onState: (cb: (s: unknown) => void) => ipcRenderer.on("gm:browser:state", (_e, s) => cb(s)),
   onOffer: (cb: () => void) => ipcRenderer.on("gm:browser:offer", () => cb()),
   onFocusAddress: (cb: () => void) => ipcRenderer.on("gm:browser:focusAddress", () => cb()),

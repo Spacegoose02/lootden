@@ -41,6 +41,7 @@ export function Browser() {
           On Xbox Remote Play (or Xbox Cloud Gaming) the screen fit button in the toolbar, or <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>F</kbd>, switches between fit, zoom and stretch for a wide
           screen. The console streams 16:9, so filling an ultrawide means cropping or widening the picture.
         </li>
+        <li>▦ Library in the toolbar shows your games and keeps the browser's tabs open: pick Browser again to go back to them.</li>
         <li>B on the start page, or ✕ LootDen, closes it.</li>
       </ul>
       {error && <p className="error">{error}</p>}

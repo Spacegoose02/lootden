@@ -3690,10 +3690,10 @@ async function createWindow(): Promise<void> {
   // browser: put the browser back in front instead. (Everything that means to show LootDen
   // closes the browser first; the in-game menu is the one thing that shows it over the browser.)
   win.on("show", () => {
-    if (!browser?.isOpen || overlayOpen) return;
+    if (!browser?.isOpen || browser.parked || overlayOpen) return;
     browser.reveal();
     setImmediate(() => {
-      if (browser?.isOpen && !overlayOpen && win && !win.isDestroyed()) win.hide();
+      if (browser?.isOpen && !browser.parked && !overlayOpen && win && !win.isDestroyed()) win.hide();
     });
   });
   // Zoom is kept per page load, and the server's address can change.
@@ -3810,6 +3810,15 @@ void app.whenReady().then(async () => {
       win.show();
       win.focus();
       void win.loadURL(`${origin()}/downloads`);
+    },
+    openLibrary: () => {
+      browser.park();
+      if (!win || win.isDestroyed()) return;
+      if (win.isMinimized()) win.restore();
+      win.show();
+      win.focus();
+      // The offline library is already the library; on the server's pages go to the Library page.
+      if (origin() && onOrigin(win.webContents.getURL(), origin())) void win.loadURL(`${origin()}/library`).catch(() => {});
     },
   });
   browser.registerIpc();
