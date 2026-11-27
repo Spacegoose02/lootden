@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { ROBLOX_ADDON, type LocalStoreGame, type StoreGame } from "@lootden/shared";
+import { mergeXboxCopies, ROBLOX_ADDON, type LocalStoreGame, type StoreGame } from "@lootden/shared";
 import { api, formatPlaytime, storeGamePath } from "../api";
 import { bridgeError, desktop } from "../desktop";
 import { Cover } from "./Cover";
@@ -106,7 +106,8 @@ export function useStoreGames(enabled = true) {
           }),
       ]
     : null;
-  return { games: all, installed, scanned, error };
+  // A console game the Xbox add-on lists too becomes one card, the one with Play remotely.
+  return { games: all && mergeXboxCopies(all, (g) => installed.has(storeKey(g))), installed, scanned, error };
 }
 
 /**

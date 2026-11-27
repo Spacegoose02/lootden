@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
-import type { GameListing, GameSummary } from "@lootden/shared";
+import { XBOX_CONSOLE_ADDON, type GameListing, type GameSummary } from "@lootden/shared";
 import { api, formatPlaytime, type HomeData, type NewsItem, type Video } from "../api";
 import { useLive } from "../live";
 import { useAuth } from "../auth";
@@ -11,6 +11,7 @@ import { stub } from "../components/InstalledGames";
 import { ListingRow } from "../components/Listing";
 import { VideoRow } from "../components/Videos";
 import { StoreGameCard, storeKey, useStoreGames } from "../components/StoreGameCard";
+import { isRemotePlayGame } from "../components/RemotePlay";
 import { bridgeError, desktop, type InstalledGame } from "../desktop";
 import { usePosterSize } from "../theme";
 import { PlayTimeCard } from "../components/PlayTime";
@@ -43,7 +44,15 @@ export function Home() {
   const [poster] = usePosterSize();
   // Games played lately on connected stores (Steam, Xbox...), next to the LootDen ones.
   const store = useStoreGames();
-  const storeRecent = (store.games ?? []).filter((g) => g.lastPlayedAt && !(desktop && store.installed.has(storeKey(g)))).sort((a, b) => Date.parse(b.lastPlayedAt!) - Date.parse(a.lastPlayedAt!)).slice(0, 20);
+  // Games on the Xbox console get a shelf of their own (Play remotely streams them), so they're easy to find.
+  const onXbox = (store.games ?? [])
+    .filter((g) => isRemotePlayGame(g.addon))
+    .sort((a, b) => (b.lastPlayedAt ? Date.parse(b.lastPlayedAt) : 0) - (a.lastPlayedAt ? Date.parse(a.lastPlayedAt) : 0) || a.title.localeCompare(b.title))
+    .slice(0, 20);
+  const storeRecent = (store.games ?? [])
+    .filter((g) => g.lastPlayedAt && !(desktop && store.installed.has(storeKey(g))) && !isRemotePlayGame(g.addon))
+    .sort((a, b) => Date.parse(b.lastPlayedAt!) - Date.parse(a.lastPlayedAt!))
+    .slice(0, 20);
 
   // New games and freshly found covers appear without a reload.
   useLive("library", () => void api.home().then(setData, () => {}));
@@ -135,6 +144,23 @@ export function Home() {
             <GameCard key={g.id} game={g} />
           ))}
           {storeReady.map((g) => (
+            <StoreGameCard key={storeKey(g)} game={g} local={store.installed.get(storeKey(g))} scanned={store.scanned} />
+          ))}
+        </div>
+      </section>,
+    );
+  if (onXbox.length)
+    blocks.push(
+      <section className="row" key="xbox">
+        <div className="row-head">
+          <h2>🎮 Play on your Xbox</h2>
+          <span className="muted small row-sub">Streams from your console with Play remotely</span>
+          <Link to={`/library?tab=all&source=${XBOX_CONSOLE_ADDON}`} className="muted small">
+            All Xbox console games
+          </Link>
+        </div>
+        <div className="row-track">
+          {onXbox.map((g) => (
             <StoreGameCard key={storeKey(g)} game={g} local={store.installed.get(storeKey(g))} scanned={store.scanned} />
           ))}
         </div>

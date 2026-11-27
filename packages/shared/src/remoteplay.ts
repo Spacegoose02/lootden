@@ -72,3 +72,43 @@ export function streamFitCss(fit: StreamFit): string {
   // those come off the video's ancestors.
   return `html, body { background: #000 !important; overflow: hidden !important; } :has(> video), :has(video) { transform: none !important; filter: none !important; perspective: none !important; contain: none !important; will-change: auto !important; } video { position: fixed !important; inset: 0 !important; width: 100vw !important; height: 100vh !important; max-width: none !important; max-height: none !important; transform: none !important; object-fit: ${objectFit} !important; z-index: 0 !important; }`;
 }
+
+/** A store game as far as merging Xbox copies goes. */
+interface XboxCopy {
+  addon: string;
+  externalId: string;
+  title: string;
+  coverUrl: string | null;
+  storeUrl: string | null;
+  playtimeSeconds: number | null;
+  lastPlayedAt: string | null;
+}
+
+/**
+ * The Xbox add-on (games played anywhere) and the Xbox console add-on (games on the console, with
+ * Play remotely) both list a console game, by the same title id. This keeps one card per game:
+ * the console's, which can stream it, with the play time, last played date, cover and store page
+ * from the other copy when it has them. A copy installed on this PC (`keepBoth`) stays as it is,
+ * since that one plays on the PC.
+ */
+export function mergeXboxCopies<T extends XboxCopy>(games: T[], keepBoth: (g: T) => boolean = () => false): T[] {
+  const consoleCopies = new Map(games.filter((g) => g.addon === XBOX_CONSOLE_ADDON).map((g) => [g.externalId, g]));
+  const merged = new Map<T, T>();
+  const dropped = new Set<T>();
+  for (const g of games) {
+    if (g.addon !== "xbox" || keepBoth(g)) continue;
+    const onConsole = consoleCopies.get(g.externalId);
+    if (!onConsole) continue;
+    const base = merged.get(onConsole) ?? onConsole;
+    const later = (a: string | null, b: string | null) => (!a ? b : !b ? a : Date.parse(a) >= Date.parse(b) ? a : b);
+    merged.set(onConsole, {
+      ...base,
+      coverUrl: base.coverUrl ?? g.coverUrl,
+      storeUrl: base.storeUrl ?? g.storeUrl,
+      playtimeSeconds: Math.max(base.playtimeSeconds ?? 0, g.playtimeSeconds ?? 0) || null,
+      lastPlayedAt: later(base.lastPlayedAt, g.lastPlayedAt),
+    });
+    dropped.add(g);
+  }
+  return games.filter((g) => !dropped.has(g)).map((g) => merged.get(g) ?? g);
+}
