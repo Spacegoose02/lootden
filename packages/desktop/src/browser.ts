@@ -67,6 +67,8 @@ export interface BrowserDeps {
   sendToDownloads?: (url: string, title?: string, kind?: DownloadLinkKind) => Promise<{ title: string; to: string }>;
   /** Closes the browser and shows LootDen's Downloads page. */
   openDownloads?: () => void;
+  /** Shows LootDen's game library, with the browser kept open (parked) behind it. */
+  openLibrary?: () => void;
   /** Brings LootDen's in-game menu up over the browser with Bandit open (the stream's 🦝 button). */
   openBandit?: () => void;
 }
@@ -133,6 +135,8 @@ export class WebBrowser {
   /** A link waiting to be sent to LootDen's downloads, and the links sent so far this time the browser is open. */
   private offered: DownloadOffer | null = null;
   private sent: SentLink[] = [];
+  /** Hidden so LootDen's library can show, tabs and all kept until Browser is picked again. */
+  private parkedAway = false;
 
   constructor(private readonly deps: BrowserDeps) {}
 
@@ -143,6 +147,21 @@ export class WebBrowser {
 
   get isOpen(): boolean {
     return !!this.win && !this.win.isDestroyed();
+  }
+
+  /** Open but stepped aside for LootDen's own pages (the toolbar's Library button). */
+  get parked(): boolean {
+    return this.isOpen && this.parkedAway;
+  }
+
+  /** Steps aside for LootDen: hides the window but keeps the tabs, so Browser in LootDen's menu comes back to them. */
+  park(): void {
+    if (!this.isOpen) return;
+    this.parkedAway = true;
+    const win = this.win!;
+    // Leave full screen to LootDen's window, which takes the screen next.
+    if (this.htmlFullscreen) this.tab?.view?.webContents.executeJavaScript("document.exitFullscreen?.()", true).catch(() => {});
+    win.hide();
   }
 
   private get kids(): boolean {
@@ -167,6 +186,7 @@ export class WebBrowser {
       if ((policy?.mode ?? "open") === (this.policy?.mode ?? "open")) {
         this.policy = policy;
         if (target) this.newTab(target);
+        this.unpark();
         this.win!.show();
         this.win!.focus();
         return;
@@ -233,6 +253,7 @@ export class WebBrowser {
       this.htmlFullscreen = false;
       this.offered = null;
       this.sent = [];
+      this.parkedAway = false;
       const m = this.deps.mainWindow();
       if (m && !m.isDestroyed()) {
         m.show();
@@ -248,9 +269,18 @@ export class WebBrowser {
     if (this.isOpen) this.win!.close();
   }
 
+  /** Back from the library: LootDen hides behind the browser again. */
+  private unpark(): void {
+    if (!this.parkedAway) return;
+    this.parkedAway = false;
+    const main = this.deps.mainWindow();
+    if (main && !main.isDestroyed()) main.hide();
+  }
+
   /** Puts the browser back in front, when Windows shows LootDen's own window (hidden behind it) instead. */
   reveal(): void {
-    if (!this.isOpen) return;
+    // Parked for the library on purpose: LootDen's window is meant to be in front.
+    if (!this.isOpen || this.parkedAway) return;
     const win = this.win!;
     if (win.isMinimized()) win.restore();
     win.show();
@@ -830,6 +860,7 @@ export class WebBrowser {
       this.push();
     });
     on("openDownloads", () => this.deps.openDownloads?.());
+    on("library", () => this.deps.openLibrary?.());
     on("close", () => this.close());
     on("fullscreen", () => this.win?.setFullScreen(!this.win.isFullScreen()));
     on("streamFit", (fit: unknown) => isStreamFit(fit) && this.setFit(fit));
