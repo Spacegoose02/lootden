@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises"
 import os from "node:os";
 import path from "node:path";
 import { after, before, describe, it } from "node:test";
-import { isStreamFit, isXboxConsoleId, isXboxPlayUrl, isXboxRemoteStreamUrl, isXboxStreamUrl, nextStreamFit, streamFitCss, xboxRemotePlayUrl } from "@lootden/shared";
+import { mergeXboxCopies, isStreamFit, isXboxConsoleId, isXboxPlayUrl, isXboxRemoteStreamUrl, isXboxStreamUrl, nextStreamFit, streamFitCss, xboxRemotePlayUrl } from "@lootden/shared";
 import type { SevenZip } from "../src/extractor.js";
 import { greenlightCommand, greenlightHome, greenlightState, installGreenlight, removeGreenlight, GREENLIGHT_FLATPAK } from "../src/greenlight.js";
 
@@ -244,5 +244,25 @@ describe("Greenlight", () => {
     });
     assert.equal(state.exe, path.join(programs, "Greenlight.exe"));
     assert.equal(state.managed, false);
+  });
+});
+
+describe("Xbox games listed twice", () => {
+  const game = (addon: string, id: string, extra: Record<string, unknown> = {}) => ({ addon, externalId: id, title: `Game ${id}`, coverUrl: null as string | null, storeUrl: null as string | null, playtimeSeconds: null as number | null, lastPlayedAt: null as string | null, ...extra });
+
+  it("keeps the console's copy, with what the other copy knows", () => {
+    const merged = mergeXboxCopies([
+      game("xbox", "1", { coverUrl: "https://a/gta.png", storeUrl: "https://xbox.com/gta", playtimeSeconds: 3600, lastPlayedAt: "2026-11-20T10:00:00Z" }),
+      game("xbox-console", "1", { lastPlayedAt: "2026-11-01T10:00:00Z" }),
+      game("xbox", "2"),
+      game("steam", "1"),
+    ]);
+    assert.deepEqual(merged.map((g) => `${g.addon}:${g.externalId}`), ["xbox-console:1", "xbox:2", "steam:1"]);
+    assert.deepEqual([merged[0]!.coverUrl, merged[0]!.storeUrl, merged[0]!.playtimeSeconds, merged[0]!.lastPlayedAt], ["https://a/gta.png", "https://xbox.com/gta", 3600, "2026-11-20T10:00:00Z"]);
+  });
+
+  it("leaves a copy installed on this PC alone", () => {
+    const games = [game("xbox", "1"), game("xbox-console", "1")];
+    assert.equal(mergeXboxCopies(games, (g) => g.addon === "xbox").length, 2);
   });
 });
